@@ -1,0 +1,700 @@
+/* My Bookings Page Styles */
+
+.my-booking-main {
+    padding: 0px 32px 15px 32px;
+}
+
+.my-booking-main .main-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(246, 249, 255, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 15px 32px;
+    margin-left: -32px;
+    margin-right: -32px;
+    margin-top: 0;
+}
+
+.my-booking-main .header-actions {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.my-booking-content {
+    margin-top: 15px;
+}
+
+/* Page Header */
+.page-header {
+    margin-bottom: 15px;
+}
+
+.page-title {
+    font-size: 32px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 5px;
+    line-height: 1.2;
+}
+
+.page-description {
+    font-size: 16px;
+    color: #909396;
+    font-weight: 400;
+}
+
+/* Filter Tabs */
+.booking-filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 32px;
+    border-bottom: 2px solid #E5E7EB;
+    padding-bottom: 0;
+}
+
+.filter-tab {
+    padding: 12px 24px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-size: 16px;
+    font-weight: 500;
+    color: #6B7280;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Poppins', sans-serif;
+    position: relative;
+    bottom: -2px;
+}
+
+.filter-tab:hover {
+    color: #007BFF;
+    
+}
+
+.filter-tab.active {
+    color: #007BFF;
+    border-bottom-color: #007BFF;
+    background: transparent;
+}
+
+/* Bookings List */
+.bookings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Booking Card */
+.booking-card {
+    background: #FCFDFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    gap: 20px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.booking-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: #D1D5DB;
+}
+
+.booking-card-image {
+    width: 140px;
+    height: 140px;
+    border-radius: 12px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.booking-card-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 140px;
+    justify-content: space-between;
+}
+
+.booking-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.booking-card-info {
+    flex: 1;
+}
+
+.booking-card-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 1px;
+}
+
+.booking-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.booking-rating {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: #4B5563;
+    font-weight: 500;
+}
+
+.booking-rating i {
+    color: #FBBF24;
+    font-size: 16px;
+}
+
+.booking-location {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #6B7280;
+}
+
+.booking-location i {
+    font-size: 14px;
+}
+
+.booking-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    margin-top: 35px;
+}
+
+.booking-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #4B5563;
+    position: relative;
+    cursor: default;
+}
+
+.booking-detail-item i {
+    font-size: 14px;
+    color: #9CA3AF;
+    width: 16px;
+    flex-shrink: 0;
+}
+
+.booking-detail-label {
+    font-weight: 500;
+    color: #6B7280;
+}
+
+.booking-detail-value {
+    color: #1F2937;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.booking-card-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    min-width: 160px;
+}
+
+.booking-card-actions-top {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    width: 100%;
+}
+
+.booking-status-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.booking-actions-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+}
+
+
+.booking-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: #F0FDF4;
+    color: #16A34A;
+}
+
+.booking-status.upcoming {
+    background: #EFF6FF;
+    color: #2563EB;
+}
+
+.booking-status.completed {
+    background: #F0FDF4;
+    color: #16A34A;
+}
+
+.booking-status.cancelled {
+    background: #FEF2F2;
+    color: #DC2626;
+}
+
+.booking-status.confirmed {
+    background: #EFF6FF;
+    color: #2563EB;
+}
+
+.booking-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.cancel-booking-btn {
+    padding: 10px 20px;
+    background: #DC2626;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Poppins', sans-serif;
+    flex-shrink: 0;
+}
+
+.cancel-booking-btn:hover {
+    background: #B91C1C;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+
+.reschedule-link {
+    color: #6B7280;
+    font-size: 14px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+    text-align: center;
+    display: block;
+}
+
+.reschedule-link:hover {
+    color: #1E40AF;
+}
+
+.pay-now-btn {
+    padding: 10px 20px;
+    background: #10B981;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Poppins', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.pay-now-btn:hover {
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.pay-now-btn i {
+    font-size: 16px;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: #9CA3AF;
+}
+
+.empty-state i {
+    font-size: 64px;
+    margin-bottom: 16px;
+    color: #D1D5DB;
+}
+
+.empty-state h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #6B7280;
+    margin-bottom: 8px;
+}
+
+.empty-state p {
+    font-size: 14px;
+    color: #9CA3AF;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .booking-card {
+        flex-direction: column;
+    }
+
+    .booking-card-image {
+        width: 100%;
+        height: 200px;
+    }
+
+    .booking-card-actions {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .cancel-booking-btn {
+        width: auto;
+        flex: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-title {
+        font-size: 28px;
+    }
+
+    .booking-filters {
+        gap: 8px;
+    }
+
+    .filter-tab {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+
+    .booking-card-title {
+        font-size: 18px;
+    }
+
+    .booking-card-actions {
+        flex-direction: column;
+    }
+
+    .cancel-booking-btn {
+        width: 100%;
+    }
+}
+
+/* Payment Status Info Modal */
+.payment-status-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.payment-status-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+}
+
+.payment-status-content {
+    position: relative;
+    background: #FFFFFF;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    z-index: 1001;
+}
+
+.payment-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.payment-status-header h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+}
+
+.payment-status-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Payment Progress Summary */
+.payment-progress-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+    padding: 20px;
+    background: #F9FAFB;
+    border-radius: 12px;
+}
+
+.progress-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+}
+
+.progress-label {
+    font-size: 14px;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.progress-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #212529;
+}
+
+.progress-value.paid {
+    color: #10B981;
+}
+
+.progress-value.pending {
+    color: #F59E0B;
+}
+
+/* Players Payment List */
+.players-payment-list h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 16px;
+}
+
+.players-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.player-payment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    transition: all 0.2s;
+}
+
+.player-payment-item:hover {
+    background: #F3F4F6;
+    border-color: #D1D5DB;
+}
+
+.player-payment-item.current-user {
+    background: #EFF6FF;
+    border-color: #3B82F6;
+    border-width: 2px;
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.player-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.player-payment-item.current-user .player-avatar {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.player-details {
+    flex: 1;
+}
+
+.player-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.player-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+}
+
+.organizer-badge {
+    padding: 4px 8px;
+    background: #DBEAFE;
+    color: #1E40AF;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.player-payment-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.payment-amount {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 0;
+}
+
+.payment-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.payment-status.paid {
+    color: #10B981;
+}
+
+.payment-status.pending {
+    color: #6B7280;
+}
+
+.status-icon {
+    font-size: 18px;
+}
+
+.status-icon.paid {
+    color: #10B981;
+}
+
+.status-icon.pending {
+    color: #9CA3AF;
+}
+
+/* Info Button */
+.info-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: #F3F4F6;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #6B7280;
+    flex-shrink: 0;
+}
+
+.info-btn:hover {
+    background: #E5E7EB;
+    color: #007BFF;
+    transform: translateY(-1px);
+}
+
+.info-btn i {
+    font-size: 18px;
+}
+
+/* Responsive Design for Modal */
+@media (max-width: 768px) {
+    .payment-status-content {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 16px 16px 0 0;
+        margin-top: auto;
+    }
+
+    .payment-progress-summary {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .player-payment-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .player-payment-info {
+        width: 100%;
+        justify-content: space-between;
+    }
+}

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatchField - Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="../../styles/player/chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="home.html" class="nav-item">
+                    <i class="fi fi-rr-home nav-icon"></i>
+                    <span>Home Page</span>
+                </a>
+                <a href="bookings.html" class="nav-item">
+                    <i class="fi fi-rr-calendar-day nav-icon"></i>
+                    <span>My Booking</span>
+                </a>
+                <a href="chat.html" class="nav-item active">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Chat</span>
+                </a>
+                <a href="map.html" class="nav-item">
+                    <i class="fi fi-rr-map-marker nav-icon"></i>
+                    <span>Map</span>
+                </a>
+                <a href="../shared/contact-us.html" class="nav-item">
+                    <i class="fi fi-rs-headset nav-icon"></i>
+                    <span>Contact Us</span>
+                </a>
+                <a href="../shared/about-us.html" class="nav-item">
+                    <i class="fi fi-rr-info nav-icon"></i>
+                    <span>About Us</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">New booking confirmed</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Venue availability update</p>
+                                        <p class="notification-time">5 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Reminder: Booking tomorrow</p>
+                                        <p class="notification-time">1 day ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>My Account</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">John Doe</p>
+                                        <p class="profile-email">john.doe@example.com</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>View Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="bookings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-calendar-day"></i>
+                                        </div>
+                                        <span>My Bookings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <!-- Message List Sidebar -->
+                <div class="message-list-container">
+                    <div class="message-list-header">
+                        <h2>Messages</h2>
+                        <button class="add-friend-btn" id="addFriendBtn">
+                            <i class="fi fi-rr-user-add"></i>
+                            <span>+ Add Friend</span>
+                        </button>
+                    </div>
+                    
+                    <div class="message-search">
+                        <input type="text" placeholder="Search Player or Field..." id="messageSearch">
+                        <i class="fi fi-rr-search search-icon"></i>
+                    </div>
+                    
+                    <div class="message-list" id="messageList">
+                        <!-- Message items will be generated here -->
+                    </div>
+                </div>
+
+                <!-- Chat Conversation Area -->
+                <div class="chat-conversation-container">
+                    <div class="chat-header" id="chatHeader">
+                        <div class="chat-header-info">
+                            <div class="chat-avatar">
+                                <img src="https://ui-avatars.com/api/?name=Mousa+Aqabnah&background=007BFF&color=fff&size=128" alt="Chat User">
+                                <span class="online-indicator"></span>
+                            </div>
+                            <div class="chat-user-details">
+                                <h3 id="chatUserName">Select a conversation</h3>
+                                <p id="chatUserStatus">Start chatting with players or field owners</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="empty-chat-state">
+                            <i class="fi fi-rr-messages"></i>
+                            <p>Select a conversation to start chatting</p>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-container" id="chatInputContainer" style="display: none;">
+                        <div class="chat-input-actions">
+                            <button class="chat-action-btn" id="emojiBtn">
+                                <i class="fi fi-rr-smile"></i>
+                            </button>
+                            <button class="chat-action-btn" id="attachBtn">
+                                <i class="fi fi-rr-clip"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Type a message...">
+                        <button class="send-btn" id="sendBtn">
+                            <i class="fi fi-rr-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar - Field Owner Info -->
+                <aside class="field-info-sidebar" id="fieldInfoSidebar" style="display: none;">
+            <div class="field-image-container">
+                <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format" alt="Field Image" id="fieldImage">
+            </div>
+            
+            <div class="field-owner-section">
+                <h3>Field Owner</h3>
+                <div class="field-owner-card">
+                    <div class="field-owner-avatar">
+                        <img src="https://ui-avatars.com/api/?name=Mousa+Aqabnah&background=007BFF&color=fff&size=128" alt="Field Owner" id="fieldOwnerAvatar">
+                        <span class="online-indicator"></span>
+                    </div>
+                    <div class="field-owner-info">
+                        <h4 id="fieldOwnerName">Mousa Aqabnah</h4>
+                        <p class="field-owner-status" id="fieldOwnerStatus">Online</p>
+                    </div>
+                </div>
+                
+                <div class="field-owner-actions">
+                    <button class="field-action-btn" id="addToFriendBtn">
+                        <i class="fi fi-rr-user-add"></i>
+                        <span>+ Add To Friend</span>
+                    </button>
+                    <button class="field-action-btn" id="viewFieldPageBtn">
+                        <i class="fi fi-rr-eye"></i>
+                        <span>View Field Page</span>
+                    </button>
+                    <button class="field-action-btn primary">
+                        <i class="fi fi-rr-calendar-day"></i>
+                        <span>Book Now</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="field-information-section">
+                <h3>Field Information</h3>
+                <div class="field-info-grid">
+                    <div class="field-info-item">
+                        <span class="field-info-label">Type:</span>
+                        <span class="field-info-value" id="fieldType">Football Field</span>
+                    </div>
+                    <div class="field-info-item">
+                        <span class="field-info-label">Rate:</span>
+                        <span class="field-info-value" id="fieldRate">₺1500/h</span>
+                    </div>
+                    <div class="field-info-item">
+                        <span class="field-info-label">Size:</span>
+                        <span class="field-info-value" id="fieldSize">Standard (45x22m)</span>
+                    </div>
+                    <div class="field-info-item">
+                        <span class="field-info-label">Surface:</span>
+                        <span class="field-info-value" id="fieldSurface">Artificial Turf</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+            </div>
+        </main>
+    </div>
+
+    <script src="../../scripts/player/chat.js"></script>
+</body>
+</html>
+
+
+

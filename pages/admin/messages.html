@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages | MatchField</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="../../styles/admin/messages.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item">
+                    <i class="fi fi-rr-apps nav-icon"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="users.html" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>Users</span>
+                </a>
+                <a href="verification.html" class="nav-item">
+                    <i class="fi fi-rr-badge-check nav-icon"></i>
+                    <span>Verification</span>
+                </a>
+                <a href="fields.html" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="9" y1="9" x2="15" y2="9"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                    <span>Fields</span>
+                </a>
+                <a href="messages.html" class="nav-item active">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Messages</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn" id="notificationBtn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">System update</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=Admin&background=007BFF&color=fff" alt="Admin">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>Profile</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=Admin&background=007BFF&color=fff" alt="Admin">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">Admin User</p>
+                                        <p class="profile-email">admin@matchfield.com</p>
+                                    </div>
+                                </div>
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>My Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Messages Content -->
+            <div class="messages-content">
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Messages</h1>
+                        <p class="page-subtitle">View and manage messages from users.</p>
+                    </div>
+                </div>
+
+                <!-- Search and Filter Bar -->
+                <div class="search-filter-bar">
+                    <div class="search-container">
+                        <input 
+                            type="text" 
+                            id="messageSearch" 
+                            placeholder="Search By Name Or Email..."
+                            class="search-input"
+                        >
+                        <i class="fi fi-rr-search search-icon"></i>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <select id="statusFilter" class="filter-dropdown">
+                            <option value="all">All</option>
+                            <option value="unread">Unread</option>
+                            <option value="read">Read</option>
+                            <option value="replied">Replied</option>
+                            <option value="pending">Pending</option>
+                        </select>
+                        
+                        <button class="btn-spam-blocked" id="spamBlockedBtn">
+                            <i class="fi fi-rs-shield"></i>
+                            Spam/Blocked Message
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Messages Section -->
+                <div class="messages-section">
+                    <div class="messages-list" id="messagesList">
+                        <!-- Messages will be dynamically loaded here -->
+                        <div id="loadingIndicator" style="text-align: center; padding: 40px; color: #6B7280;">
+                            Loading messages...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Message Detail Modal -->
+    <div class="modal-overlay" id="messageModal">
+        <div class="modal-box message-modal">
+            <button class="modal-close" id="closeMessageModal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            
+            <div class="modal-title">Message Details</div>
+            
+            <div class="message-content-modal" id="messageContent">
+                <!-- Message content will be dynamically loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Sample messages data - inline for testing
+        const allMessages = [
+            {
+                id: 1,
+                fullName: 'Mousa Aqabnah',
+                email: 'mousa.aqabnah@example.com',
+                phone: '+90 555 123 4567',
+                topic: 'Question about field availability',
+                message: 'Hi, I would like to know if Field A is available for booking next weekend. We are planning a tournament and need to confirm the availability.',
+                date: new Date(Date.now() - 2 * 60 * 60 * 1000),
+                status: 'unread',
+                starred: false,
+                important: false,
+                blocked: false
+            },
+            {
+                id: 2,
+                fullName: 'Baraa Qasem',
+                email: 'Baraa.Qasem@example.com',
+                phone: '+90 555 234 5678',
+                topic: 'Reservation confirmation issue',
+                message: 'I made a reservation yesterday but haven\'t received a confirmation email yet. My booking reference is #12345. Can you please check?',
+                date: new Date(Date.now() - 3 * 60 * 60 * 1000),
+                status: 'pending',
+                starred: true,
+                important: true,
+                blocked: false
+            },
+            {
+                id: 3,
+                fullName: 'Alex Morgan',
+                email: 'alex.morgan@example.com',
+                phone: '+90 555 345 6789',
+                topic: 'Booking problem',
+                message: 'I booked a field for tomorrow but I need to cancel it. How can I do that?',
+                date: new Date(Date.now() - 5 * 60 * 60 * 1000),
+                status: 'read',
+                starred: false,
+                important: false,
+                blocked: false
+            },
+            {
+                id: 4,
+                fullName: 'Sarah Johnson',
+                email: 'sarah.johnson@example.com',
+                phone: '+90 555 456 7890',
+                topic: 'Payment issue',
+                message: 'I tried to pay for my booking but the payment failed. Can you help me resolve this?',
+                date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+                status: 'read',
+                starred: false,
+                important: false,
+                blocked: false
+            },
+            {
+                id: 5,
+                fullName: 'Michael Brown',
+                email: 'michael.brown@example.com',
+                phone: '+90 555 567 8901',
+                topic: 'Field availability',
+                message: 'I want to know if the football field is available this weekend for a tournament.',
+                date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+                status: 'replied',
+                starred: false,
+                important: false,
+                blocked: false
+            }
+        ];
+
+        function getTimeAgo(date) {
+            if (!(date instanceof Date)) {
+                date = new Date(date);
+            }
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'Minute' : 'Minutes'} Ago`;
+            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'Hour' : 'Hours'} Ago`;
+            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'Day' : 'Days'} Ago`;
+            return date.toLocaleDateString();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Track if viewing spam/blocked messages
+        let isViewingSpam = false;
+
+        function renderMessages(messagesToRender = null) {
+            const messagesList = document.getElementById('messagesList');
+            if (!messagesList) {
+                console.error('messagesList not found');
+                return;
+            }
+
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+
+            // Use provided messages or filter from allMessages
+            let filteredMessages;
+            if (messagesToRender) {
+                filteredMessages = messagesToRender;
+            } else {
+                // Default: show non-blocked messages
+                filteredMessages = allMessages.filter(msg => !msg.blocked);
+            }
+            
+            if (filteredMessages.length === 0) {
+                messagesList.innerHTML = `
+                    <div style="text-align: center; padding: 60px 20px; color: #6B7280;">
+                        <p style="font-size: 16px; margin: 0;">No messages found.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            filteredMessages.forEach(msg => {
+                const isUnread = msg.status === 'unread';
+                const timeAgo = getTimeAgo(msg.date);
+                const badges = [];
+                
+                if (msg.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
+                if (msg.status === 'pending') badges.push({ text: 'Pending', class: 'pending' });
+                if (msg.important) badges.push({ text: 'Important', class: 'important' });
+                
+                const badgesHtml = badges.length > 0 ? `
+                    <div class="message-badges">
+                        ${badges.map(badge => `
+                            <span class="status-badge ${badge.class}">${badge.text}</span>
+                        `).join('')}
+                    </div>
+                ` : '';
+                
+                html += `
+                <div class="message-card ${isUnread ? 'unread' : ''}">
+                    <div class="message-card-content">
+                        <div class="message-sender-info">
+                            <h3 class="message-sender-name">${escapeHtml(msg.fullName)}</h3>
+                            <p class="message-sender-email">${escapeHtml(msg.email)}</p>
+                        </div>
+                        <h4 class="message-subject">${escapeHtml(msg.topic || 'No topic')}</h4>
+                        <p class="message-preview">${escapeHtml(msg.message)}</p>
+                        ${badgesHtml}
+                    </div>
+                    <div class="message-actions-right">
+                        <div class="message-icon-actions">
+                            <button class="message-icon-btn ${msg.starred ? 'starred' : ''}" onclick="toggleStar(${msg.id})" title="${msg.starred ? 'Unstar' : 'Star'}">
+                                <i class="fi ${msg.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
+                            </button>
+                            <button class="message-icon-btn" onclick="blockMessage(${msg.id})" title="Block/Spam">
+                                <i class="fi fi-rr-circle-xmark"></i>
+                            </button>
+                        </div>
+                        <p class="message-time">${timeAgo}</p>
+                        <button class="btn-view-message" onclick="showMessageDetail(${msg.id})">
+                            View Message
+                        </button>
+                    </div>
+                </div>
+                `;
+            });
+            
+            messagesList.innerHTML = html;
+            console.log('Messages rendered:', filteredMessages.length);
+        }
+
+        // Filter messages function
+        function filterMessages() {
+            const searchInput = document.getElementById('messageSearch');
+            const statusFilter = document.getElementById('statusFilter');
+            const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            const selectedStatus = statusFilter ? statusFilter.value : 'all';
+            
+            let filtered = allMessages.filter(msg => {
+                // Don't show blocked messages unless viewing spam
+                if (msg.blocked && !isViewingSpam) {
+                    return false;
+                }
+                
+                // If viewing spam, only show blocked messages
+                if (isViewingSpam && !msg.blocked) {
+                    return false;
+                }
+                
+                // Search filter
+                const matchesSearch = !searchTerm || 
+                    msg.fullName.toLowerCase().includes(searchTerm) ||
+                    msg.email.toLowerCase().includes(searchTerm) ||
+                    (msg.topic && msg.topic.toLowerCase().includes(searchTerm)) ||
+                    msg.message.toLowerCase().includes(searchTerm);
+                
+                // Status filter
+                const matchesStatus = selectedStatus === 'all' || msg.status === selectedStatus;
+                
+                return matchesSearch && matchesStatus;
+            });
+            
+            renderMessages(filtered);
+        }
+
+        // Toggle star function
+        function toggleStar(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            message.starred = !message.starred;
+            filterMessages(); // Re-render to show updated star state
+            console.log(`Message ${messageId} ${message.starred ? 'starred' : 'unstarred'}`);
+        }
+
+        // Block/Spam message function
+        function blockMessage(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            if (confirm(`Block/Spam message from ${message.fullName}?`)) {
+                message.blocked = true;
+                filterMessages(); // Re-render to remove blocked message
+                console.log(`Message from ${message.fullName} blocked`);
+            }
+        }
+
+        // Show message detail modal
+        function showMessageDetail(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            // Mark as read when viewing
+            if (message.status === 'unread') {
+                message.status = 'read';
+                filterMessages(); // Re-render to update status
+            }
+            
+            const messageContent = document.getElementById('messageContent');
+            const messageModal = document.getElementById('messageModal');
+            
+            if (messageContent) {
+                const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
+                const timeAgo = getTimeAgo(message.date);
+                
+                messageContent.innerHTML = `
+                    <div class="message-detail-header">
+                        <div class="message-detail-avatar">
+                            ${initials}
+                        </div>
+                        <div class="message-detail-info">
+                            <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
+                            <p class="message-detail-email">${escapeHtml(message.email)}</p>
+                            ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="message-detail-content">
+                        <div class="message-detail-topic">
+                            ${escapeHtml(message.topic || 'No topic')}
+                        </div>
+                        <div class="message-detail-text">
+                            ${escapeHtml(message.message)}
+                        </div>
+                        <div class="message-detail-meta">
+                            <span>Received: ${timeAgo}</span>
+                            <span class="status-badge ${message.status}">${message.status.charAt(0).toUpperCase() + message.status.slice(1)}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Reply Section -->
+                    <div class="reply-section">
+                        <h4 class="reply-section-title">Reply to ${escapeHtml(message.fullName)}</h4>
+                        <form class="reply-form" id="replyForm${message.id}" onsubmit="handleReplySubmit(event, ${message.id})">
+                            <div class="reply-form-group">
+                                <label for="replyMessage${message.id}" class="reply-label">Your Reply</label>
+                                <textarea 
+                                    id="replyMessage${message.id}" 
+                                    class="reply-textarea" 
+                                    rows="6" 
+                                    placeholder="Type your reply here..."
+                                    required
+                                ></textarea>
+                            </div>
+                            <div class="reply-form-actions">
+                                <button type="button" class="btn-cancel-reply" onclick="cancelReply(${message.id})">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn-send-reply">
+                                    <i class="fi fi-rr-paper-plane"></i> Send Reply
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="message-detail-actions">
+                        ${message.status === 'unread' ? `
+                            <button class="btn-mark-read" onclick="markAsRead(${message.id}); closeMessageModal();">
+                                <i class="fi fi-rr-check"></i> Mark as Read
+                            </button>
+                        ` : ''}
+                        <button class="btn-reply-toggle" onclick="toggleReplySection(${message.id})">
+                            <i class="fi fi-rr-envelope"></i> Reply
+                        </button>
+                        <button class="btn-delete" onclick="deleteMessage(${message.id}); closeMessageModal();">
+                            <i class="fi fi-rr-trash"></i> Delete
+                        </button>
+                    </div>
+                `;
+            }
+            
+            if (messageModal) {
+                messageModal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        // Mark message as read
+        function markAsRead(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            message.status = 'read';
+            filterMessages(); // Re-render to show updated status
+            console.log(`Message from ${message.fullName} marked as read`);
+        }
+
+        // Toggle reply section
+        function toggleReplySection(messageId) {
+            const replySection = document.querySelector(`#replyForm${messageId}`).closest('.reply-section');
+            if (replySection) {
+                replySection.classList.toggle('active');
+                const textarea = document.getElementById(`replyMessage${messageId}`);
+                if (replySection.classList.contains('active') && textarea) {
+                    textarea.focus();
+                }
+            }
+        }
+
+        // Cancel reply
+        function cancelReply(messageId) {
+            const replySection = document.querySelector(`#replyForm${messageId}`).closest('.reply-section');
+            const textarea = document.getElementById(`replyMessage${messageId}`);
+            if (replySection) {
+                replySection.classList.remove('active');
+            }
+            if (textarea) {
+                textarea.value = '';
+            }
+        }
+
+        // Handle reply form submission
+        function handleReplySubmit(event, messageId) {
+            event.preventDefault();
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            const textarea = document.getElementById(`replyMessage${messageId}`);
+            const replyText = textarea ? textarea.value.trim() : '';
+            
+            if (!replyText) {
+                alert('Please enter a reply message.');
+                return;
+            }
+            
+            // Format the reply body
+            const replyBody = `${replyText}\n\n--- Original Message ---\nFrom: ${message.fullName} (${message.email})\nDate: ${getTimeAgo(message.date)}\nTopic: ${message.topic || 'No topic'}\n\n${message.message}`;
+            
+            // Open email client
+            const subject = encodeURIComponent(`Re: ${message.topic || 'Your message'}`);
+            const body = encodeURIComponent(replyBody);
+            const mailtoLink = `mailto:${message.email}?subject=${subject}&body=${body}`;
+            
+            // Try to open email client
+            try {
+                window.location.href = mailtoLink;
+                
+                // Mark as replied after a short delay
+                setTimeout(() => {
+                    message.status = 'replied';
+                    filterMessages();
+                    closeMessageModal();
+                    console.log(`Reply sent to ${message.fullName}`);
+                }, 500);
+            } catch (error) {
+                console.error('Error opening email client:', error);
+                alert('Please configure your email client to send replies.');
+            }
+        }
+
+        // Delete message
+        function deleteMessage(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            if (confirm(`Delete message from ${message.fullName}?`)) {
+                const index = allMessages.findIndex(m => m.id === messageId);
+                if (index > -1) {
+                    allMessages.splice(index, 1);
+                }
+                filterMessages(); // Re-render table
+                console.log(`Message from ${message.fullName} deleted`);
+            }
+        }
+
+        // Close message modal
+        function closeMessageModal() {
+            const messageModal = document.getElementById('messageModal');
+            if (messageModal) {
+                messageModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        // Setup modal close handlers
+        function setupModalHandlers() {
+            const closeMessageModalBtn = document.getElementById('closeMessageModal');
+            const messageModal = document.getElementById('messageModal');
+            
+            if (closeMessageModalBtn && messageModal) {
+                closeMessageModalBtn.addEventListener('click', closeMessageModal);
+                
+                // Close on overlay click
+                messageModal.addEventListener('click', (e) => {
+                    if (e.target === messageModal) {
+                        closeMessageModal();
+                    }
+                });
+                
+                // Close on Escape key
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && messageModal.classList.contains('active')) {
+                        closeMessageModal();
+                    }
+                });
+            }
+        }
+
+        // Setup search and filter event listeners
+        function setupSearchAndFilter() {
+            const searchInput = document.getElementById('messageSearch');
+            const statusFilter = document.getElementById('statusFilter');
+            const spamBlockedBtn = document.getElementById('spamBlockedBtn');
+            
+            if (searchInput) {
+                searchInput.addEventListener('input', filterMessages);
+            }
+            
+            if (statusFilter) {
+                statusFilter.addEventListener('change', filterMessages);
+            }
+            
+            if (spamBlockedBtn) {
+                spamBlockedBtn.addEventListener('click', () => {
+                    isViewingSpam = !isViewingSpam;
+                    
+                    if (isViewingSpam) {
+                        // Show only blocked messages
+                        const blockedMessages = allMessages.filter(msg => msg.blocked);
+                        renderMessages(blockedMessages);
+                        spamBlockedBtn.classList.add('active');
+                    } else {
+                        // Show all non-blocked messages
+                        filterMessages();
+                        spamBlockedBtn.classList.remove('active');
+                    }
+                });
+            }
+        }
+
+        // Make functions globally available
+        window.toggleStar = toggleStar;
+        window.blockMessage = blockMessage;
+        window.showMessageDetail = showMessageDetail;
+        window.markAsRead = markAsRead;
+        window.deleteMessage = deleteMessage;
+        window.closeMessageModal = closeMessageModal;
+        window.filterMessages = filterMessages;
+        window.handleReplySubmit = handleReplySubmit;
+        window.cancelReply = cancelReply;
+        window.toggleReplySection = toggleReplySection;
+
+        // Setup notification and profile popups
+        function setupNotificationAndProfile() {
+            const notificationBtn = document.getElementById('notificationBtn');
+            const notificationPopup = document.getElementById('notificationPopup');
+            const profileBtn = document.getElementById('profileBtn');
+            const profilePopup = document.getElementById('profilePopup');
+
+            // Notification Popup Toggle
+            if (notificationBtn && notificationPopup) {
+                notificationBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    notificationPopup.classList.toggle('active');
+                    if (profilePopup) {
+                        profilePopup.classList.remove('active');
+                    }
+                });
+            }
+
+            // Profile Popup Toggle
+            if (profileBtn && profilePopup) {
+                profileBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    profilePopup.classList.toggle('active');
+                    if (notificationPopup) {
+                        notificationPopup.classList.remove('active');
+                    }
+                });
+            }
+
+            // Close popups when clicking outside
+            document.addEventListener('click', (e) => {
+                if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
+                    notificationPopup.classList.remove('active');
+                }
+                if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
+                    profilePopup.classList.remove('active');
+                }
+            });
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                renderMessages();
+                setupModalHandlers();
+                setupSearchAndFilter();
+                setupNotificationAndProfile();
+            });
+        } else {
+            renderMessages();
+            setupModalHandlers();
+            setupSearchAndFilter();
+            setupNotificationAndProfile();
+        }
+    </script>
+    <script src="../../scripts/admin/messages.js"></script>
+</body>
+</html>
+

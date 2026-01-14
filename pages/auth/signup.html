@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatchField - Sign up</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.1.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.1.0/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="../../styles/shared/base.css">
+    <link rel="stylesheet" href="../../styles/auth/signup.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Section - Promotional Content -->
+        <div class="left-section">
+            <div class="logo">
+                <img src="../../logo/logo's icon.png" alt="MatchField" class="logo-icon">
+            </div>
+            
+            <div class="promo-card">
+                <h1 class="headline">Get started now</h1>
+                <p class="description">Book and manage sports fields in seconds. Join as a player to find nearby matches, or as a field owner to showcase your venue and handle bookings effortlessly.</p>
+                
+                <ul class="features-list">
+                    <li>Smart search and filters</li>
+                    <li>Secure payments and receipts</li>
+                    <li>Real-time availability</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Right Section - Registration Form -->
+        <div class="right-section">
+            <div class="signup-card">
+                <!-- User Type Selection -->
+                <div class="user-type-tabs">
+                    <button type="button" class="tab-btn active" data-type="player" id="playerTab">
+                        <i class="fi fi-rr-user" style="display: inline-block;"></i>
+                        Player
+                    </button>
+                    <button type="button" class="tab-btn" data-type="owner" id="ownerTab">
+                        <i class="fi fi-rr-court-sport" style="display: inline-block;"></i>
+                        Field owner
+                    </button>
+                </div>
+                
+                <form class="signup-form" id="signupForm">
+                    <div class="form-fields-container">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="fullName">Full name</label>
+                                <input 
+                                    type="text" 
+                                    id="fullName" 
+                                    name="fullName" 
+                                    placeholder="Alex Morgan"
+                                    required
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="phone">Phone</label>
+                                <input 
+                                    type="tel" 
+                                    id="phone" 
+                                    name="phone" 
+                                    placeholder="+90 555 000 12 34"
+                                    required
+                                >
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="dateOfBirth">Date of birth</label>
+                                <input 
+                                    type="date" 
+                                    id="dateOfBirth" 
+                                    name="dateOfBirth" 
+                                    required
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input 
+                                    type="email" 
+                                    id="email" 
+                                    name="email" 
+                                    placeholder="you@example.com"
+                                    required
+                                >
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="gender">Gender</label>
+                                <select id="gender" name="gender" required>
+                                    <option value="">Select gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="location">City</label>
+                                <input 
+                                    type="text" 
+                                    id="location" 
+                                    name="location" 
+                                    placeholder="Istanbul"
+                                    required
+                                >
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input 
+                                    type="password" 
+                                    id="password" 
+                                    name="password" 
+                                    placeholder="Enter your password"
+                                    required
+                                >
+                                <div class="password-strength" id="passwordStrength">
+                                    <span class="strength-label">Password strength: </span>
+                                    <span class="strength-value" id="strengthValue">Weak</span>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="confirmPassword">Confirm password</label>
+                                <input 
+                                    type="password" 
+                                    id="confirmPassword" 
+                                    name="confirmPassword" 
+                                    placeholder="Re-enter password"
+                                    required
+                                >
+                            </div>
+                        </div>
+                        
+                        <div class="form-group checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="terms" name="terms" required>
+                                <span>I agree to the <a href="#" class="link">Terms</a> and <a href="#" class="link">Privacy Policy</a>.</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Sign up</button>
+                </form>
+                
+                <p class="login-text">
+                    Already have an account? <a href="login.html" class="login-link">Log in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="../../scripts/auth/signup.js"></script>
+</body>
+</html>
+

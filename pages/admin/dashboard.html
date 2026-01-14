@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | MatchField</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="../../styles/admin/dashboard.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item active">
+                    <i class="fi fi-rr-apps nav-icon"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="users.html" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>Users</span>
+                </a>
+                <a href="verification.html" class="nav-item">
+                    <i class="fi fi-rr-badge-check nav-icon"></i>
+                    <span>Verification</span>
+                </a>
+                <a href="fields.html" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="9" y1="9" x2="15" y2="9"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                    <span>Fields</span>
+                </a>
+                <a href="messages.html" class="nav-item">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Messages</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="inviteAdminBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Invite admin
+                    </button>
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn" id="notificationBtn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">System update</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=Admin&background=007BFF&color=fff" alt="Admin">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>Profile</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=Admin&background=007BFF&color=fff" alt="Admin">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">Admin User</p>
+                                        <p class="profile-email">admin@matchfield.com</p>
+                                    </div>
+                                </div>
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>My Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div class="dashboard-content">
+                <!-- Greeting Header -->
+                <div class="greeting-header">
+                    <h1>Good evening, Mousa 👋</h1>
+                    <p>Monitor users, field owners and bookings across MatchField.</p>
+                </div>
+
+                <!-- KPI Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-card-title">Total users</div>
+                        <div class="stat-card-value">1,248</div>
+                        <div class="stat-card-subtext">+32 this week</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Active field owners</div>
+                        <div class="stat-card-value">46</div>
+                        <div class="stat-card-subtext">3 pending approval</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Bookings (7 days)</div>
+                        <div class="stat-card-value">187</div>
+                        <div class="stat-card-subtext">+14% vs last week</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Revenue (7 days)</div>
+                        <div class="stat-card-value">₺72,350</div>
+                        <div class="stat-card-subtext">Estimated payout</div>
+                    </div>
+                </div>
+
+                <!-- Notifications Container -->
+                <div class="notifications-container">
+                    <!-- Send Notification Section -->
+                    <div class="section-card">
+                        <div class="section-header">
+                            <div>
+                                <h2 class="section-title">Send notification</h2>
+                                <p class="section-subtitle">Choose audience, channel and write your message.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="notification-form">
+                            <div class="form-group">
+                                <label for="notificationTitle">Title</label>
+                                <input 
+                                    type="text" 
+                                    id="notificationTitle" 
+                                    placeholder="Weekend reminder, feature announcement..."
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="notificationMessage">Message</label>
+                                <textarea 
+                                    id="notificationMessage" 
+                                    rows="4"
+                                    placeholder="Write a clear message for your users..."
+                                ></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Audience</label>
+                                <div class="tag-selector">
+                                    <button class="tag-btn active" data-audience="all">All users</button>
+                                    <button class="tag-btn" data-audience="players">Players</button>
+                                    <button class="tag-btn" data-audience="owners">Field owners</button>
+                                    <button class="tag-btn" data-audience="admins">Admins</button>
+                                    <button class="tag-btn" data-audience="private">Private</button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Channel</label>
+                                <div class="tag-selector">
+                                    <button class="tag-btn active" data-channel="inapp">In-app</button>
+                                    <button class="tag-btn" data-channel="email">Email</button>
+                                </div>
+                            </div>
+
+                            <div class="form-group private-user-selector" id="privateUserSelector" style="display: none;">
+                                <label for="userSearchInput">Select user</label>
+                                <div class="user-search-container">
+                                    <i class="fi fi-rr-search user-search-icon"></i>
+                                    <input 
+                                        type="text" 
+                                        id="userSearchInput" 
+                                        placeholder="Search by name or email..."
+                                        class="user-search-input"
+                                        autocomplete="off"
+                                    >
+                                    <div class="user-dropdown" id="userDropdown"></div>
+                                </div>
+                                <input type="hidden" id="selectedUserId" value="">
+                                <div class="selected-user-display" id="selectedUserDisplay" style="display: none;">
+                                    <div class="selected-user-info">
+                                        <img class="selected-user-avatar" src="" alt="">
+                                        <div class="selected-user-details">
+                                            <span class="selected-user-name"></span>
+                                            <span class="selected-user-email"></span>
+                                        </div>
+                                        <span class="selected-user-role-badge"></span>
+                                    </div>
+                                    <button type="button" class="remove-user-btn" id="removeUserBtn">
+                                        <i class="fi fi-rr-cross-small"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-tip">
+                                <i class="fi fi-rr-info"></i>
+                                <span>Tip: keep notifications short and schedule them outside busy match hours.</span>
+                            </div>
+
+                            <button class="btn btn-primary btn-send" id="sendNotificationBtn">
+                                Send now
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recent Notifications Section -->
+                    <div class="section-card">
+                    <div class="section-header">
+                        <div>
+                            <h2 class="section-title">Recent notifications</h2>
+                            <p class="section-subtitle">Last messages sent to your users.</p>
+                        </div>
+                        <button class="link-btn" id="viewAllNotificationsBtn">View all</button>
+                    </div>
+
+                    <div class="notifications-list" id="recentNotifications">
+                        <div class="notification-list-item">
+                            <div class="notification-list-content">
+                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
+                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
+                                <p class="notification-list-time">5 min ago</p>
+                            </div>
+                            <div class="notification-list-tags">
+                                <span class="notification-tag">In-app</span>
+                                <span class="notification-tag">Players</span>
+                            </div>
+                        </div>
+
+                        <div class="notification-list-item">
+                            <div class="notification-list-content">
+                                <h3 class="notification-list-title">Payouts processed</h3>
+                                <p class="notification-list-message">Weekly payouts have been processed for eligible field owners.</p>
+                                <p class="notification-list-time">1 hour ago</p>
+                            </div>
+                            <div class="notification-list-tags">
+                                <span class="notification-tag">In-app</span>
+                                <span class="notification-tag">Field owners</span>
+                            </div>
+                        </div>
+
+                        <div class="notification-list-item">
+                            <div class="notification-list-content">
+                                <h3 class="notification-list-title">New feature: Map filters</h3>
+                                <p class="notification-list-message">You can now filter sports fields by price, rating and surface.</p>
+                                <p class="notification-list-time">5 min ago</p>
+                            </div>
+                            <div class="notification-list-tags">
+                                <span class="notification-tag">In-app</span>
+                                <span class="notification-tag">Email</span>
+                            </div>
+                        </div>
+
+                        <div class="notification-list-item">
+                            <div class="notification-list-content">
+                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
+                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
+                                <p class="notification-list-time">Yesterday</p>
+                            </div>
+                            <div class="notification-list-tags">
+                                <span class="notification-tag">In-app</span>
+                                <span class="notification-tag">Players</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-grid">
+                    <div class="section-card chart-card">
+                        <div class="section-header">
+                            <div>
+                                <h2 class="section-title">Recent notifications</h2>
+                                <p class="section-subtitle">Distribution by audience</p>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <div class="bar-chart">
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Players</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 72%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">72%</span>
+                                </div>
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Field owners</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 20%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">20%</span>
+                                </div>
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Admins</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 1%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">1%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-card chart-card">
+                        <div class="section-header">
+                            <div>
+                                <h2 class="section-title">Top regions (bookings)</h2>
+                                <p class="section-subtitle">Bookings distribution by region</p>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <div class="bar-chart">
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Istanbul</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 72%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">72%</span>
+                                </div>
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Beirut</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 18%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">18%</span>
+                                </div>
+                                <div class="bar-chart-item">
+                                    <div class="bar-chart-label">Other</div>
+                                    <div class="bar-chart-bar-wrapper">
+                                        <div class="bar-chart-bar" style="width: 10%"></div>
+                                    </div>
+                                    <span class="bar-chart-value">10%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- View All Notifications Modal -->
+    <div class="modal-overlay" id="viewAllNotificationsModal">
+        <div class="modal-box notifications-modal">
+            <button class="modal-close" id="closeNotificationsModal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            
+            <div class="modal-title">All Notifications</div>
+            
+            <!-- Search and Filter Bar -->
+            <div class="notifications-modal-toolbar">
+                <div class="search-container">
+                    <i class="fi fi-rr-search"></i>
+                    <input 
+                        type="text" 
+                        id="notificationSearch" 
+                        placeholder="Search notifications by title or message..."
+                        class="search-input"
+                    >
+                </div>
+                
+                <div class="filter-container">
+                    <label>Filter by Audience:</label>
+                    <select id="filterAudience" class="filter-select">
+                        <option value="all">All audiences</option>
+                        <option value="all-users">All users</option>
+                        <option value="players">Players</option>
+                        <option value="field-owners">Field owners</option>
+                        <option value="admins">Admins</option>
+                        <option value="private">Private</option>
+                    </select>
+                </div>
+                
+                <div class="filter-container">
+                    <label>Filter by Channel:</label>
+                    <select id="filterChannel" class="filter-select">
+                        <option value="all">All channels</option>
+                        <option value="in-app">In-app</option>
+                        <option value="email">Email</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Notifications List -->
+            <div class="notifications-modal-content" id="allNotificationsList">
+                <!-- Notifications will be dynamically loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <script src="../../scripts/admin/dashboard.js"></script>
+</body>
+</html>
+
+

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatchField - All Fields</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons@7.0.0/css/flag-icons.min.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="../../styles/player/all-fields.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="home.html" class="nav-item">
+                    <i class="fi fi-rr-home nav-icon"></i>
+                    <span>Home Page</span>
+                </a>
+                <a href="bookings.html" class="nav-item">
+                    <i class="fi fi-rr-calendar-day nav-icon"></i>
+                    <span>My Booking</span>
+                </a>
+                <a href="chat.html" class="nav-item">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Chat</span>
+                </a>
+                <a href="map.html" class="nav-item">
+                    <i class="fi fi-rr-map-marker nav-icon"></i>
+                    <span>Map</span>
+                </a>
+                <a href="../shared/contact-us.html" class="nav-item">
+                    <i class="fi fi-rs-headset nav-icon"></i>
+                    <span>Contact Us</span>
+                </a>
+                <a href="../shared/about-us.html" class="nav-item">
+                    <i class="fi fi-rr-info nav-icon"></i>
+                    <span>About Us</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <button class="back-btn" onclick="window.history.back()">
+                    <i class="fi fi-rr-arrow-left"></i>
+                    <span>Back</span>
+                </button>
+                <div class="search-container">
+                    <input type="text" class="search-input" placeholder="Search by sport, area, venue..." id="searchInput">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                </div>
+                
+                <div class="filter-wrapper">
+                    <button class="filter-btn-header" id="filterBtn">
+                        <i class="fi fi-rr-filter"></i>
+                        <span>Filter</span>
+                    </button>
+                    
+                    <!-- Filter Popup -->
+                    <div class="filter-popup" id="filterPopup">
+                        <div class="filter-popup-header">
+                            <h3>Filters</h3>
+                            <button class="filter-close-btn" id="closeFilterBtn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="filter-popup-content">
+                            <div class="filter-section">
+                                <label class="filter-label">Sport</label>
+                                <div class="filter-options">
+                                    <button class="filter-option" data-filter="sport" data-value="all">All</button>
+                                    <button class="filter-option" data-filter="sport" data-value="football">Football</button>
+                                    <button class="filter-option" data-filter="sport" data-value="basketball">Basketball</button>
+                                    <button class="filter-option" data-filter="sport" data-value="tennis">Tennis</button>
+                                    <button class="filter-option" data-filter="sport" data-value="padel">Padel</button>
+                                    <button class="filter-option" data-filter="sport" data-value="futsal">Futsal</button>
+                                    <button class="filter-option" data-filter="sport" data-value="volleyball">Volleyball</button>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-section">
+                                <label class="filter-label">Field Type</label>
+                                <div class="filter-options">
+                                    <button class="filter-option" data-filter="type" data-value="all">All</button>
+                                    <button class="filter-option" data-filter="type" data-value="indoor">Indoor</button>
+                                    <button class="filter-option" data-filter="type" data-value="outdoor">Outdoor</button>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-section">
+                                <label class="filter-label">Price Range</label>
+                                <div class="filter-options">
+                                    <button class="filter-option" data-filter="price" data-value="all">All</button>
+                                    <button class="filter-option" data-filter="price" data-value="0-1000">₺0 - ₺1000</button>
+                                    <button class="filter-option" data-filter="price" data-value="1000-2000">₺1000 - ₺2000</button>
+                                    <button class="filter-option" data-filter="price" data-value="2000+">₺2000+</button>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-section">
+                                <label class="filter-label">Rating</label>
+                                <div class="filter-options">
+                                    <button class="filter-option" data-filter="rating" data-value="all">All</button>
+                                    <button class="filter-option" data-filter="rating" data-value="4.5+">4.5+ Stars</button>
+                                    <button class="filter-option" data-filter="rating" data-value="4.0+">4.0+ Stars</button>
+                                    <button class="filter-option" data-filter="rating" data-value="3.5+">3.5+ Stars</button>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-section">
+                                <label class="filter-label">Distance</label>
+                                <div class="filter-options">
+                                    <button class="filter-option" data-filter="distance" data-value="all">All</button>
+                                    <button class="filter-option" data-filter="distance" data-value="0-2">Within 2 Km</button>
+                                    <button class="filter-option" data-filter="distance" data-value="2-5">2 - 5 Km</button>
+                                    <button class="filter-option" data-filter="distance" data-value="5-10">5 - 10 Km</button>
+                                    <button class="filter-option" data-filter="distance" data-value="10+">10+ Km</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="filter-popup-footer">
+                            <button class="filter-reset-btn" id="resetFiltersBtn">Reset</button>
+                            <button class="filter-apply-btn" id="applyFiltersBtn">Apply Filters</button>
+                        </div>
+                    </div>
+                </div>
+                    
+                <div class="header-actions">
+                    <div class="notification-wrapper">
+                    <button class="icon-btn notification-btn">
+                            <i class="fi fi-rs-bell"></i>
+                    </button>
+                    
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">New booking confirmed</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Venue availability update</p>
+                                        <p class="notification-time">5 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Reminder: Booking tomorrow</p>
+                                        <p class="notification-time">1 day ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>My Account</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                        <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">John Doe</p>
+                                        <p class="profile-email">john.doe@example.com</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>View Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="bookings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-calendar-day"></i>
+                                        </div>
+                                        <span>My Bookings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Title -->
+            <div class="page-title-section">
+                <h1 class="page-title">All Published Fields</h1>
+                <p class="page-subtitle">Browse and filter all available sports fields</p>
+            </div>
+
+            <!-- All Fields Grid -->
+            <div class="content-wrapper">
+                <div class="venue-grid" id="allFieldsGrid">
+                    <!-- All field cards will be generated here -->
+                </div>
+                
+                <!-- Empty State -->
+                <div class="empty-state" id="emptyState" style="display: none;">
+                    <i class="fi fi-rr-search-alt"></i>
+                    <h3>No fields found</h3>
+                    <p>Try adjusting your filters or search query</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Booking Modal (same as home page) -->
+    <div class="booking-modal" id="bookingModal">
+        <div class="booking-modal-overlay"></div>
+        <div class="booking-modal-content">
+            <div class="booking-modal-header">
+                <h2>Book Field</h2>
+                <button class="modal-close" id="closeBookingModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="booking-modal-body">
+                <!-- Step 1: Field Details -->
+                <div class="booking-step active" id="step1">
+                    <div class="step-header">
+                        <div class="step-number">1</div>
+                        <h3>Field Details</h3>
+                    </div>
+                    <div class="field-details-preview" id="fieldDetailsPreview">
+                        <!-- Field details will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Step 2: Date & Time Selection -->
+                <div class="booking-step" id="step2">
+                    <div class="step-header">
+                        <div class="step-number">2</div>
+                        <h3>Select Date & Time</h3>
+                    </div>
+                    <div class="date-time-selection">
+                        <div class="date-picker-container">
+                            <label>Select Date</label>
+                            <input type="date" id="bookingDate" class="date-input" min="">
+                        </div>
+                        <div class="time-slots-container">
+                            <label>Available Time Slots</label>
+                            <div class="time-slots-grid" id="timeSlotsGrid">
+                                <!-- Time slots will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Add Players -->
+                <div class="booking-step" id="step3">
+                    <div class="step-header">
+                        <div class="step-number">3</div>
+                        <h3>Add Players</h3>
+                    </div>
+                    <div class="add-players-section">
+                        <div class="organizer-info">
+                            <div class="player-badge organizer">
+                                <i class="fi fi-rr-user"></i>
+                                <span id="organizerName">You (Organizer)</span>
+                                <span class="organizer-label">Organizer</span>
+                            </div>
+                        </div>
+                        <div class="add-player-input">
+                            <input type="text" id="playerSearchInput" placeholder="Search by username or Player ID">
+                            <button class="add-player-btn" id="addPlayerBtn">
+                                <i class="fi fi-rr-plus"></i> Add Player
+                            </button>
+                        </div>
+                        <div class="invite-link-section">
+                            <label>Or share invite link:</label>
+                            <div class="invite-link-container">
+                                <input type="text" id="inviteLink" readonly>
+                                <button class="copy-link-btn" id="copyInviteLink">
+                                    <i class="fi fi-rr-copy"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="players-list" id="playersList">
+                            <!-- Added players will appear here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Split Cost & Payment -->
+                <div class="booking-step" id="step4">
+                    <div class="step-header">
+                        <div class="step-number">4</div>
+                        <h3>Payment & Cost Split</h3>
+                    </div>
+                    <div class="cost-split-section">
+                        <div class="cost-summary">
+                            <div class="cost-item">
+                                <span>Total Cost:</span>
+                                <span class="cost-value" id="totalCost">₺0</span>
+                            </div>
+                            <div class="cost-item">
+                                <span>Number of Players:</span>
+                                <span class="cost-value" id="playerCount">1</span>
+                            </div>
+                            <div class="cost-item total">
+                                <span>Cost per Player:</span>
+                                <span class="cost-value" id="costPerPlayer">₺0</span>
+                            </div>
+                        </div>
+                        <div class="payment-options">
+                            <label>Payment Method:</label>
+                            <div class="payment-option">
+                                <input type="radio" name="paymentMethod" id="splitPayment" value="split" checked>
+                                <label for="splitPayment">
+                                    <i class="fi fi-rr-users"></i>
+                                    <span>Each player pays their share</span>
+                                </label>
+                            </div>
+                            <div class="payment-option">
+                                <input type="radio" name="paymentMethod" id="organizerPayment" value="organizer">
+                                <label for="organizerPayment">
+                                    <i class="fi fi-rr-user"></i>
+                                    <span>I'll pay the full amount</span>
+                                </label>
+                            </div>
+                            <div class="payment-option">
+                                <input type="radio" name="paymentMethod" id="mixedPayment" value="mixed">
+                                <label for="mixedPayment">
+                                    <i class="fi fi-rr-settings"></i>
+                                    <span>Mixed payment (custom)</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Mixed Payment Configuration -->
+                        <div class="mixed-payment-config" id="mixedPaymentConfig" style="display: none;">
+                            <div class="mixed-payment-header">
+                                <h4>Custom Payment Distribution</h4>
+                                <p class="mixed-payment-note">Set custom payment amounts for each player. The total must equal ₺<span id="mixedPaymentTotal">0</span>.</p>
+                            </div>
+                            
+                            <div class="mixed-payment-list" id="mixedPaymentList">
+                                <!-- Payment items will be generated here -->
+                            </div>
+                            
+                            <div class="mixed-payment-summary">
+                                <div class="mixed-payment-total-row">
+                                    <span>Total Assigned:</span>
+                                    <span id="mixedPaymentAssigned">₺0</span>
+                                </div>
+                                <div class="mixed-payment-remaining-row">
+                                    <span>Remaining:</span>
+                                    <span id="mixedPaymentRemaining">₺0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: Enter Payment Information -->
+                <div class="booking-step" id="step5">
+                    <div class="step-header">
+                        <div class="step-number">5</div>
+                        <h3>Enter Payment Information</h3>
+                    </div>
+                    <div class="payment-step-content">
+                        <div class="payment-info-summary" id="paymentInfoSummary">
+                            <!-- Payment summary will be shown here -->
+                        </div>
+
+                        <form class="payment-form" id="paymentForm">
+                            <div class="form-section">
+                                <h3 class="form-section-title">
+                                    <i class="fi fi-rr-credit-card"></i>
+                                    Card Information
+                                </h3>
+                                
+                                <div class="form-group">
+                                    <label for="cardholderName">Cardholder Name</label>
+                                    <input 
+                                        type="text" 
+                                        id="cardholderName" 
+                                        name="cardholderName" 
+                                        placeholder="John Doe"
+                                        required
+                                        autocomplete="cc-name"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="cardNumber">Card Number</label>
+                                    <div class="card-number-input-wrapper">
+                                        <input 
+                                            type="text" 
+                                            id="cardNumber" 
+                                            name="cardNumber" 
+                                            placeholder="1234 5678 9012 3456"
+                                            maxlength="19"
+                                            required
+                                            autocomplete="cc-number"
+                                        >
+                                        <div class="card-type-icon" id="cardTypeIcon">
+                                            <i class="fi fi-rr-credit-card"></i>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="expiryDate">Expiry Date</label>
+                                        <input 
+                                            type="text" 
+                                            id="expiryDate" 
+                                            name="expiryDate" 
+                                            placeholder="MM/YY"
+                                            maxlength="5"
+                                            required
+                                            autocomplete="cc-exp"
+                                        >
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="cvv">CVV</label>
+                                        <input 
+                                            type="text" 
+                                            id="cvv" 
+                                            name="cvv" 
+                                            placeholder="123"
+                                            maxlength="4"
+                                            required
+                                            autocomplete="cc-csc"
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h3 class="form-section-title">
+                                    <i class="fi fi-rr-marker"></i>
+                                    Billing Details
+                                </h3>
+                                
+                                <div class="form-group">
+                                    <label for="billingAddress">Billing Address</label>
+                                    <input 
+                                        type="text" 
+                                        id="billingAddress" 
+                                        name="billingAddress" 
+                                        placeholder="123 Main Street"
+                                        required
+                                        autocomplete="street-address"
+                                    >
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="billingCity">City</label>
+                                        <input 
+                                            type="text" 
+                                            id="billingCity" 
+                                            name="billingCity" 
+                                            placeholder="Istanbul"
+                                            required
+                                            autocomplete="address-level2"
+                                        >
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="billingPostalCode">Postal Code</label>
+                                        <input 
+                                            type="text" 
+                                            id="billingPostalCode" 
+                                            name="billingPostalCode" 
+                                            placeholder="34000"
+                                            required
+                                            autocomplete="postal-code"
+                                        >
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="billingCountry">Country</label>
+                                    <select 
+                                        id="billingCountry" 
+                                        name="billingCountry" 
+                                        required
+                                        autocomplete="country"
+                                    >
+                                        <option value="">Select Country</option>
+                                        <option value="TR" selected>Turkey</option>
+                                        <option value="US">United States</option>
+                                        <option value="GB">United Kingdom</option>
+                                        <option value="DE">Germany</option>
+                                        <option value="FR">France</option>
+                                        <option value="IT">Italy</option>
+                                        <option value="ES">Spain</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="payment-security">
+                                <div class="security-badge">
+                                    <i class="fi fi-rr-shield-check"></i>
+                                    <span>Secure Payment</span>
+                                </div>
+                                <p class="security-note">
+                                    Your payment information is encrypted and secure. We never store your full card details.
+                                </p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Step 6: Confirm Booking -->
+                <div class="booking-step" id="step6">
+                    <div class="step-header">
+                        <div class="step-number">6</div>
+                        <h3>Confirm Booking</h3>
+                    </div>
+                    <div class="booking-summary" id="bookingSummary">
+                        <!-- Booking summary will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="booking-modal-footer">
+                <button class="btn-secondary" id="prevStepBtn" style="display: none;">Previous</button>
+                <div class="footer-actions">
+                    <button class="btn-secondary" id="cancelBookingBtn">Cancel</button>
+                    <button class="btn-primary" id="nextStepBtn">Next</button>
+                    <button class="btn-primary" id="submitPaymentBtn" style="display: none;">
+                        Pay & Confirm Booking
+                    </button>
+                    <button class="btn-primary" id="confirmBookingBtn" style="display: none;">Confirm Booking</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../scripts/player/all-fields.js"></script>
+</body>
+</html>
+

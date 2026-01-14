@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Field Owner Admin - Dashboard | MatchField</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="../../styles/owner/dashboard.css">
+    <link rel="stylesheet" href="../../styles/owner/fields.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item active">
+                    <i class="fi fi-rr-apps nav-icon"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="bookings.html" class="nav-item">
+                    <i class="fi fi-rr-calendar-day nav-icon"></i>
+                    <span>Bookings</span>
+                </a>
+                <a href="fields.html" class="nav-item">
+                    <i class="fi fi-rr-court-sport nav-icon"></i>
+                    <span>My Fields</span>
+                </a>
+                <a href="chat.html" class="nav-item">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Chat</span>
+                </a>
+                <a href="map.html" class="nav-item">
+                    <i class="fi fi-rr-map-marker nav-icon"></i>
+                    <span>Map</span>
+                </a>
+                <a href="contact-us.html" class="nav-item">
+                    <i class="fi fi-rs-headset nav-icon"></i>
+                    <span>Contact Us</span>
+                </a>
+                <a href="about-us.html" class="nav-item">
+                    <i class="fi fi-rr-info nav-icon"></i>
+                    <span>About Us</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="addFieldBtn">
+                        <i class="fi fi-rr-plus"></i>
+                        Add new field
+                    </button>
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn" id="notificationBtn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">New booking request</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Payment received</p>
+                                        <p class="notification-time">5 hours ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>My Account</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">Fozi Court</p>
+                                        <p class="profile-email">fozi@matchfield.com</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>View Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div class="dashboard-content">
+                <!-- Greeting Header -->
+                <div class="greeting-header">
+                    <h1>Good evening, Fozi court 👋</h1>
+                    <p>Here is a quick overview of your fields and today's bookings.</p>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-card-title">Todays bookings</div>
+                        <div class="stat-card-value">8</div>
+                        <div class="stat-card-subtext">+3 vs yesterday</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Upcoming bookings</div>
+                        <div class="stat-card-value">21</div>
+                        <div class="stat-card-subtext">Next 7 days</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Total Fields</div>
+                        <div class="stat-card-value">3</div>
+                        <div class="stat-card-subtext">Until Today</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-title">Revenue (this week)</div>
+                        <div class="stat-card-value">₺7,850</div>
+                        <div class="stat-card-subtext">Est. payout Sunday</div>
+                    </div>
+                </div>
+
+                <!-- Today's Bookings Section -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <div>
+                            <h2 class="section-title">Today's bookings</h2>
+                            <p class="section-subtitle">Matches scheduled for today on your fields</p>
+                        </div>
+                        <div class="section-header-right">
+                            <a href="bookings.html" class="link-btn">View all bookings</a>
+                        </div>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Team</th>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookingsTableBody">
+                            <tr>
+                                <td>18:00-19:30</td>
+                                <td>Istanbul United</td>
+                                <td>Main football field</td>
+                                <td>Football</td>
+                                <td>₺1,500</td>
+                                <td><span class="badge badge-confirmed">Confirmed</span></td>
+                            </tr>
+                            <tr>
+                                <td>20:00-21:00</td>
+                                <td>Evening 5v5</td>
+                                <td>Indoor futsal court</td>
+                                <td>Futsal</td>
+                                <td>₺900</td>
+                                <td><span class="badge badge-pending">Pending</span></td>
+                            </tr>
+                            <tr>
+                                <td>22:00-23:30</td>
+                                <td>Night Owls</td>
+                                <td>Main football field</td>
+                                <td>Football</td>
+                                <td>₺1,700</td>
+                                <td><span class="badge badge-confirmed">Confirmed</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- My Fields Section -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <div>
+                            <h2 class="section-title">My fields</h2>
+                            <p class="section-subtitle">Utilization today and quick actions</p>
+                        </div>
+                        <div class="section-header-right">
+                            <a href="fields.html" class="link-btn">Manage fields</a>
+                        </div>
+                    </div>
+                    
+                    <div class="field-cards-grid">
+                        <div class="field-list-card">
+                            <div class="field-list-image">
+                                <img src="https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format" alt="Fozi football court">
+                            </div>
+                            <div class="field-list-content">
+                                <div class="field-list-info">
+                                    <h3 class="field-list-name">Fozi football court</h3>
+                                    <p class="field-list-location">
+                                        <i class="fi fi-rr-marker"></i>
+                                        Üsküdar, Umraniye
+                                    </p>
+                                    <div class="field-list-rating">
+                                        <span class="field-star-yellow">★</span>
+                                        <span class="field-rating-value">4.8</span>
+                                        <span class="field-reviews-count">(98)</span>
+                                    </div>
+                                    <div class="field-list-tags">
+                                        <span class="field-tag">Outdoor</span>
+                                        <span class="field-tag">Football</span>
+                                    </div>
+                                </div>
+                                <div class="field-list-actions">
+                                    <div class="field-list-price-container">
+                                        <span class="field-list-price-label">Price</span>
+                                        <span class="field-list-price">₺1600/h</span>
+                                    </div>
+                                    <div class="field-list-buttons">
+                                        <button class="manage-btn" onclick="openModal(1)">Manage</button>
+                                        <button class="action-btn" onclick="viewFieldDetails(this)" title="View">
+                                            <i class="fi fi-rr-eye"></i>
+                                        </button>
+                                        <button class="action-btn delete" onclick="console.log('Delete clicked')" title="Delete">
+                                            <i class="fi fi-rr-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="field-list-card">
+                            <div class="field-list-image">
+                                <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format" alt="Indoor futsal court">
+                            </div>
+                            <div class="field-list-content">
+                                <div class="field-list-info">
+                                    <h3 class="field-list-name">Indoor futsal court</h3>
+                                    <p class="field-list-location">
+                                        <i class="fi fi-rr-marker"></i>
+                                        Fozi court - Avcilar
+                                    </p>
+                                    <div class="field-list-rating">
+                                        <span class="field-star-yellow">★</span>
+                                        <span class="field-rating-value">4.8</span>
+                                        <span class="field-reviews-count">(98)</span>
+                                    </div>
+                                    <div class="field-list-tags">
+                                        <span class="field-tag">Indoor</span>
+                                        <span class="field-tag">Futsal</span>
+                                    </div>
+                                </div>
+                                <div class="field-list-actions">
+                                    <div class="field-list-price-container">
+                                        <span class="field-list-price-label">Price</span>
+                                        <span class="field-list-price">₺1600/h</span>
+                                    </div>
+                                    <div class="field-list-buttons">
+                                        <button class="manage-btn" onclick="openModal(2)">Manage</button>
+                                        <button class="action-btn" onclick="viewFieldDetails(this)" title="View">
+                                            <i class="fi fi-rr-eye"></i>
+                                        </button>
+                                        <button class="action-btn delete" onclick="console.log('Delete clicked')" title="Delete">
+                                            <i class="fi fi-rr-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="field-list-card">
+                            <div class="field-list-image">
+                                <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format" alt="Indoor futsal court">
+                            </div>
+                            <div class="field-list-content">
+                                <div class="field-list-info">
+                                    <h3 class="field-list-name">Indoor futsal court</h3>
+                                    <p class="field-list-location">
+                                        <i class="fi fi-rr-marker"></i>
+                                        Fozi court - Avcilar
+                                    </p>
+                                    <div class="field-list-rating">
+                                        <span class="field-star-yellow">★</span>
+                                        <span class="field-rating-value">4.8</span>
+                                        <span class="field-reviews-count">(98)</span>
+                                    </div>
+                                    <div class="field-list-tags">
+                                        <span class="field-tag">Indoor</span>
+                                        <span class="field-tag">Futsal</span>
+                                    </div>
+                                </div>
+                                <div class="field-list-actions">
+                                    <div class="field-list-price-container">
+                                        <span class="field-list-price-label">Price</span>
+                                        <span class="field-list-price">₺1600/h</span>
+                                    </div>
+                                    <div class="field-list-buttons">
+                                        <button class="manage-btn" onclick="openModal(3)">Manage</button>
+                                        <button class="action-btn" onclick="viewFieldDetails(this)" title="View">
+                                            <i class="fi fi-rr-eye"></i>
+                                        </button>
+                                        <button class="action-btn delete" onclick="console.log('Delete clicked')" title="Delete">
+                                            <i class="fi fi-rr-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit Field Modal -->
+    <div id="editFieldModal" class="modal-overlay">
+        <div class="modal-box manage-field-modal">
+            <!-- Close Button -->
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            
+            <!-- Modal Header -->
+            <div class="manage-modal-header">
+                <div>
+                    <h2 class="modal-title">Manage Field</h2>
+                    <div class="field-status-badge" id="fieldStatusBadge">
+                        <span class="status-dot approved"></span>
+                        <span class="status-text">Approved</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Management Options -->
+            <div class="manage-options-container">
+                <button class="manage-option-btn active" onclick="openManageSection('edit-info')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-edit"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Edit Information</h4>
+                        <p>Update field details, amenities, and photos.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+                
+                <button class="manage-option-btn" onclick="openManageSection('schedule')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-calendar"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Manage Schedule</h4>
+                        <p>Set working days, hours, and unavailable dates.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+                
+                <button class="manage-option-btn" onclick="openManageSection('pricing')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-money"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Update Pricing</h4>
+                        <p>Change the price per hour.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+                
+                <button class="manage-option-btn" onclick="openManageSection('location')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-marker"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Manage Location</h4>
+                        <p>Edit address or adjust the map pin.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+                
+                <button class="manage-option-btn" onclick="openManageSection('documents')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-file"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Documents</h4>
+                        <p>View or update verification documents.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+                
+                <button class="manage-option-btn" onclick="openManageSection('settings')">
+                    <div class="manage-option-icon">
+                        <i class="fi fi-rr-settings"></i>
+                    </div>
+                    <div class="manage-option-content">
+                        <h4>Settings</h4>
+                        <p>Control booking rules and field visibility.</p>
+                    </div>
+                    <i class="fi fi-rr-angle-right manage-option-arrow"></i>
+                </button>
+            </div>
+            
+            <!-- Section Content -->
+            <div class="manage-sections-container">
+            
+                <!-- Edit Information Section -->
+                <div id="edit-info-section" class="manage-section active">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Edit Information</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Field Name</label>
+                                    <input type="text" id="manageFieldName" value="Fozi football court">
+                                </div>
+                                <div class="form-group">
+                                    <label>Sport Category</label>
+                                    <select id="manageSportCategory">
+                                        <option selected>Football</option>
+                                        <option>Basketball</option>
+                                        <option>Tennis</option>
+                                        <option>Futsal</option>
+                                        <option>Volleyball</option>
+                                        <option>Badminton</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Type</label>
+                                    <select id="manageFieldType">
+                                        <option selected>Outdoor</option>
+                                        <option>Indoor</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Capacity</label>
+                                    <input type="text" id="manageCapacity" value="22 players">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="manageDescription" rows="4">Professional outdoor football court with high-quality turf and lighting.</textarea>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Highlights</label>
+                                <div class="highlights-container">
+                                    <input type="text" id="manageHighlightInput" placeholder="Add a highlight">
+                                    <button type="button" class="btn-add-highlight" onclick="addManageHighlight()">Add</button>
+                                </div>
+                                <div id="manageHighlightsList" class="highlights-list"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Amenities</label>
+                                <div class="checkbox-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="parking" checked>
+                                        <span>Parking</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="locker-rooms">
+                                        <span>Locker Rooms</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="showers" checked>
+                                        <span>Showers</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="lighting" checked>
+                                        <span>Lighting</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="refreshments">
+                                        <span>Refreshments</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="first-aid">
+                                        <span>First Aid</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="wifi">
+                                        <span>Wi-Fi</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageAmenities" value="seating">
+                                        <span>Seating Area</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Field Features</label>
+                                <div class="checkbox-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="artificial-grass" checked>
+                                        <span>Artificial Grass</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="natural-grass">
+                                        <span>Natural Grass</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="covered">
+                                        <span>Covered Field</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="indoor">
+                                        <span>Indoor</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="outdoor" checked>
+                                        <span>Outdoor</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="manageFeatures" value="climate-control">
+                                        <span>Climate Control</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Field Images</label>
+                                <div class="images-container">
+                                    <div class="image-preview">
+                                        <img src="https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format" alt="Field">
+                                        <button class="remove-image" onclick="removeImage(this)">&times;</button>
+                                    </div>
+                                    <button class="add-image-btn" onclick="document.getElementById('manageImageUpload').click()">
+                                        <span style="font-size: 32px;">+</span>
+                                        <span>Add Image</span>
+                                    </button>
+                                    <input type="file" id="manageImageUpload" accept="image/*" multiple style="display: none;" onchange="handleManageImageUpload(event)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Manage Schedule Section -->
+                <div id="schedule-section" class="manage-section">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Manage Schedule</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Working Schedule <span class="required">*</span></label>
+                                <p class="schedule-help-text">Set opening and closing times for each day</p>
+                                <div class="schedule-days-container">
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="monday" checked onchange="toggleManageDaySchedule('monday', this.checked)">
+                                            <span>Monday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-monday-opening" name="manage-monday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-monday-closing" name="manage-monday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="tuesday" checked onchange="toggleManageDaySchedule('tuesday', this.checked)">
+                                            <span>Tuesday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-tuesday-opening" name="manage-tuesday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-tuesday-closing" name="manage-tuesday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="wednesday" checked onchange="toggleManageDaySchedule('wednesday', this.checked)">
+                                            <span>Wednesday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-wednesday-opening" name="manage-wednesday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-wednesday-closing" name="manage-wednesday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="thursday" checked onchange="toggleManageDaySchedule('thursday', this.checked)">
+                                            <span>Thursday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-thursday-opening" name="manage-thursday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-thursday-closing" name="manage-thursday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="friday" checked onchange="toggleManageDaySchedule('friday', this.checked)">
+                                            <span>Friday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-friday-opening" name="manage-friday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-friday-closing" name="manage-friday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="saturday" checked onchange="toggleManageDaySchedule('saturday', this.checked)">
+                                            <span>Saturday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-saturday-opening" name="manage-saturday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-saturday-closing" name="manage-saturday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="schedule-day-row">
+                                        <label class="checkbox-label schedule-day-checkbox">
+                                            <input type="checkbox" name="manageWorkingDays" value="sunday" checked onchange="toggleManageDaySchedule('sunday', this.checked)">
+                                            <span>Sunday</span>
+                                        </label>
+                                        <div class="schedule-time-inputs">
+                                            <input type="time" id="manage-sunday-opening" name="manage-sunday-opening" value="08:00" required>
+                                            <span>to</span>
+                                            <input type="time" id="manage-sunday-closing" name="manage-sunday-closing" value="23:00" required>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Unavailable Dates (Optional)</label>
+                                <div class="unavailable-dates-container">
+                                    <input type="date" id="manageUnavailableDateInput">
+                                    <button type="button" class="btn-add-date" onclick="addManageUnavailableDate()">Add Date</button>
+                                </div>
+                                <div id="manageUnavailableDatesList" class="dates-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Update Pricing Section -->
+                <div id="pricing-section" class="manage-section">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Update Pricing</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Price per Hour (₺) <span class="required">*</span></label>
+                                <input type="number" id="managePricePerHour" value="1600" required min="0" placeholder="e.g. 1600">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Manage Location Section -->
+                <div id="location-section" class="manage-section">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Manage Location</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Address <span class="required">*</span></label>
+                                <input type="text" id="manageFieldAddress" value="Üsküdar, Umraniye" required>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>City <span class="required">*</span></label>
+                                    <input type="text" id="manageFieldCity" value="Istanbul" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>District</label>
+                                    <input type="text" id="manageFieldDistrict" value="Üsküdar">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Select Location on Map <span class="required">*</span></label>
+                                <div class="map-container">
+                                    <div id="manageLocationMap" class="map-picker">
+                                        <div class="map-placeholder">
+                                            <i class="fi fi-rr-map-marker"></i>
+                                            <p>Click to select location on map</p>
+                                            <small>Map integration will be implemented</small>
+                                        </div>
+                                        <div class="map-pin" id="manageMapPin">📍</div>
+                                    </div>
+                                    <div class="coordinates-display">
+                                        <span>Latitude: <span id="manageLatitude">41.0082</span></span>
+                                        <span>Longitude: <span id="manageLongitude">28.9784</span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Documents Section -->
+                <div id="documents-section" class="manage-section">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Documents</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="info-banner" style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+                                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                    <i class="fi fi-rr-info" style="color: #2563EB; font-size: 18px; margin-top: 2px;"></i>
+                                    <div>
+                                        <p style="margin: 0; font-size: 13px; color: #1E40AF; font-weight: 500; margin-bottom: 4px;">Update Your Documents</p>
+                                        <p style="margin: 0; font-size: 12px; color: #3B82F6; line-height: 1.5;">You can update your verification documents at any time. Updated documents will be submitted for admin review before being approved.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Ownership or Rental Agreement</label>
+                                <div class="file-preview active" id="manageOwnershipPreview">
+                                    <div class="file-preview-item">
+                                        <i class="fi fi-rr-file-pdf" style="color: #DC2626; margin-right: 8px;"></i>
+                                        <span>ownership_agreement.pdf</span>
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                                            <span style="font-size: 11px; color: #10B981; font-weight: 500;">Approved</span>
+                                            <button type="button" onclick="removeManageFile('ownership')" title="Remove file">&times;</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="file-upload-area" style="margin-top: 12px;">
+                                    <input type="file" id="manageOwnershipDoc" accept=".pdf,.doc,.docx" class="file-input" onchange="handleManageDocumentUpload('ownership', this)">
+                                    <label for="manageOwnershipDoc" class="file-upload-label">
+                                        <i class="fi fi-rr-upload"></i>
+                                        <span>Upload new document to replace current file</span>
+                                        <small>PDF, DOC, DOCX (Max 10MB)</small>
+                                    </label>
+                                    <div id="manageOwnershipDocPreview" class="file-preview"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Licenses or Permits</label>
+                                <div class="file-preview active" id="manageLicensePreview">
+                                    <div class="file-preview-item">
+                                        <i class="fi fi-rr-file-pdf" style="color: #DC2626; margin-right: 8px;"></i>
+                                        <span>license_permit.pdf</span>
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                                            <span style="font-size: 11px; color: #10B981; font-weight: 500;">Approved</span>
+                                            <button type="button" onclick="removeManageFile('license')" title="Remove file">&times;</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="file-upload-area" style="margin-top: 12px;">
+                                    <input type="file" id="manageLicensesDoc" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="file-input" onchange="handleManageDocumentUpload('license', this)">
+                                    <label for="manageLicensesDoc" class="file-upload-label">
+                                        <i class="fi fi-rr-upload"></i>
+                                        <span>Upload new document to replace current file</span>
+                                        <small>PDF, DOC, DOCX, JPG, PNG (Max 10MB)</small>
+                                    </label>
+                                    <div id="manageLicensesDocPreview" class="file-preview"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Settings Section -->
+                <div id="settings-section" class="manage-section">
+                    <div class="manage-section-header">
+                        <button class="back-to-menu-btn" onclick="backToManageMenu()">
+                            <i class="fi fi-rr-angle-left"></i>
+                            Back
+                        </button>
+                        <h3>Settings</h3>
+                    </div>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label>Booking Type <span class="required">*</span></label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="manageBookingType" value="instant" checked>
+                                        <span>
+                                            <span>Instant Booking</span>
+                                            <small>Customers can book immediately without waiting for approval</small>
+                                        </span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="manageBookingType" value="request">
+                                        <span>
+                                            <span>Request-Based Booking</span>
+                                            <small>You review and approve each booking request manually</small>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label>Advance Booking Period</label>
+                                <select id="manageAdvanceBooking">
+                                    <option value="1">1 day in advance</option>
+                                    <option value="3" selected>3 days in advance</option>
+                                    <option value="7">7 days in advance</option>
+                                    <option value="14">14 days in advance</option>
+                                    <option value="30">30 days in advance</option>
+                                    <option value="unlimited">Unlimited</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Cancellation Policy</label>
+                                <select id="manageCancellationPolicy">
+                                    <option value="flexible">Flexible (Full refund up to 24h before)</option>
+                                    <option value="moderate" selected>Moderate (Full refund up to 48h before)</option>
+                                    <option value="strict">Strict (Full refund up to 7 days before)</option>
+                                    <option value="no-refund">No Refund</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="setting-item" style="margin-bottom: 0;">
+                                <div class="setting-info">
+                                    <h4>Show in Search Results</h4>
+                                    <p>Make your field visible to players when they search for fields</p>
+                                </div>
+                                <div class="toggle-switch active" id="manageVisibilityToggle" onclick="toggleManageFieldVisibility()">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="setting-item" style="margin-bottom: 0;">
+                                <div class="setting-info">
+                                    <h4>Maintenance Mode</h4>
+                                    <p>Temporarily disable bookings</p>
+                                </div>
+                                <div class="toggle-switch" id="manageMaintenanceToggle" onclick="toggleManageSetting('maintenance')">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-secondary" id="manageBackBtn" onclick="backToManageMenu()" style="display: none;">Back to Menu</button>
+                <button class="btn-primary" id="manageSubmitBtn" onclick="submitManageChanges()" style="display: none;">Submit Changes for Approval</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Field Details Modal -->
+    <div id="viewFieldModal" class="modal-overlay">
+        <div class="modal-box view-field-modal">
+            <!-- Close Button -->
+            <button class="modal-close" onclick="closeViewModal()">&times;</button>
+            
+            <!-- Field Details Content -->
+            <div class="view-field-content-wrapper">
+                <!-- Field Header Top -->
+                <div class="view-field-header-top">
+                    <h1 class="view-field-title" id="viewFieldName">Field Name</h1>
+                    <div class="view-field-meta-line" id="viewFieldMeta">
+                        <i class="fi fi-rr-marker field-meta-icon"></i>
+                        <span id="viewFieldLocation">Location</span>
+                        <span class="field-meta-separator">•</span>
+                        <span id="viewFieldCategory">Sport</span>
+                        <span class="field-meta-separator">•</span>
+                        <span id="viewFieldType">Type</span>
+                        <span class="field-meta-separator">•</span>
+                        <span class="field-star-yellow">★</span>
+                        <span id="viewFieldHeaderRating">4.8</span>
+                        <span> (<span id="viewFieldHeaderReviewsCount">98</span>)</span>
+                    </div>
+                </div>
+
+                <!-- Field Main Row - Image and Info Card Side by Side -->
+                <div class="view-field-main-row">
+                    <!-- Field Image Gallery -->
+                    <div class="view-field-gallery-wrapper">
+                        <div class="view-field-gallery">
+                            <img id="viewFieldImage" src="" alt="Field" class="view-field-main-image">
+                        </div>
+                        <div class="view-field-feature-tags" id="viewFieldTags">
+                            <!-- Tags will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Field Info Card -->
+                    <div class="view-field-info-card">
+                        <div class="view-field-price-section">
+                            <div class="view-field-price" id="viewFieldPrice">₺0<span class="view-field-price-unit">/h</span></div>
+                            <div class="view-field-price-note">Per hour • Taxes included</div>
+                        </div>
+                        
+                        <div class="view-field-details-section">
+                            <div class="view-field-detail-item">
+                                <span class="view-field-detail-label">Location</span>
+                                <span class="view-field-detail-value" id="viewFieldLocationFull">-</span>
+                            </div>
+                            <div class="view-field-detail-item">
+                                <span class="view-field-detail-label">Capacity</span>
+                                <span class="view-field-detail-value" id="viewFieldCapacity">-</span>
+                            </div>
+                            <div class="view-field-detail-item">
+                                <span class="view-field-detail-label">Sport Category</span>
+                                <span class="view-field-detail-value" id="viewFieldCategoryFull">-</span>
+                            </div>
+                            <div class="view-field-detail-item">
+                                <span class="view-field-detail-label">Type</span>
+                                <span class="view-field-detail-value" id="viewFieldTypeFull">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Field Details Grid - Content Below Main Row -->
+                <div class="view-field-content-grid">
+                    <!-- Description Section -->
+                    <div class="view-field-description-section">
+                        <h2 class="view-section-title">About this field</h2>
+                        <p class="view-field-description" id="viewFieldDescription">-</p>
+                    </div>
+
+                    <!-- Highlights Section -->
+                    <div class="view-field-highlights-section" id="viewFieldHighlightsSection">
+                        <h3 class="view-section-title">Highlights</h3>
+                        <ul class="view-highlights-list" id="viewFieldHighlights">
+                            <!-- Highlights will be populated by JavaScript -->
+                        </ul>
+                    </div>
+
+                    <!-- Amenities Section -->
+                    <div class="view-field-amenities-section" id="viewFieldAmenitiesSection">
+                        <h3 class="view-section-title">Amenities</h3>
+                        <div class="view-amenities-grid" id="viewFieldAmenities">
+                            <!-- Amenities will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Reviews/Feedback Section -->
+                    <div class="view-field-reviews-section">
+                        <div class="view-reviews-header-section">
+                            <h3 class="view-section-title">Reviews & Feedback</h3>
+                            <div class="view-reviews-summary-toggle">
+                                <div class="view-reviews-summary">
+                                    <span class="field-star-yellow">★</span>
+                                    <span id="viewFieldRating">4.8</span>
+                                    <span> • </span>
+                                    <span id="viewFieldReviewsCount">98</span>
+                                    <span> total reviews</span>
+                                </div>
+                                <button class="view-toggle-reviews-btn" id="viewToggleReviewsBtn" onclick="toggleViewReviews()">
+                                    <span class="view-toggle-text">View reviews</span>
+                                    <i class="fi fi-rr-angle-down view-toggle-icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="view-reviews-list" id="viewReviewsList" style="display: none;">
+                            <!-- Reviews will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="view-field-modal-footer">
+                <button class="view-field-close-btn" onclick="closeViewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add New Field Modal -->
+    <div id="addFieldModal" class="modal-overlay">
+        <div class="modal-box add-field-modal">
+            <!-- Close Button -->
+            <button class="modal-close" onclick="closeAddFieldModal()">&times;</button>
+            
+            <!-- Modal Title -->
+            <h2 class="modal-title">Add New Field</h2>
+            
+            <!-- Progress Steps -->
+            <div class="form-progress">
+                <div class="progress-step active" data-step="1">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Documents</div>
+                </div>
+                <div class="progress-step" data-step="2">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Basic Info</div>
+                </div>
+                <div class="progress-step" data-step="3">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Amenities</div>
+                </div>
+                <div class="progress-step" data-step="4">
+                    <div class="step-number">4</div>
+                    <div class="step-label">Media</div>
+                </div>
+                <div class="progress-step" data-step="5">
+                    <div class="step-number">5</div>
+                    <div class="step-label">Location</div>
+                </div>
+                <div class="progress-step" data-step="6">
+                    <div class="step-number">6</div>
+                    <div class="step-label">Pricing</div>
+                </div>
+                <div class="progress-step" data-step="7">
+                    <div class="step-number">7</div>
+                    <div class="step-label">Schedule</div>
+                </div>
+                <div class="progress-step" data-step="8">
+                    <div class="step-number">8</div>
+                    <div class="step-label">Settings</div>
+                </div>
+            </div>
+
+            <!-- Form Steps -->
+            <form id="addFieldForm">
+                <!-- Step 1: Documents -->
+                <div class="form-step active" data-step="1">
+                    <h3>Field Documents</h3>
+                    <p class="step-description">Upload required documents to verify ownership and compliance</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Ownership or Rental Agreement <span class="required">*</span></label>
+                                <div class="file-upload-area">
+                                    <input type="file" id="ownershipDoc" accept=".pdf,.doc,.docx" class="file-input">
+                                    <label for="ownershipDoc" class="file-upload-label">
+                                        <i class="fi fi-rr-upload"></i>
+                                        <span>Click to upload or drag and drop</span>
+                                        <small>PDF, DOC, DOCX (Max 10MB)</small>
+                                    </label>
+                                    <div id="ownershipDocPreview" class="file-preview"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Licenses or Permits (if applicable)</label>
+                                <div class="file-upload-area">
+                                    <input type="file" id="licensesDoc" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="file-input">
+                                    <label for="licensesDoc" class="file-upload-label">
+                                        <i class="fi fi-rr-upload"></i>
+                                        <span>Click to upload or drag and drop</span>
+                                        <small>PDF, DOC, DOCX, JPG, PNG (Max 10MB)</small>
+                                    </label>
+                                    <div id="licensesDocPreview" class="file-preview"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Basic Information -->
+                <div class="form-step" data-step="2">
+                    <h3>Basic Field Information</h3>
+                    <p class="step-description">Provide essential details about your field</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Field Name <span class="required">*</span></label>
+                                <input type="text" id="fieldName" name="fieldName" required placeholder="e.g. Fozi Football Court">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Description <span class="required">*</span></label>
+                                <textarea id="fieldDescription" name="fieldDescription" rows="4" required placeholder="Describe your field..."></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Highlights (Key Selling Points)</label>
+                                <div class="highlights-container">
+                                    <input type="text" id="highlightInput" placeholder="Add a highlight (e.g. Professional lighting, Locker rooms)">
+                                    <button type="button" class="btn-add-highlight" onclick="addHighlight()">Add</button>
+                                </div>
+                                <div id="highlightsList" class="highlights-list"></div>
+                            </div>
+                            
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-group">
+                                    <label>Type of Field <span class="required">*</span></label>
+                                    <select id="fieldType" name="fieldType" required>
+                                        <option value="">Select field type</option>
+                                        <option value="football">Football</option>
+                                        <option value="basketball">Basketball</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="padel">Padel</option>
+                                        <option value="futsal">Futsal</option>
+                                        <option value="volleyball">Volleyball</option>
+                                        <option value="badminton">Badminton</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Capacity (Max Players) <span class="required">*</span></label>
+                                    <input type="number" id="capacity" name="capacity" required min="1" placeholder="e.g. 22">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Amenities & Features -->
+                <div class="form-step" data-step="3">
+                    <h3>Amenities & Features</h3>
+                    <p class="step-description">Select amenities and features available at your field</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Amenities</label>
+                                <div class="checkbox-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="parking">
+                                        <span>Parking</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="locker-rooms">
+                                        <span>Locker Rooms</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="showers">
+                                        <span>Showers</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="lighting">
+                                        <span>Lighting</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="refreshments">
+                                        <span>Refreshments</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="first-aid">
+                                        <span>First Aid</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="wifi">
+                                        <span>Wi-Fi</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="amenities" value="seating">
+                                        <span>Seating Area</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Field Features</label>
+                                <div class="checkbox-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="artificial-grass">
+                                        <span>Artificial Grass</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="natural-grass">
+                                        <span>Natural Grass</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="covered">
+                                        <span>Covered Field</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="indoor">
+                                        <span>Indoor</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="outdoor">
+                                        <span>Outdoor</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="features" value="climate-control">
+                                        <span>Climate Control</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Media -->
+                <div class="form-step" data-step="4">
+                    <h3>Field Photos</h3>
+                    <p class="step-description">Upload multiple images showing your field clearly</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Field Images <span class="required">*</span></label>
+                                <div class="images-upload-container">
+                                    <div class="images-grid" id="fieldImagesGrid">
+                                        <!-- Images will be added here -->
+                                    </div>
+                                    <button type="button" class="add-image-btn-large" onclick="document.getElementById('fieldImagesInput').click()">
+                                        <i class="fi fi-rr-plus"></i>
+                                        <span>Add Images</span>
+                                        <small>Upload up to 10 images</small>
+                                    </button>
+                                    <input type="file" id="fieldImagesInput" accept="image/*" multiple style="display: none;" onchange="handleFieldImagesUpload(event)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: Location -->
+                <div class="form-step" data-step="5">
+                    <h3>Location</h3>
+                    <p class="step-description">Enter the address and select location on the map</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group">
+                                <label>Address <span class="required">*</span></label>
+                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="Enter full address">
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>City <span class="required">*</span></label>
+                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Istanbul">
+                                </div>
+                                <div class="form-group">
+                                    <label>District</label>
+                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Üsküdar">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Select Location on Map <span class="required">*</span></label>
+                                <div class="map-container">
+                                    <div id="locationMap" class="map-picker">
+                                        <div class="map-placeholder">
+                                            <i class="fi fi-rr-map-marker"></i>
+                                            <p>Click to select location on map</p>
+                                            <small>Map integration will be implemented</small>
+                                        </div>
+                                        <div class="map-pin" id="mapPin">📍</div>
+                                    </div>
+                                    <div class="coordinates-display">
+                                        <span>Latitude: <span id="latitude">-</span></span>
+                                        <span>Longitude: <span id="longitude">-</span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6: Pricing -->
+                <div class="form-step" data-step="6">
+                    <h3>Pricing</h3>
+                    <p class="step-description">Set your field pricing</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Price per Hour (₺) <span class="required">*</span></label>
+                                <input type="number" id="pricePerHour" name="pricePerHour" required min="0" placeholder="e.g. 1600">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 7: Working Schedule -->
+                <div class="form-step" data-step="7">
+                    <h3>Working Schedule</h3>
+                    <p class="step-description">Define when your field is available for bookings</p>
+                    
+                    <div class="form-step-content">
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Working Schedule <span class="required">*</span></label>
+                                <p class="schedule-help-text">Set opening and closing times for each day</p>
+                                <div class="schedule-days-container">
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="monday" checked onchange="toggleDaySchedule('monday', this.checked)">
+                                    <span>Monday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="monday-opening" name="monday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="monday-closing" name="monday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="tuesday" checked onchange="toggleDaySchedule('tuesday', this.checked)">
+                                    <span>Tuesday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="tuesday-opening" name="tuesday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="tuesday-closing" name="tuesday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="wednesday" checked onchange="toggleDaySchedule('wednesday', this.checked)">
+                                    <span>Wednesday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="wednesday-opening" name="wednesday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="wednesday-closing" name="wednesday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="thursday" checked onchange="toggleDaySchedule('thursday', this.checked)">
+                                    <span>Thursday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="thursday-opening" name="thursday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="thursday-closing" name="thursday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="friday" checked onchange="toggleDaySchedule('friday', this.checked)">
+                                    <span>Friday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="friday-opening" name="friday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="friday-closing" name="friday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="saturday" checked onchange="toggleDaySchedule('saturday', this.checked)">
+                                    <span>Saturday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="saturday-opening" name="saturday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="saturday-closing" name="saturday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                            
+                            <div class="schedule-day-row">
+                                <label class="checkbox-label schedule-day-checkbox">
+                                    <input type="checkbox" name="workingDays" value="sunday" checked onchange="toggleDaySchedule('sunday', this.checked)">
+                                    <span>Sunday</span>
+                                </label>
+                                <div class="schedule-time-inputs">
+                                    <input type="time" id="sunday-opening" name="sunday-opening" value="08:00" required>
+                                    <span>to</span>
+                                    <input type="time" id="sunday-closing" name="sunday-closing" value="23:00" required>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-step-section">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Unavailable Dates (Optional)</label>
+                                <div class="unavailable-dates-container">
+                                    <input type="date" id="unavailableDateInput">
+                                    <button type="button" class="btn-add-date" onclick="addUnavailableDate()">Add Date</button>
+                                </div>
+                                <div id="unavailableDatesList" class="dates-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 8: Settings -->
+                <div class="form-step" data-step="8">
+                    <h3>Settings</h3>
+                    <p class="step-description">Configure booking rules and field visibility</p>
+                    
+                    <div class="settings-container">
+                        <!-- Booking Rules Section -->
+                        <div class="settings-section">
+                            <div class="settings-section-title">Booking Rules</div>
+                            
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label style="margin-bottom: 12px;">Booking Type <span class="required">*</span></label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="bookingType" value="instant" checked>
+                                        <span>
+                                            <span>Instant Booking</span>
+                                            <small>Customers can book immediately without waiting for approval</small>
+                                        </span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="bookingType" value="request">
+                                        <span>
+                                            <span>Request-Based Booking</span>
+                                            <small>You review and approve each booking request manually</small>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label>Advance Booking Period</label>
+                                <select id="advanceBooking" name="advanceBooking">
+                                    <option value="1">1 day in advance</option>
+                                    <option value="3" selected>3 days in advance</option>
+                                    <option value="7">7 days in advance</option>
+                                    <option value="14">14 days in advance</option>
+                                    <option value="30">30 days in advance</option>
+                                    <option value="unlimited">Unlimited</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Cancellation Policy</label>
+                                <select id="cancellationPolicy" name="cancellationPolicy">
+                                    <option value="flexible">Flexible (Full refund up to 24h before)</option>
+                                    <option value="moderate" selected>Moderate (Full refund up to 48h before)</option>
+                                    <option value="strict">Strict (Full refund up to 7 days before)</option>
+                                    <option value="no-refund">No Refund</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Field Visibility Section -->
+                        <div class="settings-section">
+                            <div class="settings-section-title">Field Visibility</div>
+                            
+                            <div class="setting-item" style="margin-bottom: 0;">
+                                <div class="setting-info">
+                                    <h4>Show in Search Results</h4>
+                                    <p>Make your field visible to players when they search for fields</p>
+                                </div>
+                                <div class="toggle-switch active" id="fieldVisibilityToggle" onclick="toggleFieldVisibility()">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" onclick="closeAddFieldModal()">Cancel</button>
+                <button type="button" class="btn-secondary" id="prevStepBtn" onclick="previousStep()" style="display: none;">Previous</button>
+                <button type="button" class="btn-secondary" id="nextStepBtn" onclick="nextStep()">Next</button>
+                <button type="button" class="btn-primary" id="submitBtn" onclick="submitFieldForm()" style="display: none;">Submit for Approval</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../scripts/owner/dashboard.js"></script>
+</body>
+</html>

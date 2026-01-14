@@ -1,0 +1,339 @@
+/* Settings Page Specific Styles */
+
+.settings-main {
+    padding-bottom: 32px;
+}
+
+.settings-content {
+    padding-top: 24px;
+}
+
+/* Page Header */
+.page-header {
+    margin-bottom: 32px;
+}
+
+.page-header-content {
+    flex: 1;
+}
+
+.page-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #212529;
+    margin: 0 0 8px 0;
+}
+
+.page-description {
+    font-size: 16px;
+    color: #6B7280;
+    margin: 0;
+}
+
+/* Back Button */
+.back-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: white;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #4B5563;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Poppins', sans-serif;
+    text-decoration: none;
+    height: 44px;
+}
+
+.back-btn:hover {
+    background: #F9FAFB;
+    border-color: #007BFF;
+    color: #007BFF;
+}
+
+.back-btn i {
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Header Layout Adjustments */
+.settings-main .main-header {
+    justify-content: space-between;
+}
+
+.settings-main .main-header .header-actions {
+    margin-left: auto;
+}
+
+/* Settings Sections */
+.settings-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Settings Card */
+.settings-card {
+    background: white;
+    border-radius: 24px;
+    border: 1px solid #E5E7EB;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.settings-card-danger {
+    border-color: #FEE2E2;
+    background: #FEF2F2;
+}
+
+.settings-card-header {
+    padding: 24px 32px;
+    border-bottom: 1px solid #E5E7EB;
+    background: #F9FAFB;
+}
+
+.settings-card-danger .settings-card-header {
+    background: #FEF2F2;
+    border-bottom-color: #FEE2E2;
+}
+
+.settings-card-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.settings-card-title i {
+    font-size: 20px;
+    color: #007BFF;
+}
+
+.settings-card-danger .settings-card-title i {
+    color: #DC2626;
+}
+
+.settings-card-title h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+}
+
+.settings-card-body {
+    padding: 24px 32px;
+}
+
+.settings-card-danger .settings-card-body {
+    padding: 24px 32px;
+}
+
+/* Settings Item */
+.settings-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 0;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+.settings-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-item-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 4px 0;
+}
+
+.settings-item-description {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Toggle Switch - Override dashboard.css styles */
+.settings-card .toggle-switch {
+    position: relative !important;
+    display: inline-block !important;
+    width: 52px !important;
+    height: 28px !important;
+    flex-shrink: 0;
+    background: none !important;
+    border-radius: 0 !important;
+    cursor: default !important;
+    transition: none !important;
+}
+
+.settings-card .toggle-switch.active {
+    background: none !important;
+}
+
+.settings-card .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.settings-card .toggle-slider {
+    position: absolute !important;
+    cursor: pointer !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background-color: #D1D5DB !important;
+    transition: 0.3s !important;
+    border-radius: 28px !important;
+    width: 100% !important;
+    height: 100% !important;
+    box-shadow: none !important;
+}
+
+.settings-card .toggle-switch.active .toggle-slider {
+    background-color: #007BFF !important;
+}
+
+.settings-card .toggle-slider:before {
+    position: absolute !important;
+    content: "" !important;
+    height: 22px !important;
+    width: 22px !important;
+    left: 3px !important;
+    bottom: 3px !important;
+    background-color: white !important;
+    transition: 0.3s !important;
+    border-radius: 50% !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.settings-card .toggle-switch input:checked + .toggle-slider {
+    background-color: #007BFF !important;
+}
+
+.settings-card .toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(24px) !important;
+}
+
+.settings-card .toggle-switch.active .toggle-slider {
+    transform: translateX(0) !important;
+}
+
+.settings-card .toggle-switch input:focus + .toggle-slider {
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1) !important;
+}
+
+/* Settings Select */
+.settings-select {
+    padding: 10px 16px;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: 'Poppins', sans-serif;
+    background: white;
+    color: #212529;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    min-width: 180px;
+    flex-shrink: 0;
+}
+
+.settings-select:focus {
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Button Styles */
+.btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    font-family: inherit;
+}
+
+.btn-secondary {
+    background: white;
+    color: #374151;
+    border: 1.5px solid #E5E7EB;
+}
+
+.btn-secondary:hover {
+    background: #F9FAFB;
+    border-color: #D1D5DB;
+}
+
+.btn-danger {
+    background: #DC2626;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #B91C1C;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .settings-card-header,
+    .settings-card-body {
+        padding: 20px;
+    }
+
+    .settings-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .settings-select {
+        width: 100%;
+        min-width: auto;
+    }
+
+    .page-title {
+        font-size: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .settings-card-header,
+    .settings-card-body {
+        padding: 16px;
+    }
+
+    .settings-item {
+        padding: 16px 0;
+    }
+
+    .settings-item-title {
+        font-size: 15px;
+    }
+
+    .settings-item-description {
+        font-size: 13px;
+    }
+}
+

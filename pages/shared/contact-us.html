@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatchField - Contact Us</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../../styles/shared/contact-us.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="../player/home.html" class="nav-item">
+                    <i class="fi fi-rr-home nav-icon"></i>
+                    <span>Home Page</span>
+                </a>
+                <a href="../player/bookings.html" class="nav-item">
+                    <i class="fi fi-rr-calendar-day nav-icon"></i>
+                    <span>My Booking</span>
+                </a>
+                <a href="../player/chat.html" class="nav-item">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Chat</span>
+                </a>
+                <a href="../player/map.html" class="nav-item">
+                    <i class="fi fi-rr-map-marker nav-icon"></i>
+                    <span>Map</span>
+                </a>
+                <a href="contact-us.html" class="nav-item active">
+                    <i class="fi fi-rs-headset nav-icon"></i>
+                    <span>Contact Us</span>
+                </a>
+                <a href="about-us.html" class="nav-item">
+                    <i class="fi fi-rr-info nav-icon"></i>
+                    <span>About Us</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">New booking confirmed</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Venue availability update</p>
+                                        <p class="notification-time">5 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Reminder: Booking tomorrow</p>
+                                        <p class="notification-time">1 day ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>My Account</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">John Doe</p>
+                                        <p class="profile-email">john.doe@example.com</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="profile-menu">
+                                    <a href="../player/profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>View Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../player/settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../player/bookings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-calendar-day"></i>
+                                        </div>
+                                        <span>My Bookings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Contact Us Content -->
+            <div class="contact-content">
+                <div class="contact-header">
+                    <h1 class="page-title">Contact Us</h1>
+                    <p class="page-description">Have questions about your booking, a venue, or your account? Reach out to us using the form below.</p>
+                </div>
+
+                <div class="contact-wrapper">
+                    <!-- Contact Form Card -->
+                    <div class="contact-form-card">
+                        <div class="form-header">
+                            <h2 class="form-title">Send us a message</h2>
+                            <p class="form-subtitle">Fill in the form and we will get back to you by email.</p>
+                        </div>
+                        
+                        <form class="contact-form" id="contactForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="fullName" class="form-label">Full name</label>
+                                    <input type="text" id="fullName" name="fullName" class="form-input" placeholder="Alex Morgan" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="email" class="form-label">Email address</label>
+                                    <input type="email" id="email" name="email" class="form-input" placeholder="you@example.com" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="phone" class="form-label">Phone (optional)</label>
+                                    <input type="tel" id="phone" name="phone" class="form-input" placeholder="+90 5xx xxx xx xx">
+                                </div>
+                                <div class="form-group">
+                                    <label for="topic" class="form-label">Topic</label>
+                                    <input type="text" id="topic" name="topic" class="form-input" placeholder="Booking problem">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="message" class="form-label">Your message</label>
+                                <textarea id="message" name="message" class="form-textarea" rows="4" placeholder="Tell us what you need help with..."></textarea>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <p class="form-disclaimer">By submitting, you agree that we may contact you via email or phone regarding your request.</p>
+                                <button type="submit" class="btn-submit">Send message</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Support Channels Card -->
+                    <div class="support-channels-card">
+                        <h2 class="support-title">Support channels</h2>
+                        
+                        <div class="support-item">
+                            <div class="support-icon">
+                                <i class="fi fi-rr-envelope"></i>
+                            </div>
+                            <div class="support-content">
+                                <h3 class="support-item-title">Email support</h3>
+                                <p class="support-item-text">MatchField@gmail.com</p>
+                            </div>
+                        </div>
+                        
+                        <div class="support-item">
+                            <div class="support-icon whatsapp">
+                                <i class="fab fa-whatsapp"></i>
+                            </div>
+                            <div class="support-content">
+                                <h3 class="support-item-title">Whatsapp</h3>
+                                <p class="support-item-text">+90 (5xx) xxx xx xx</p>
+                            </div>
+                        </div>
+                        
+                        <div class="support-item">
+                            <div class="support-icon phone">
+                                <i class="fi fi-rr-phone-call"></i>
+                            </div>
+                            <div class="support-content">
+                                <h3 class="support-item-title">Phone</h3>
+                                <p class="support-item-text">+90 (212) xxx xx xx. 09:00-22:00</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../../scripts/shared/contact-us.js"></script>
+</body>
+</html>
+
+

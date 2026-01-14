@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookings - Field Owner Admin | MatchField</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="../../styles/owner/dashboard.css">
+    <link rel="stylesheet" href="../../styles/owner/bookings.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item">
+                    <i class="fi fi-rr-apps nav-icon"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="bookings.html" class="nav-item active">
+                    <i class="fi fi-rr-calendar-day nav-icon"></i>
+                    <span>Bookings</span>
+                </a>
+                <a href="fields.html" class="nav-item">
+                    <i class="fi fi-rr-court-sport nav-icon"></i>
+                    <span>My Fields</span>
+                </a>
+                <a href="chat.html" class="nav-item">
+                    <i class="fi fi-rr-messages nav-icon"></i>
+                    <span>Chat</span>
+                </a>
+                <a href="map.html" class="nav-item">
+                    <i class="fi fi-rr-map-marker nav-icon"></i>
+                    <span>Map</span>
+                </a>
+                <a href="contact-us.html" class="nav-item">
+                    <i class="fi fi-rs-headset nav-icon"></i>
+                    <span>Contact Us</span>
+                </a>
+                <a href="about-us.html" class="nav-item">
+                    <i class="fi fi-rr-info nav-icon"></i>
+                    <span>About Us</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="../auth/login.html" class="nav-item logout">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-actions">
+                    <div class="notification-wrapper">
+                        <button class="icon-btn notification-btn" id="notificationBtn">
+                            <i class="fi fi-rs-bell"></i>
+                        </button>
+                        
+                        <!-- Notification Popup -->
+                        <div class="notification-popup" id="notificationPopup">
+                            <div class="notification-popup-header">
+                                <h3>Notifications</h3>
+                            </div>
+                            <div class="notification-popup-content">
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">New booking request</p>
+                                        <p class="notification-time">2 hours ago</p>
+                                    </div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-icon">
+                                        <i class="fi fi-rs-bell"></i>
+                                    </div>
+                                    <div class="notification-text">
+                                        <p class="notification-title">Payment received</p>
+                                        <p class="notification-time">5 hours ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-wrapper">
+                        <div class="profile-picture" id="profileBtn">
+                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                        </div>
+                        
+                        <!-- Profile Popup -->
+                        <div class="profile-popup" id="profilePopup">
+                            <div class="profile-popup-header">
+                                <h3>My Account</h3>
+                            </div>
+                            <div class="profile-popup-content">
+                                <div class="profile-info">
+                                    <div class="profile-avatar-large">
+                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                                    </div>
+                                    <div class="profile-details">
+                                        <p class="profile-name">Fozi Court</p>
+                                        <p class="profile-email">fozi@matchfield.com</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="profile-menu">
+                                    <a href="profile.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-user"></i>
+                                        </div>
+                                        <span>View Profile</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="settings.html" class="profile-menu-item">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-settings"></i>
+                                        </div>
+                                        <span>Settings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-sign-out-alt"></i>
+                                        </div>
+                                        <span>Log Out</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Bookings Content -->
+            <div class="bookings-content">
+                <!-- Page Header -->
+                <div class="bookings-page-header">
+                    <div>
+                        <h1 class="bookings-title">Bookings</h1>
+                        <p class="bookings-subtitle">Manage all field bookings.</p>
+                    </div>
+                </div>
+
+                <!-- Search and Filter Bar -->
+                <div class="bookings-search-filter">
+                    <div class="search-bar-container">
+                        <input type="text" class="search-bar" placeholder="Search Player or Field..." id="searchInput">
+                        <i class="fi fi-rr-search search-icon"></i>
+                    </div>
+                    <div class="filter-dropdowns">
+                        <select class="filter-dropdown" id="fieldFilter">
+                            <option>All Fields</option>
+                            <option>Football</option>
+                            <option>Basketball</option>
+                            <option>Tennis</option>
+                            <option>Futsal</option>
+                            <option>Volleyball</option>
+                            <option>Badminton</option>
+                            <option>Other</option>
+                        </select>
+                        <select class="filter-dropdown" id="statusFilter">
+                            <option>All Status</option>
+                            <option>Pending</option>
+                            <option>Confirmed</option>
+                            <option>Cancelled</option>
+                        </select>
+                        <select class="filter-dropdown" id="dateFilter">
+                            <option>Date range</option>
+                            <option>Today</option>
+                            <option>This week</option>
+                            <option>This month</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Bookings Section -->
+                <div class="bookings-section">
+                    <div class="bookings-section-header">
+                        <h2 class="bookings-section-title">Bookings</h2>
+                        <div class="view-toggle">
+                            <button class="view-toggle-btn active" data-view="table" id="tableViewBtn">
+                                Table view
+                            </button>
+                            <button class="view-toggle-btn" data-view="calendar" id="calendarViewBtn">
+                                Calendar view
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Table View -->
+                    <div class="bookings-table-container" id="tableView">
+                        <table class="bookings-table">
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>FIELD</th>
+                                    <th>DATE & TIME</th>
+                                    <th>DURATION</th>
+                                    <th>PAYMENT</th>
+                                    <th>STATUS</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bookingsTableBody">
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <img src="https://ui-avatars.com/api/?name=Mousa+Aq&background=007BFF&color=fff&size=128" alt="Customer" class="customer-avatar">
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-paid">Paid</span></td>
+                                    <td><span class="badge badge-pending">Pending</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                            <button class="action-icon-btn approve" title="Approve">
+                                                <i class="fi fi-rr-check"></i>
+                                            </button>
+                                            <button class="action-icon-btn decline" title="Decline">
+                                                <i class="fi fi-rr-cross"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <div class="customer-avatar placeholder"></div>
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-paid">Paid</span></td>
+                                    <td><span class="badge badge-pending">Pending</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                            <button class="action-icon-btn approve" title="Approve">
+                                                <i class="fi fi-rr-check"></i>
+                                            </button>
+                                            <button class="action-icon-btn decline" title="Decline">
+                                                <i class="fi fi-rr-cross"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <div class="customer-avatar placeholder"></div>
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-pending-payment">Pending</span></td>
+                                    <td><span class="badge badge-pending">Pending</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <div class="customer-avatar placeholder"></div>
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-paid">Paid</span></td>
+                                    <td><span class="badge badge-confirmed">Confirmed</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <div class="customer-avatar placeholder"></div>
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-paid">Paid</span></td>
+                                    <td><span class="badge badge-confirmed">Confirmed</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="customer-cell">
+                                            <div class="customer-avatar placeholder"></div>
+                                            <span>Mousa Aq.</span>
+                                        </div>
+                                    </td>
+                                    <td>Fozi football court</td>
+                                    <td>
+                                        <div class="date-time-cell">
+                                            <span class="date-text">Nov 24, 2025</span>
+                                            <span class="time-text">14:00-15:30</span>
+                                        </div>
+                                    </td>
+                                    <td>1 hour</td>
+                                    <td><span class="badge badge-paid">Paid</span></td>
+                                    <td><span class="badge badge-confirmed">Confirmed</span></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="action-icon-btn" title="View">
+                                                <i class="fi fi-rr-eye"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Calendar View (Hidden by default) -->
+                    <div class="bookings-calendar-container" id="calendarView" style="display: none;">
+                        <div class="calendar-view-layout">
+                            <!-- Calendar Widget -->
+                            <div class="calendar-widget">
+                                <div class="calendar-header-widget">
+                                    <button class="calendar-nav-btn-widget" id="prevMonthBtn">
+                                        <i class="fi fi-rr-angle-left"></i>
+                                    </button>
+                                    <span class="calendar-month-year" id="calendarMonthYear">December 2025</span>
+                                    <button class="calendar-nav-btn-widget" id="nextMonthBtn">
+                                        <i class="fi fi-rr-angle-right"></i>
+                                    </button>
+                                </div>
+                                
+                                <div class="calendar-weekdays">
+                                    <div class="calendar-weekday">Su</div>
+                                    <div class="calendar-weekday">Mo</div>
+                                    <div class="calendar-weekday">Tu</div>
+                                    <div class="calendar-weekday">We</div>
+                                    <div class="calendar-weekday">Th</div>
+                                    <div class="calendar-weekday">Fr</div>
+                                    <div class="calendar-weekday">Sa</div>
+                                </div>
+                                
+                                <div class="calendar-days-grid" id="calendarDaysGrid">
+                                    <!-- Calendar days will be generated by JavaScript -->
+                                </div>
+                            </div>
+                            
+                            <!-- Bookings List -->
+                            <div class="calendar-bookings-list">
+                                <h3 class="calendar-bookings-title" id="calendarBookingsTitle">Bookings for Sunday, December 21, 2025</h3>
+                                
+                                <div class="calendar-bookings-cards" id="calendarBookingsCards">
+                                    <!-- Booking cards will be generated by JavaScript -->
+                                    <div class="calendar-booking-card">
+                                        <div class="calendar-booking-avatar" style="background: #007BFF; color: white;">JS</div>
+                                        <div class="calendar-booking-info">
+                                            <div class="calendar-booking-name">John Smith</div>
+                                            <div class="calendar-booking-field">Fozi football court</div>
+                                            <div class="calendar-booking-time">14:00 - 15:30 • 1.5 hours</div>
+                                        </div>
+                                        <span class="badge badge-confirmed">Confirmed</span>
+                                    </div>
+                                    
+                                    <div class="calendar-booking-card">
+                                        <div class="calendar-booking-avatar" style="background: #10B981; color: white;">EW</div>
+                                        <div class="calendar-booking-info">
+                                            <div class="calendar-booking-name">Emma Wilson</div>
+                                            <div class="calendar-booking-field">Basketball Court Elite</div>
+                                            <div class="calendar-booking-time">18:00 - 19:00 • 1 hour</div>
+                                        </div>
+                                        <span class="badge badge-pending">Pending</span>
+                                    </div>
+                                    
+                                    <div class="calendar-booking-card">
+                                        <div class="calendar-booking-avatar" style="background: #007BFF; color: white;">JS</div>
+                                        <div class="calendar-booking-info">
+                                            <div class="calendar-booking-name">John Smith</div>
+                                            <div class="calendar-booking-field">Fozi football court</div>
+                                            <div class="calendar-booking-time">20:00 - 21:30 • 1.5 hours</div>
+                                        </div>
+                                        <span class="badge badge-confirmed">Confirmed</span>
+                                    </div>
+                                    
+                                    <div class="calendar-booking-card">
+                                        <div class="calendar-booking-avatar" style="background: #10B981; color: white;">EW</div>
+                                        <div class="calendar-booking-info">
+                                            <div class="calendar-booking-name">Emma Wilson</div>
+                                            <div class="calendar-booking-field">Basketball Court Elite</div>
+                                            <div class="calendar-booking-time">22:00 - 23:00 • 1 hour</div>
+                                        </div>
+                                        <span class="badge badge-pending">Pending</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../../scripts/owner/bookings.js"></script>
+</body>
+</html>
+
+
+
