@@ -195,16 +195,56 @@ const venuesData = {
   ]
 };
 
-// Get venue ID from URL parameter
+// Get venue ID from URL parameter (string for API, or number for fallback)
 function getVenueIdFromURL() {
   const urlParams = new URLSearchParams(window.location.search);
-  return parseInt(urlParams.get('id'));
+  return urlParams.get('id');
 }
 
-// Find venue by ID
+// Current field when loaded from API (so handleBooking can use it)
+var currentFieldFromAPI = null;
+
+// Find venue by ID (supports string or number for fallback data)
 function findVenueById(venueId) {
+  if (currentFieldFromAPI && String(currentFieldFromAPI.id) === String(venueId))
+    return currentFieldFromAPI;
   const allVenues = [...venuesData.popular, ...venuesData.nearby];
-  return allVenues.find(venue => venue.id === venueId);
+  return allVenues.find(venue => String(venue.id) === String(venueId));
+}
+
+// Load field from API and map to venue format for rendering
+function loadFieldFromAPI(fieldId) {
+  if (typeof API === 'undefined' || !fieldId) return Promise.resolve(null);
+  return API.fields.getById(fieldId).then(function(field) {
+    var images = (field.images && field.images.length) ? field.images : [];
+    var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop';
+    return {
+      id: field.id,
+      name: field.name,
+      sport: field.sport || 'Sport',
+      image: img,
+      images: images,
+      rating: field.rating != null ? field.rating : 0,
+      reviews: field.reviewCount != null ? field.reviewCount : 0,
+      location: field.location || '',
+      distance: 'N/A',
+      type: (field.type || 'OUTDOOR').toLowerCase(),
+      price: field.pricePerHour != null ? field.pricePerHour : 0,
+      isFavorite: false,
+      description: field.description || '',
+      features: Array.isArray(field.features) ? field.features : [],
+      address: field.address || '',
+      phone: field.phone || ''
+    };
+  }).then(function(venue) {
+    if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
+      return API.favorites.check(venue.id).then(function(res) {
+        venue.isFavorite = !!(res && (res.isFavorite || res.isFavorited));
+        return venue;
+      }).catch(function() { return venue; });
+    }
+    return venue;
+  });
 }
 
 // Load favorites from localStorage
@@ -219,13 +259,25 @@ function loadFavoritesFromStorage() {
   }
 }
 
-// Toggle favorite
+// Toggle favorite (API or local)
 function toggleFavorite(venueId) {
-  const venue = findVenueById(venueId);
-  if (venue) {
+  if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
+    var venue = findVenueById(venueId);
+    if (!venue) return;
+    var isFav = venue.isFavorite;
+    var promise = isFav ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+    promise.then(function() {
       venue.isFavorite = !venue.isFavorite;
       saveFavoritesToStorage();
       updateSaveButton(venue.isFavorite);
+    }).catch(function(err) { alert(err.message || 'Failed to update favorite.'); });
+    return;
+  }
+  var venue = findVenueById(venueId);
+  if (venue) {
+    venue.isFavorite = !venue.isFavorite;
+    saveFavoritesToStorage();
+    updateSaveButton(venue.isFavorite);
   }
 }
 
@@ -342,7 +394,7 @@ function renderFieldInfo(venue) {
                   </div>
               </div>
 
-              <button class="booking-btn" onclick="handleBooking(${venue.id})">Book now</button>
+              <button class="booking-btn" onclick="handleBooking('${String(venue.id).replace(/'/g, "\\'")}')">Book now</button>
               
               <div class="booking-cancellation">
                   Free cancellation up to 12 hours before your booking.
@@ -916,35 +968,38 @@ function setupNotificationPopup() {
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
+  function showError(msg, title) {
+    title = title || 'Error';
+    var el = document.getElementById('fieldInfoContent');
+    if (el) el.innerHTML = '<div class="error-state"><h2>' + title + '</h2><p>' + (msg || 'An error occurred.') + '</p><a href="home.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">Back to Home</a></div>';
+  }
   try {
-      loadFavoritesFromStorage();
-      setupProfilePopup();
-      setupNotificationPopup();
-      
-      const venueId = getVenueIdFromURL();
-      
-      if (!venueId) {
-          document.getElementById('fieldInfoContent').innerHTML = `
-              <div class="error-state">
-                  <h2>Invalid field ID</h2>
-                  <p>Please select a field from the home page.</p>
-                  <a href="home-player.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">Back to Home</a>
-              </div>
-          `;
-          return;
+    loadFavoritesFromStorage();
+    setupProfilePopup();
+    setupNotificationPopup();
+    var venueId = getVenueIdFromURL();
+    if (!venueId) {
+      showError('Please select a field from the home page.', 'Invalid field ID');
+      return;
+    }
+    loadFieldFromAPI(venueId).then(function(venue) {
+      if (venue) {
+        currentFieldFromAPI = venue;
+        renderFieldInfo(venue);
+        return;
       }
-
-      const venue = findVenueById(venueId);
+      var fallbackId = parseInt(venueId, 10) || venueId;
+      var venue = findVenueById(fallbackId);
       renderFieldInfo(venue);
+    }).catch(function(err) {
+      console.error('Error loading field:', err);
+      var venue = findVenueById(venueId);
+      if (venue) renderFieldInfo(venue);
+      else showError('The field could not be loaded.', 'Error loading field');
+    });
   } catch (error) {
-      console.error('Error loading field info:', error);
-      document.getElementById('fieldInfoContent').innerHTML = `
-          <div class="error-state">
-              <h2>Error loading field information</h2>
-              <p>An error occurred while loading the field details.</p>
-              <a href="home-player.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">Back to Home</a>
-          </div>
-      `;
+    console.error('Error loading field info:', error);
+    showError('An error occurred while loading the field details.', 'Error loading field information');
   }
 });
 

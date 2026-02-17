@@ -105,8 +105,10 @@ const bookingsData = {
 };
 
 // Current filter state
-let currentFilter = 'upcoming';
-let searchQuery = '';
+var currentFilter = 'upcoming';
+var searchQuery = '';
+// Raw bookings from API (for payment button / cancel lookup)
+var allBookingsCache = [];
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
@@ -119,138 +121,89 @@ document.addEventListener('DOMContentLoaded', function() {
     initializePaymentStatusModal();
 });
 
-// Load bookings from localStorage
+// Load bookings from API (fallback to localStorage if no API)
 function loadBookingsFromStorage() {
-    const storedBookings = localStorage.getItem('playerBookings');
-    let allBookings = [];
-    
-    if (storedBookings) {
-        allBookings = JSON.parse(storedBookings);
+    function applyBookings(playerBookings) {
+        allBookingsCache = playerBookings;
+        bookingsData.upcoming = playerBookings
+            .filter(function(b) { return b.status === 'PENDING' || b.status === 'UPCOMING' || b.status === 'CONFIRMED' || b.status === 'pending' || b.status === 'upcoming' || b.status === 'confirmed'; })
+            .map(convertBookingToDisplayFormat);
+        bookingsData.completed = playerBookings
+            .filter(function(b) { return b.status === 'COMPLETED' || b.status === 'completed'; })
+            .map(convertBookingToDisplayFormat);
+        bookingsData.cancelled = playerBookings
+            .filter(function(b) { return b.status === 'CANCELLED' || b.status === 'cancelled'; })
+            .map(convertBookingToDisplayFormat);
     }
-    
-    // Get current player ID - ensure playerData exists
-    let playerData = JSON.parse(localStorage.getItem('playerData') || '{}');
-    if (!playerData.id) {
-        playerData = {
-            id: 'player_1',
-            name: 'You'
-        };
-        localStorage.setItem('playerData', JSON.stringify(playerData));
+    if (typeof API !== 'undefined' && API.getAuthToken()) {
+        API.bookings.getAll()
+            .then(function(res) {
+                var list = (res && res.bookings) ? res.bookings : [];
+                applyBookings(list);
+            })
+            .catch(function(err) {
+                console.error('Failed to load bookings:', err);
+                loadBookingsFromStorageFallback(applyBookings);
+            });
+        return;
     }
-    const playerId = playerData.id;
-    
-    // Check if we need to add a sample confirmed booking
-    const hasConfirmedBooking = allBookings.some(b => 
-        b.id === 'booking_confirmed_sample' || 
-        (b.status === 'confirmed' && 
-        (b.organizerId === playerId || (b.players && b.players.some(p => p.id === playerId))))
-    );
-    
-    if (!hasConfirmedBooking) {
-        // Add a sample confirmed booking
-        const confirmedBooking = {
-            id: 'booking_confirmed_sample',
-            fieldId: 'field_1',
-            fieldName: 'Elite Football Field',
-            fieldImage: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&h=400&fit=crop',
-            organizerId: playerId,
-            organizerName: playerData.name || 'You',
-            players: [
-                {
-                    id: 'player_2',
-                    name: 'John Smith',
-                    paymentStatus: 'paid',
-                    paymentAmount: 500
-                },
-                {
-                    id: 'player_3',
-                    name: 'Mike Johnson',
-                    paymentStatus: 'paid',
-                    paymentAmount: 500
-                }
-            ],
-            date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 3 days from now
-            timeSlots: ['18:00', '19:00'],
-            totalCost: 2000,
-            costPerPlayer: 500,
-            paymentMethod: 'split',
-            status: 'confirmed',
-            createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
-            confirmedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-            organizerPaymentStatus: 'paid',
-            mixedPaymentDistribution: null
-        };
-        
-        allBookings.push(confirmedBooking);
-        localStorage.setItem('playerBookings', JSON.stringify(allBookings));
-        console.log('Added confirmed booking:', confirmedBooking);
-    }
-    
-    // Filter bookings where player is organizer or participant
-    const playerBookings = allBookings.filter(booking => {
-        const isOrganizer = booking.organizerId === playerId;
-        const isParticipant = booking.players && booking.players.some(p => p.id === playerId);
-        return isOrganizer || isParticipant;
-    });
-    
-    // Convert to the format expected by the page
-    bookingsData.upcoming = playerBookings
-        .filter(b => b.status === 'pending' || b.status === 'upcoming' || b.status === 'confirmed')
-        .map(convertBookingToDisplayFormat);
-    
-    bookingsData.completed = playerBookings
-        .filter(b => b.status === 'completed')
-        .map(convertBookingToDisplayFormat);
-    
-    bookingsData.cancelled = playerBookings
-        .filter(b => b.status === 'cancelled')
-        .map(convertBookingToDisplayFormat);
+    loadBookingsFromStorageFallback(applyBookings);
 }
 
-// Convert booking from storage format to display format
+function loadBookingsFromStorageFallback(applyBookings) {
+    var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+    var playerData = typeof API !== 'undefined' && API.getCurrentUser ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerId = (playerData && playerData.id) || 'player_1';
+    var playerBookings = allBookings.filter(function(booking) {
+        var isOrganizer = booking.organizerId === playerId;
+        var isParticipant = booking.players && booking.players.some(function(p) { return p.id === playerId; });
+        return isOrganizer || isParticipant;
+    });
+    applyBookings(playerBookings);
+}
+
+// Convert booking from API or storage format to display format
 function convertBookingToDisplayFormat(booking) {
-    const date = new Date(booking.date);
-    const today = new Date();
-    const tomorrow = new Date(today);
+    var date = new Date(booking.date);
+    var today = new Date();
+    var tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    let dateDisplay = booking.date;
-    if (date.toDateString() === today.toDateString()) {
-        dateDisplay = 'Today';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-        dateDisplay = 'Tomorrow';
-    } else {
-        dateDisplay = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    var dateDisplay = date.toDateString() === today.toDateString() ? 'Today'
+        : date.toDateString() === tomorrow.toDateString() ? 'Tomorrow'
+        : date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    var timeSlots = booking.timeSlots || (booking.timeSlotStart ? [booking.timeSlotStart] : []);
+    if (booking.timeSlotStart && booking.timeSlotEnd && timeSlots.length === 0) {
+        timeSlots = [booking.timeSlotStart + ' - ' + booking.timeSlotEnd];
     }
-    
-    const timeSlots = booking.timeSlots || [];
-    const timeDisplay = timeSlots.length > 0 
-        ? timeSlots.map(slot => {
-            const hour = parseInt(slot.split(':')[0]);
-            return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
-        }).join(', ')
-        : 'Not specified';
-    
-    // Determine display status
-    let displayStatus = booking.status || 'upcoming';
-    // Keep confirmed status as 'confirmed' for proper display
-    const isConfirmed = booking.status === 'confirmed';
-    
+    var timeDisplay = timeSlots.length > 0
+        ? (typeof timeSlots[0] === 'string' && timeSlots[0].indexOf(' - ') !== -1
+            ? timeSlots[0]
+            : timeSlots.map(function(slot) {
+                var hour = parseInt(String(slot).split(':')[0], 10);
+                return slot + ' - ' + (hour + 1).toString().padStart(2, '0') + ':00';
+            }).join(', '))
+        : (booking.timeSlotStart && booking.timeSlotEnd ? booking.timeSlotStart + ' - ' + booking.timeSlotEnd : 'Not specified');
+    var fieldName = (booking.field && booking.field.name) || booking.fieldName;
+    var fieldImage = (booking.field && booking.field.images && booking.field.images[0]) || booking.fieldImage;
+    var players = booking.participants ? booking.participants.map(function(p) { return { id: p.userId, name: (p.user && p.user.fullName) || 'Player' }; }) : (booking.players || []);
+    var teamSize = players.length + 1;
+    var displayStatus = booking.status || 'upcoming';
+    var isConfirmed = booking.status === 'CONFIRMED' || booking.status === 'confirmed';
     return {
         id: booking.id,
-        fieldName: booking.fieldName,
-        image: booking.fieldImage || 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&h=400&fit=crop',
-        rating: 4.8, // Default rating
-        reviewCount: 98, // Default review count
-        location: 'Location', // Default location
+        fieldName: fieldName || 'Field',
+        image: fieldImage || 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&h=400&fit=crop',
+        rating: 4.8,
+        reviewCount: 98,
+        location: (booking.field && booking.field.location) || 'Location',
         distance: 'N/A',
         date: dateDisplay,
         time: timeDisplay,
-        teamSize: booking.players.length + 1, // +1 for organizer
-        price: `₺${booking.totalCost}`,
-        duration: `${timeSlots.length}h`,
-        bookedDate: new Date(booking.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-        status: isConfirmed ? 'confirmed' : displayStatus,
+        teamSize: teamSize,
+        price: '₺' + (booking.totalCost || 0),
+        duration: (booking.timeSlotStart && booking.timeSlotEnd ? 1 : timeSlots.length) + 'h',
+        bookedDate: new Date(booking.createdAt || Date.now()).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: isConfirmed ? 'confirmed' : displayStatus.toLowerCase(),
         isConfirmed: isConfirmed
     };
 }
@@ -360,14 +313,12 @@ function renderBookings() {
 
 // Get payment button for booking
 function getPaymentButton(booking) {
-    // Get booking details from storage
-    const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    const fullBooking = allBookings.find(b => b.id === booking.id);
-    
+    var fullBooking = allBookingsCache.find(function(b) { return b.id === booking.id; });
+    if (!fullBooking) fullBooking = JSON.parse(localStorage.getItem('playerBookings') || '[]').find(function(b) { return b.id === booking.id; });
     if (!fullBooking) return '';
 
-    const playerData = JSON.parse(localStorage.getItem('playerData') || '{}');
-    const isOrganizer = fullBooking.organizerId === playerData.id;
+    var playerData = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var isOrganizer = fullBooking.organizerId === (playerData && playerData.id);
     
     // Check if payment is needed
     if (isOrganizer && fullBooking.organizerPaymentStatus === 'pending') {
@@ -377,13 +328,11 @@ function getPaymentButton(booking) {
             </button>
         `;
     } else if (!isOrganizer) {
-        const player = fullBooking.players.find(p => p.id === playerData.id);
-        if (player && player.paymentStatus === 'pending' && fullBooking.paymentMethod === 'split') {
-            return `
-                <button class="pay-now-btn" onclick="payForBooking('${booking.id}', false)">
-                    <i class="fi fi-rr-credit-card"></i> Pay Your Share (₺${fullBooking.costPerPlayer})
-                </button>
-            `;
+        var participants = fullBooking.participants || fullBooking.players || [];
+        var player = participants.find(function(p) { return (p.userId || p.id) === (playerData && playerData.id); });
+        var costPerPlayer = fullBooking.totalCost && (participants.length + 1) ? Math.round(fullBooking.totalCost / (participants.length + 1)) : 0;
+        if (player && (player.paymentStatus === 'PENDING' || player.paymentStatus === 'pending') && (fullBooking.paymentMethod === 'SPLIT' || fullBooking.paymentMethod === 'split')) {
+            return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (₺' + (player.paymentAmount || costPerPlayer) + ')</button>';
         }
     }
     
@@ -496,36 +445,34 @@ function createBookingCard(booking) {
     return card;
 }
 
-// Cancel booking function
+// Cancel booking function (API or localStorage)
 function cancelBooking(bookingId) {
-    if (confirm('Are you sure you want to cancel this booking?')) {
-        // Update booking in storage
-        const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-        const bookingIndex = allBookings.findIndex(b => b.id === bookingId);
-        
-        if (bookingIndex !== -1) {
-            allBookings[bookingIndex].status = 'cancelled';
-            localStorage.setItem('playerBookings', JSON.stringify(allBookings));
-        }
-        
-        // Find booking in upcoming
-        const displayIndex = bookingsData.upcoming.findIndex(b => b.id === bookingId);
-        
+    if (!confirm('Are you sure you want to cancel this booking?')) return;
+    function moveToCancelled() {
+        var displayIndex = bookingsData.upcoming.findIndex(function(b) { return b.id === bookingId; });
         if (displayIndex !== -1) {
-            const booking = bookingsData.upcoming[displayIndex];
+            var booking = bookingsData.upcoming[displayIndex];
             booking.status = 'cancelled';
-            
-            // Move to cancelled
             bookingsData.cancelled.push(booking);
             bookingsData.upcoming.splice(displayIndex, 1);
-            
-            // Re-render if on upcoming filter
-            if (currentFilter === 'upcoming') {
-                renderBookings();
-            }
-            
+            if (currentFilter === 'upcoming') renderBookings();
             alert('Booking cancelled successfully!');
         }
+    }
+    if (typeof API !== 'undefined' && API.getAuthToken()) {
+        API.bookings.updateStatus(bookingId, 'CANCELLED')
+            .then(moveToCancelled)
+            .catch(function(err) {
+                alert(err.message || 'Failed to cancel booking.');
+            });
+    } else {
+        var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+        var idx = allBookings.findIndex(function(b) { return b.id === bookingId; });
+        if (idx !== -1) {
+            allBookings[idx].status = 'cancelled';
+            localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+        }
+        moveToCancelled();
     }
 }
 

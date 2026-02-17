@@ -1,150 +1,63 @@
-// Sample venue data
-const venues = {
-  popular: [
-      {
-          id: 1,
-          name: "Fozi football court",
-          sport: "Football",
-          image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "outdoor",
-          price: 1500,
-          isFavorite: false
-      },
-      {
-          id: 2,
-          name: "Fozi football court",
-          sport: "Tennis",
-          image: "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: true
-      },
-      {
-          id: 3,
-          name: "Fozi football court",
-          sport: "Basketball",
-          image: "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: false
-      },
-      {
-          id: 4,
-          name: "Fozi football court",
-          sport: "Padel",
-          image: "https://images.unsplash.com/photo-1622163642992-6b7e3c4e3b3e?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: true
-      },
-      {
-          id: 5,
-          name: "Fozi football court",
-          sport: "Volleyball",
-          image: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: false
-      },
-      {
-          id: 6,
-          name: "Fozi football court",
-          sport: "Ice Hockey",
-          image: "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: true
-      }
-  ],
-  nearby: [
-      {
-          id: 7,
-          name: "Fozi football court",
-          sport: "Football",
-          image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: false
-      },
-      {
-          id: 8,
-          name: "Fozi football court",
-          sport: "Tennis",
-          image: "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: true
-      },
-      {
-          id: 9,
-          name: "Fozi football court",
-          sport: "Basketball",
-          image: "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=300&fit=crop&auto=format",
-          rating: 4.8,
-          reviews: 98,
-          location: "Uskudar",
-          distance: "2.1 Km",
-          type: "indoor",
-          price: 1500,
-          isFavorite: false
-      }
-  ]
-};
+// Venue data loaded from API
+const venues = { popular: [], nearby: [] };
+
+function mapFieldToVenue(field, favoriteIds) {
+  var id = field.id;
+  var images = field.images && field.images.length ? field.images : [];
+  var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
+  return {
+    id: id,
+    name: field.name,
+    sport: field.sport || 'Sport',
+    image: img,
+    rating: field.rating != null ? field.rating : 0,
+    reviews: field.reviewCount != null ? field.reviewCount : 0,
+    location: field.location || '',
+    distance: 'N/A',
+    type: (field.type || 'OUTDOOR').toLowerCase(),
+    price: field.pricePerHour != null ? field.pricePerHour : 0,
+    isFavorite: favoriteIds.indexOf(id) !== -1
+  };
+}
+
+function loadVenuesFromAPI() {
+  return Promise.all([
+    typeof API !== 'undefined' ? API.fields.getAll({ limit: 24 }) : Promise.resolve({ fields: [] }),
+    typeof API !== 'undefined' && API.getAuthToken() ? API.favorites.getAll().catch(function() { return { favorites: [] }; }) : Promise.resolve({ favorites: [] })
+  ]).then(function(results) {
+    var fieldsRes = results[0];
+    var favRes = results[1];
+    var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
+    var list = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
+    venues.popular = list.slice(0, 6);
+    venues.nearby = list.slice(6, 15);
+    return venues;
+  });
+}
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
-  try {
-      loadFavoritesFromStorage();
-      renderVenues('popular', venues.popular);
-      renderVenues('nearby', venues.nearby);
-      setupEventListeners();
-      initializeBookingModal();
-      initializePaymentModal();
-      
-      // Check for invite link in URL
-      handleInviteLink();
-      
-      // Ensure all cards are visible on initial load
-      const allCards = document.querySelectorAll('.venue-card');
-      allCards.forEach(card => {
-          card.style.display = 'block';
-      });
-  } catch (error) {
-      console.error('Error initializing page:', error);
-      alert('An error occurred while loading the page. Please check the console for details.');
+  function initUI() {
+    renderVenues('popular', venues.popular);
+    renderVenues('nearby', venues.nearby);
+    setupEventListeners();
+    initializeBookingModal();
+    initializePaymentModal();
+    handleInviteLink();
+    var allCards = document.querySelectorAll('.venue-card');
+    allCards.forEach(function(card) { card.style.display = 'block'; });
   }
+  loadVenuesFromAPI()
+    .then(function() {
+      loadFavoritesFromStorage();
+      initUI();
+    })
+    .catch(function(err) {
+      console.error('Error loading fields:', err);
+      loadFavoritesFromStorage();
+      initUI();
+    });
 });
 
 // Handle invite link from URL
@@ -254,28 +167,25 @@ function createVenueCard(venue) {
   return card;
 }
 
-// Toggle favorite status
+// Toggle favorite status (API + local state)
 function toggleFavorite(venueId) {
-  // Update in popular venues
-  const popularVenue = venues.popular.find(v => v.id === venueId);
-  if (popularVenue) {
-      popularVenue.isFavorite = !popularVenue.isFavorite;
+  if (typeof API === 'undefined' || !API.getAuthToken()) {
+    alert('Please log in to add favorites.');
+    return;
   }
-  
-  // Update in nearby venues
-  const nearbyVenue = venues.nearby.find(v => v.id === venueId);
-  if (nearbyVenue) {
-      nearbyVenue.isFavorite = !nearbyVenue.isFavorite;
-  }
-  
-  // Update UI
-  const favoriteBtn = document.querySelector(`.favorite-btn[data-venue-id="${venueId}"]`);
-  if (favoriteBtn) {
-      favoriteBtn.classList.toggle('active');
-  }
-  
-  // Save to localStorage (optional)
-  saveFavoritesToStorage();
+  var popularVenue = venues.popular.find(function(v) { return v.id === venueId; });
+  var nearbyVenue = venues.nearby.find(function(v) { return v.id === venueId; });
+  var isCurrentlyFavorite = (popularVenue && popularVenue.isFavorite) || (nearbyVenue && nearbyVenue.isFavorite);
+  var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+  promise.then(function() {
+    if (popularVenue) popularVenue.isFavorite = !popularVenue.isFavorite;
+    if (nearbyVenue) nearbyVenue.isFavorite = !nearbyVenue.isFavorite;
+    var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
+    if (favoriteBtn) favoriteBtn.classList.toggle('active');
+    saveFavoritesToStorage();
+  }).catch(function(err) {
+    alert(err.message || 'Failed to update favorite.');
+  });
 }
 
 // Handle book button click
@@ -368,22 +278,16 @@ function openBookingModal(venue) {
   updateStepButtons();
 }
 
-// Get player data from localStorage (simulated)
+// Get player data from API auth (currentUser set on login)
 function getPlayerData() {
-  // In a real app, this would come from authentication
-  const stored = localStorage.getItem('playerData');
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  
-  // Default player data for demo
-  const defaultPlayer = {
-    id: 'player_' + Date.now(),
-    name: 'John Doe',
-    email: 'john.doe@example.com'
+  if (typeof API === 'undefined') return null;
+  var user = API.getCurrentUser && API.getCurrentUser();
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.fullName || user.name || user.email,
+    email: user.email
   };
-  localStorage.setItem('playerData', JSON.stringify(defaultPlayer));
-  return defaultPlayer;
 }
 
 // Populate field details in step 1
@@ -1291,44 +1195,41 @@ function confirmBooking() {
   saveBookingAndSendInvitations(booking);
 }
 
-// Save booking and send invitations
+// Save booking via API and show confirmation
 function saveBookingAndSendInvitations(booking) {
-  // Check if full payment is received
-  const isFullyPaid = checkFullPayment(booking);
-  
-  // Update booking status based on payment
-  if (isFullyPaid) {
-    booking.status = 'confirmed';
-    booking.confirmedAt = new Date().toISOString();
-  } else {
-    booking.status = 'pending';
+  if (typeof API === 'undefined' || !API.getAuthToken()) {
+    alert('Please log in to create a booking.');
+    return;
   }
-
-  // Save booking to localStorage (in real app, this would be an API call)
-  const bookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-  bookings.push(booking);
-  localStorage.setItem('playerBookings', JSON.stringify(bookings));
-
-  // Send invitations to players
-  sendPlayerInvitations(booking);
-
-  // Notify field owner
-  notifyFieldOwner(booking);
-
-  // Show confirmation message
-  if (isFullyPaid) {
-    showBookingConfirmation(booking, true);
-  } else {
-    showBookingConfirmation(booking, false);
+  var slots = bookingState.selectedTimeSlots || [];
+  if (slots.length === 0) {
+    alert('Please select at least one time slot.');
+    return;
   }
-
-  // Close modal
-  closeBookingModal();
-
-  // Redirect to bookings page
-  setTimeout(() => {
-    window.location.href = 'bookings.html';
-  }, 2000);
+  var timeSlotStart = slots[0];
+  var lastHour = parseInt(slots[slots.length - 1].split(':')[0], 10);
+  var timeSlotEnd = (lastHour + 1).toString().padStart(2, '0') + ':00';
+  var payload = {
+    fieldId: bookingState.field.id,
+    date: bookingState.selectedDate,
+    timeSlotStart: timeSlotStart,
+    timeSlotEnd: timeSlotEnd,
+    paymentMethod: (bookingState.paymentMethod || 'SPLIT').toUpperCase().replace('ORGANIZER', 'ORGANIZER').replace('SPLIT', 'SPLIT').replace('MIXED', 'MIXED'),
+    teamSize: (bookingState.players.length + 1) || 1
+  };
+  if (payload.paymentMethod === 'MIXED' && bookingState.mixedPaymentDistribution) {
+    payload.mixedPaymentDistribution = bookingState.mixedPaymentDistribution;
+  }
+  API.bookings.create(payload)
+    .then(function(res) {
+      var isFullyPaid = false;
+      showBookingConfirmation(booking, isFullyPaid);
+      closeBookingModal();
+      setTimeout(function() { window.location.href = 'bookings.html'; }, 2000);
+    })
+    .catch(function(err) {
+      alert(err.message || 'Failed to create booking.');
+    });
 }
 
 // Check if full payment is received
