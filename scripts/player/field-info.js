@@ -215,17 +215,20 @@ function findVenueById(venueId) {
 // Load field from API and map to venue format for rendering
 function loadFieldFromAPI(fieldId) {
   if (typeof API === 'undefined' || !fieldId) return Promise.resolve(null);
-  return API.fields.getById(fieldId).then(function(field) {
+  return API.fields.getById(fieldId).then(function(res) {
+    // API returns { field: {...} }, extract the actual field
+    var field = (res && res.field) ? res.field : res;
     var images = (field.images && field.images.length) ? field.images : [];
     var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop';
+    var reviewCount = field.reviewCount != null ? field.reviewCount : (field._count && field._count.reviews) || 0;
     return {
       id: field.id,
-      name: field.name,
+      name: field.name || 'Field',
       sport: field.sport || 'Sport',
       image: img,
       images: images,
       rating: field.rating != null ? field.rating : 0,
-      reviews: field.reviewCount != null ? field.reviewCount : 0,
+      reviews: reviewCount,
       location: field.location || '',
       distance: 'N/A',
       type: (field.type || 'OUTDOOR').toLowerCase(),
@@ -234,7 +237,9 @@ function loadFieldFromAPI(fieldId) {
       description: field.description || '',
       features: Array.isArray(field.features) ? field.features : [],
       address: field.address || '',
-      phone: field.phone || ''
+      phone: field.phone || '',
+      owner: field.owner || null,
+      apiReviews: Array.isArray(field.reviews) ? field.reviews : []
     };
   }).then(function(venue) {
     if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
@@ -324,10 +329,10 @@ function renderFieldInfo(venue) {
       </div>
   `).join('');
 
-  // Get images array or use single image
-  const images = venue.images || [venue.image];
+  // Get images array or use single image (ensure at least one for gallery)
+  const images = (venue.images && venue.images.length) ? venue.images : (venue.image ? [venue.image] : ['https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop']);
   const imagesHTML = images.map((img, index) => `
-      <img src="${img}" alt="${venue.name} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport)}%3C/text%3E%3C/svg%3E'">
+      <img src="${img}" alt="${(venue.name || 'Field')} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport || 'Sport')}%3C/text%3E%3C/svg%3E'">
   `).join('');
 
   const html = `
@@ -426,31 +431,10 @@ function renderFieldInfo(venue) {
               <!-- Amenities -->
               <div class="field-amenities-section">
                   <h3 class="section-title">Amenities</h3>
-                  <div class="amenities-grid">
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Flood lights</span>
-                      </div>
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Showers</span>
-                      </div>
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Team benches</span>
-                      </div>
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Changing rooms</span>
-                      </div>
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Parking</span>
-                      </div>
-                      <div class="amenity-item">
-                          <i class="fi fi-rr-check amenity-icon"></i>
-                          <span>Wi-Fi</span>
-                      </div>
+                  <div class="amenities-grid" id="amenitiesGrid">
+                      ${(venue.features && venue.features.length ? venue.features : ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi']).map(function(f) {
+                        return '<div class="amenity-item"><i class="fi fi-rr-check amenity-icon"></i><span>' + (typeof f === 'string' ? f : (f.name || f)) + '</span></div>';
+                      }).join('')}
                   </div>
               </div>
 
@@ -490,7 +474,7 @@ function renderFieldInfo(venue) {
                           placeholder="Share your experience..."
                           rows="4"
                       ></textarea>
-                      <button class="submit-review-btn" onclick="submitReview(${venue.id})">Submit Review</button>
+                      <button class="submit-review-btn" onclick="submitReview('${String(venue.id).replace(/'/g, "\\'")}')">Submit Review</button>
                   </div>
 
                   <div class="reviews-list" id="reviewsList" style="display: none;">
@@ -533,10 +517,10 @@ function renderFieldInfo(venue) {
               <div class="venue-contact-card">
                   <h3 class="venue-contact-title">Venue contact</h3>
                   <div class="venue-contact-info">
-                      <div class="venue-avatar">N</div>
+                      <div class="venue-avatar">${(venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N')}</div>
                       <div class="venue-details">
-                          <div class="venue-name">Noor Arena Managment</div>
-                          <div class="venue-response">Responds within a few hours</div>
+                          <div class="venue-name">${(venue.owner && venue.owner.fullName) || 'Venue Manager'}</div>
+                          <div class="venue-response">${venue.phone ? 'Phone: ' + venue.phone : 'Responds within a few hours'}</div>
                       </div>
                   </div>
                   <button class="venue-message-btn">Message venue</button>
@@ -564,8 +548,8 @@ function renderFieldInfo(venue) {
   // Initialize star rating
   initializeStarRating();
   
-  // Display reviews
-  displayReviews(venue.id);
+  // Display reviews (pass apiReviews from field load, or fetch from API)
+  displayReviews(venue.id, venue.apiReviews);
 }
 
 // Update save button state
@@ -618,8 +602,9 @@ function handleBooking(venueId) {
   }
 }
 
-// Make handleBooking available globally
+// Make handleBooking and submitReview available globally (for inline onclick)
 window.handleBooking = handleBooking;
+window.submitReview = submitReview;
 
 // Load reviews from localStorage
 function loadReviews(venueId) {
@@ -635,12 +620,12 @@ function saveReviews(venueId, reviews) {
   localStorage.setItem(`reviews_${venueId}`, JSON.stringify(reviews));
 }
 
-// Submit review
+// Submit review (API when logged in, else localStorage)
 function submitReview(venueId) {
   const textarea = document.getElementById('reviewTextarea');
   const ratingValue = document.getElementById('ratingValue');
   const reviewText = textarea.value.trim();
-  const rating = parseInt(ratingValue.textContent);
+  const rating = parseInt(ratingValue.textContent, 10);
 
   if (!reviewText) {
       alert('Please write a review before submitting.');
@@ -652,119 +637,109 @@ function submitReview(venueId) {
       return;
   }
 
-  // Get existing reviews
-  const reviews = loadReviews(venueId);
-  
-  // Create new review
-  const newReview = {
+  function doLocalSubmit() {
+    var reviews = loadReviews(venueId);
+    var newReview = {
       id: Date.now(),
-      reviewerName: 'You', // In a real app, this would come from user authentication
+      reviewerName: 'You',
       reviewerInitial: 'Y',
       reviewText: reviewText,
       rating: rating,
       date: new Date().toLocaleDateString(),
       context: 'Recent booking'
-  };
+    };
+    reviews.unshift(newReview);
+    saveReviews(venueId, reviews);
+    textarea.value = '';
+    resetStarRating();
+    displayReviews(venueId, null);
+    alert('Thank you for your review!');
+  }
 
-  // Add new review
-  reviews.unshift(newReview); // Add to beginning
-  saveReviews(venueId, reviews);
-
-  // Clear form
-  textarea.value = '';
-  resetStarRating();
-
-  // Reload reviews display
-  displayReviews(venueId);
-
-  alert('Thank you for your review!');
+  if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && API.reviews && API.reviews.create) {
+    API.reviews.create({
+      fieldId: venueId,
+      rating: rating,
+      reviewText: reviewText,
+      context: 'Recent booking'
+    }).then(function() {
+      textarea.value = '';
+      resetStarRating();
+      displayReviews(venueId, null);
+      alert('Thank you for your review!');
+    }).catch(function(err) {
+      alert(err.message || 'Failed to submit review.');
+    });
+    return;
+  }
+  doLocalSubmit();
 }
 
-// Display reviews
-function displayReviews(venueId) {
-  const reviewsList = document.getElementById('reviewsList');
-  const reviews = loadReviews(venueId);
-  
-  // Default reviews (if no user reviews exist, show these)
-  const defaultReviews = [
-      {
-          reviewerName: 'Ahmed',
-          reviewerInitial: 'A',
-          reviewText: '"Great field quality, lights are strong and the staff were friendly. Booking was smooth."',
-          rating: 5,
-          context: 'Played 5v5 last week'
-      },
-      {
-          reviewerName: 'Sara',
-          reviewerInitial: 'S',
-          reviewText: '"Perfect location and easy to reach. Parking area helps a lot during busy hours."',
-          rating: 5,
-          context: 'Weekend booking'
-      },
-      {
-          reviewerName: 'Mohamed',
-          reviewerInitial: 'M',
-          reviewText: '"Excellent facilities and well-maintained field. The synthetic turf is in great condition. Highly recommended for regular play."',
-          rating: 5,
-          context: 'Regular player'
-      },
-      {
-          reviewerName: 'Leyla',
-          reviewerInitial: 'L',
-          reviewText: '"Really enjoyed playing here. The booking process was easy and the field was clean. Will definitely come back!"',
-          rating: 4,
-          context: 'First time visitor'
-      },
-      {
-          reviewerName: 'Yusuf',
-          reviewerInitial: 'Y',
-          reviewText: '"Good value for money. The field is spacious and the lighting is perfect for evening games. Only wish there were more parking spots."',
-          rating: 4,
-          context: 'Evening booking'
-      },
-      {
-          reviewerName: 'Aylin',
-          reviewerInitial: 'A',
-          reviewText: '"Amazing experience! The facilities are top-notch and the staff is very accommodating. Great for team training sessions."',
-          rating: 5,
-          context: 'Team training'
-      },
-      {
-          reviewerName: 'Can',
-          reviewerInitial: 'C',
-          reviewText: '"Decent field but could use some improvements in the changing rooms. Overall good value for the price."',
-          rating: 4,
-          context: 'Monthly booking'
-      },
-      {
-          reviewerName: 'Elif',
-          reviewerInitial: 'E',
-          reviewText: '"One of the best football fields in the area. The surface is perfect and the location is very convenient. Highly recommend!"',
-          rating: 5,
-          context: 'Regular customer'
+// Map API review to display format (handles both API { user, reviewText } and local { reviewerName, reviewerInitial })
+function mapApiReviewToDisplay(r) {
+  if (r.reviewerName && r.reviewerInitial) return r;
+  var name = (r.user && r.user.fullName) || 'Anonymous';
+  return {
+    reviewerName: name,
+    reviewerInitial: name.charAt(0).toUpperCase(),
+    reviewText: r.reviewText || '',
+    rating: r.rating || 0,
+    context: r.context || 'Player'
+  };
+}
+
+// Display reviews (fetches from API when available, uses preloaded or fallbacks)
+function displayReviews(venueId, preloadedApiReviews) {
+  var reviewsList = document.getElementById('reviewsList');
+  if (!reviewsList) return;
+
+  function render(reviewsToShow) {
+    var emptyMsg = '<div class="reviews-empty">No reviews yet. Be the first to leave a review!</div>';
+    reviewsList.innerHTML = reviewsToShow.length
+      ? reviewsToShow.map(function(r) {
+          var rev = (r.user || r.reviewerName) ? mapApiReviewToDisplay(r) : r;
+          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + (rev.reviewerInitial || '?') + '</div><div><div class="reviewer-name">' + (rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + (rev.context || '') + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div><div class="review-text">' + (rev.reviewText || '') + '</div></div>';
+        }).join('')
+      : emptyMsg;
+  }
+
+  var localReviews = loadReviews(venueId);
+  var combined = [];
+
+  if (preloadedApiReviews && preloadedApiReviews.length) {
+    combined = preloadedApiReviews.map(mapApiReviewToDisplay);
+  }
+
+  if (typeof API !== 'undefined' && API.reviews && API.reviews.getByField) {
+    API.reviews.getByField(venueId, { limit: 20 }).then(function(res) {
+      var apiReviews = (res && res.reviews) ? res.reviews : [];
+      combined = apiReviews.length ? apiReviews.map(mapApiReviewToDisplay) : combined;
+      if (localReviews.length && combined.length === 0) {
+        combined = localReviews;
+      } else if (localReviews.length) {
+        combined = combined.concat(localReviews.filter(function(lr) { return !combined.some(function(c) { return c.reviewText === lr.reviewText; }); }));
       }
-  ];
+      render(combined.length ? combined : []);
+    }).catch(function() {
+      combined = localReviews.length ? localReviews : [];
+      render(combined.length ? combined : []);
+    });
+    return;
+  }
 
-  // Combine user reviews with default reviews, showing user reviews first
-  const allReviews = reviews.length > 0 ? [...reviews, ...defaultReviews] : defaultReviews;
-
-  reviewsList.innerHTML = allReviews.map(review => `
-      <div class="review-card">
-          <div class="review-header">
-              <div class="reviewer-info">
-                  <div class="reviewer-avatar-small">${review.reviewerInitial}</div>
-                  <div>
-                      <div class="reviewer-name">${review.reviewerName}</div>
-                      <div class="review-context">${review.context}</div>
-                  </div>
-              </div>
-              <div class="review-rating-display">
-                  <span class="star-filled">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
-              </div>
-          </div>
-          <div class="review-text">${review.reviewText}</div>
-      </div>
-  `).join('');
+  combined = localReviews.length ? localReviews : [];
+  if (combined.length === 0 && preloadedApiReviews && preloadedApiReviews.length) {
+    combined = preloadedApiReviews.map(mapApiReviewToDisplay);
+  }
+  if (combined.length === 0) {
+    var defaultReviews = [
+      { reviewerName: 'Ahmed', reviewerInitial: 'A', reviewText: '"Great field quality, lights are strong and the staff were friendly. Booking was smooth."', rating: 5, context: 'Played 5v5 last week' },
+      { reviewerName: 'Sara', reviewerInitial: 'S', reviewText: '"Perfect location and easy to reach. Parking area helps a lot during busy hours."', rating: 5, context: 'Weekend booking' },
+      { reviewerName: 'Mohamed', reviewerInitial: 'M', reviewText: '"Excellent facilities and well-maintained field. Highly recommended for regular play."', rating: 5, context: 'Regular player' }
+    ];
+    combined = defaultReviews;
+  }
+  render(combined);
 }
 
 // Initialize gallery sliding
@@ -930,41 +905,8 @@ function setupProfilePopup() {
   }
 }
 
-// Setup notification popup (same as home-player.js)
-function setupNotificationPopup() {
-  const notificationBtn = document.querySelector('.notification-btn');
-  const notificationPopup = document.getElementById('notificationPopup');
-  const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-  
-  if (notificationBtn && notificationPopup) {
-      notificationBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          notificationPopup.classList.toggle('active');
-          // Close profile popup if open
-          const profilePopup = document.getElementById('profilePopup');
-          if (profilePopup && profilePopup.classList.contains('active')) {
-              profilePopup.classList.remove('active');
-          }
-      });
-      
-      // Close notification button
-      if (closeNotificationBtn) {
-          closeNotificationBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              notificationPopup.classList.remove('active');
-          });
-      }
-      
-      // Close popup when clicking outside
-      document.addEventListener('click', (e) => {
-          if (notificationPopup && notificationPopup.classList.contains('active')) {
-              if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                  notificationPopup.classList.remove('active');
-              }
-          }
-      });
-  }
-}
+// Notification popup handled by shared notifications.js
+function setupNotificationPopup() {}
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {

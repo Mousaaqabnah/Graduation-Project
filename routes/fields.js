@@ -69,6 +69,127 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get fields by owner (must be before /:id to avoid "owner" being matched as id)
+router.get('/owner/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+
+    const fields = await prisma.field.findMany({
+      where: {
+        ownerId,
+        isActive: true
+      },
+      include: {
+        _count: {
+          select: {
+            reviews: true,
+            bookings: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ fields });
+  } catch (error) {
+    console.error('Get owner fields error:', error);
+    res.status(500).json({ error: 'Failed to fetch fields' });
+  }
+});
+
+// Get field availability for a specific date (must be before /:id to avoid route conflict)
+router.get('/:id/availability', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const field = await prisma.field.findUnique({
+      where: { id },
+      select: { id: true, isActive: true }
+    });
+
+    if (!field || !field.isActive) {
+      return res.status(404).json({ error: 'Field not found or inactive' });
+    }
+
+    // Parse the date string (YYYY-MM-DD) and create UTC date range
+    const [year, month, day] = date.split('-').map(Number);
+    const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+
+    // Check if the entire date is unavailable (locked by owner)
+    const unavailableDate = await prisma.fieldUnavailableDate.findFirst({
+      where: {
+        fieldId: id,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay
+        }
+      }
+    });
+
+    if (unavailableDate) {
+      return res.json({
+        available: false,
+        lockedByOwner: true,
+        bookedSlots: [],
+        message: 'This field is not available on the selected date'
+      });
+    }
+
+    // Get all bookings for this field on this date (excluding cancelled)
+    const bookings = await prisma.booking.findMany({
+      where: {
+        fieldId: id,
+        date: {
+          gte: startOfDay,
+          lte: endOfDay
+        },
+        status: {
+          notIn: ['CANCELLED']
+        }
+      },
+      select: {
+        timeSlotStart: true,
+        timeSlotEnd: true,
+        timeSlotRanges: true,
+        status: true,
+        date: true
+      }
+    });
+
+    // Build list of booked time slots (support timeSlotRanges for non-contiguous)
+    const bookedSlots = [];
+    bookings.forEach(booking => {
+      const ranges = booking.timeSlotRanges && Array.isArray(booking.timeSlotRanges) ? booking.timeSlotRanges : [{ start: booking.timeSlotStart, end: booking.timeSlotEnd }];
+      ranges.forEach(r => {
+        const startHour = parseInt(String(r.start).split(':')[0], 10);
+        const endHour = parseInt(String(r.end).split(':')[0], 10);
+        for (let hour = startHour; hour < endHour; hour++) {
+          const slotStart = `${hour.toString().padStart(2, '0')}:00`;
+          if (!bookedSlots.includes(slotStart)) {
+            bookedSlots.push(slotStart);
+          }
+        }
+      });
+    });
+
+    res.json({
+      available: true,
+      lockedByOwner: false,
+      bookedSlots: bookedSlots,
+      debug: { bookingsFound: bookings.length, dateRange: { start: startOfDay.toISOString(), end: endOfDay.toISOString() } }
+    });
+  } catch (error) {
+    console.error('Get field availability error:', error);
+    res.status(500).json({ error: 'Failed to fetch availability' });
+  }
+});
+
 // Get field by ID
 router.get('/:id', async (req, res) => {
   try {
@@ -266,34 +387,6 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete field error:', error);
     res.status(500).json({ error: 'Failed to delete field' });
-  }
-});
-
-// Get fields by owner
-router.get('/owner/:ownerId', async (req, res) => {
-  try {
-    const { ownerId } = req.params;
-
-    const fields = await prisma.field.findMany({
-      where: {
-        ownerId,
-        isActive: true
-      },
-      include: {
-        _count: {
-          select: {
-            reviews: true,
-            bookings: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    res.json({ fields });
-  } catch (error) {
-    console.error('Get owner fields error:', error);
-    res.status(500).json({ error: 'Failed to fetch fields' });
   }
 });
 

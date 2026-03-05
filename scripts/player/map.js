@@ -42,7 +42,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearch();
     setupMapMarkers();
     updateFieldCount();
-    setupNotifications();
     setupProfile();
 });
 
@@ -252,32 +251,8 @@ document.querySelector('.btn-recenter')?.addEventListener('click', function() {
     alert('In a real app, this would re-center the map to show all visible fields.');
 });
 
-// Setup notifications
-function setupNotifications() {
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        // Close popup when clicking outside
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
-}
+// Notifications handled by shared notifications.js (empty - setupNotifications removed)
+function setupNotifications() {}
 
 // Setup profile popup
 function setupProfile() {
@@ -289,10 +264,8 @@ function setupProfile() {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
             // Close notification popup if open
-            const notificationPopup = document.getElementById('notificationPopup');
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
         
         // Close popup when clicking outside

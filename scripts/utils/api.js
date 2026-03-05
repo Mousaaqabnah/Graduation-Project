@@ -100,7 +100,8 @@ const authAPI = {
   logout: () => {
     removeAuthToken();
     removeCurrentUser();
-    window.location.href = '/pages/auth/login.html';
+    // Use replace so Back button doesn't return to the page we just left
+    window.location.replace('/pages/auth/login.html');
   },
 
   getCurrentUser: async () => {
@@ -171,6 +172,10 @@ const fieldsAPI = {
 
   getByOwner: async (ownerId) => {
     return apiRequest(`/fields/owner/${ownerId}`);
+  },
+
+  getAvailability: async (fieldId, date) => {
+    return apiRequest(`/fields/${fieldId}/availability?date=${encodeURIComponent(date)}`);
   }
 };
 
@@ -199,16 +204,33 @@ const bookingsAPI = {
     });
   },
 
+  reschedule: async (id, data) => {
+    return apiRequest(`/bookings/${id}/reschedule`, {
+      method: 'PUT',
+      body: data
+    });
+  },
+
   addParticipant: async (id, userId) => {
     return apiRequest(`/bookings/${id}/participants`, {
       method: 'POST',
       body: { userId }
+    });
+  },
+
+  removeParticipant: async (id) => {
+    return apiRequest(`/bookings/${id}/participants/me`, {
+      method: 'DELETE'
     });
   }
 };
 
 // Reviews API
 const reviewsAPI = {
+  getMyReviews: async () => {
+    return apiRequest('/reviews/user/me');
+  },
+
   getByField: async (fieldId, params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiRequest(`/reviews/field/${fieldId}?${queryString}`);

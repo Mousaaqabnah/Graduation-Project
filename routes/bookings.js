@@ -34,7 +34,7 @@ router.get('/', authenticate, async (req, res) => {
       ];
     }
 
-    const [bookings, total] = await Promise.all([
+    const [bookingsRaw, total] = await Promise.all([
       prisma.booking.findMany({
         where,
         skip,
@@ -46,7 +46,8 @@ router.get('/', authenticate, async (req, res) => {
               name: true,
               sport: true,
               location: true,
-              images: true
+              images: true,
+              pricePerHour: true
             }
           },
           organizer: {
@@ -73,6 +74,16 @@ router.get('/', authenticate, async (req, res) => {
       }),
       prisma.booking.count({ where })
     ]);
+
+    // Ensure each booking appears only once (e.g. if OR + relations ever produced duplicates)
+    const seen = new Set();
+    const bookings = bookingsRaw.filter((b) => {
+      const id = b.id ? String(b.id) : null;
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 
     res.json({
       bookings,
@@ -169,7 +180,7 @@ router.post('/', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fieldId, date, timeSlotStart, timeSlotEnd, paymentMethod, teamSize, mixedPaymentDistribution } = req.body;
+    const { fieldId, date, timeSlotStart, timeSlotEnd, paymentMethod, teamSize, mixedPaymentDistribution, timeSlotRanges } = req.body;
 
     // Check if field exists and is active
     const field = await prisma.field.findUnique({
@@ -180,20 +191,27 @@ router.post('/', authenticate, [
       return res.status(404).json({ error: 'Field not found or inactive' });
     }
 
-    // Calculate total cost (simplified - you might want to calculate based on hours)
-    const startTime = new Date(`${date}T${timeSlotStart}`);
-    const endTime = new Date(`${date}T${timeSlotEnd}`);
-    const hours = (endTime - startTime) / (1000 * 60 * 60);
-    const totalCost = Math.round(field.pricePerHour * hours);
+    // Total cost: sum hours from timeSlotRanges if provided, else single range
+    let totalCost;
+    const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0 ? timeSlotRanges : [{ start: timeSlotStart, end: timeSlotEnd }];
+    let totalHours = 0;
+    ranges.forEach(r => {
+      const sh = parseInt(String(r.start).split(':')[0], 10);
+      const eh = parseInt(String(r.end).split(':')[0], 10);
+      totalHours += (eh - sh);
+    });
+    totalCost = Math.round((field.pricePerHour || 0) * totalHours);
 
-    // Create booking
+    // Create booking (timeSlotStart/timeSlotEnd = first range for backward compat)
+    const firstRange = ranges[0];
     const booking = await prisma.booking.create({
       data: {
         fieldId,
         organizerId: req.user.id,
         date: new Date(date),
-        timeSlotStart,
-        timeSlotEnd,
+        timeSlotStart: firstRange.start,
+        timeSlotEnd: firstRange.end,
+        timeSlotRanges: ranges.length > 1 ? ranges : null,
         totalCost,
         paymentMethod,
         teamSize: teamSize || 1,
@@ -282,6 +300,88 @@ router.put('/:id/status', authenticate, [
   }
 });
 
+// Reschedule booking (change date/time) - must be at least 24h before original start
+router.put('/:id/reschedule', authenticate, [
+  body('date').isISO8601(),
+  body('timeSlotStart').notEmpty(),
+  body('timeSlotEnd').notEmpty()
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, timeSlotStart, timeSlotEnd, timeSlotRanges } = req.body;
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: { field: true }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    // Only organizer, field owner or admin can reschedule
+    const isOrganizer = booking.organizerId === req.user.id;
+    const isFieldOwner = booking.field.ownerId === req.user.id;
+    const isAdmin = req.user.role === 'ADMIN';
+    if (!isOrganizer && !isFieldOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Compute original start datetime
+    const originalDateStr = booking.date.toISOString().split('T')[0];
+    const originalStart = new Date(`${originalDateStr}T${booking.timeSlotStart}`);
+    const now = new Date();
+    const hoursUntilStart = (originalStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (hoursUntilStart < 24) {
+      return res.status(400).json({ error: 'You cannot reschedule a booking less than 24 hours before its start time.' });
+    }
+
+    // Recalculate total cost based on new time ranges (supports non-contiguous)
+    const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0
+      ? timeSlotRanges
+      : [{ start: timeSlotStart, end: timeSlotEnd }];
+    let totalHours = 0;
+    ranges.forEach((r) => {
+      const sh = parseInt(String(r.start).split(':')[0], 10);
+      const eh = parseInt(String(r.end).split(':')[0], 10);
+      totalHours += (eh - sh);
+    });
+    if (totalHours <= 0) {
+      return res.status(400).json({ error: 'End time must be after start time.' });
+    }
+    const totalCost = Math.round(booking.field.pricePerHour * totalHours);
+
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: {
+        date: new Date(date),
+        timeSlotStart: ranges[0].start,
+        timeSlotEnd: ranges[ranges.length - 1].end,
+        timeSlotRanges: ranges.length > 1 ? ranges : null,
+        totalCost
+      },
+      include: {
+        field: true,
+        organizer: true,
+        participants: {
+          include: { user: true }
+        }
+      }
+    });
+
+    res.json({ message: 'Booking rescheduled', booking: updated });
+  } catch (error) {
+    console.error('Reschedule booking error:', error);
+    res.status(500).json({ error: 'Failed to reschedule booking' });
+  }
+});
+
 // Add participant to booking
 router.post('/:id/participants', authenticate, [
   body('userId').notEmpty()
@@ -344,6 +444,36 @@ router.post('/:id/participants', authenticate, [
   } catch (error) {
     console.error('Add participant error:', error);
     res.status(500).json({ error: 'Failed to add participant' });
+  }
+});
+
+// Remove current user as participant (leave booking)
+router.delete('/:id/participants/me', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: { participants: true }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const participant = booking.participants.find(p => p.userId === req.user.id);
+    if (!participant) {
+      return res.status(400).json({ error: 'You are not a participant in this booking' });
+    }
+
+    await prisma.bookingParticipant.delete({
+      where: { id: participant.id }
+    });
+
+    res.json({ message: 'Successfully left the booking' });
+  } catch (error) {
+    console.error('Remove participant error:', error);
+    res.status(500).json({ error: 'Failed to leave booking' });
   }
 });
 

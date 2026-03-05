@@ -14,9 +14,6 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     try {
         const response = await API.auth.login(email, password);
         
-        // Show success message
-        alert('Login successful! Redirecting...');
-        
         // Redirect based on user role
         const user = response.user;
         if (user.role === 'ADMIN') {
@@ -60,4 +57,27 @@ document.querySelectorAll('input').forEach(input => {
     });
 });
 
+// Always clear login form fields when we land on the login page
+// This prevents old email/password from appearing after logout + back navigation
+(function() {
+    function clearLoginForm() {
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const rememberCheckbox = document.getElementById('remember');
+        
+        if (emailInput) emailInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        if (rememberCheckbox) rememberCheckbox.checked = false;
+    }
+
+    // Clear immediately on script load (login.html loads this at the end of body)
+    clearLoginForm();
+
+    // Also clear when page is restored from back/forward cache
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) {
+            clearLoginForm();
+        }
+    });
+})();
 

@@ -152,6 +152,7 @@ model Booking {
   date                   DateTime
   timeSlotStart          String         @map("time_slot_start") // e.g. "18:00"
   timeSlotEnd            String         @map("time_slot_end")   // e.g. "20:00"
+  timeSlotRanges         Json?          @map("time_slot_ranges") // [{start,end},...] for non-contiguous slots
   totalCost              Int            @map("total_cost")      // in smallest currency unit
   paymentMethod          PaymentMethod @map("payment_method")
   status                 BookingStatus  @default(PENDING)

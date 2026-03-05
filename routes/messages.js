@@ -21,14 +21,16 @@ router.get('/conversations', authenticate, async (req, res) => {
           select: {
             id: true,
             fullName: true,
-            avatar: true
+            avatar: true,
+            role: true
           }
         },
         user2: {
           select: {
             id: true,
             fullName: true,
-            avatar: true
+            avatar: true,
+            role: true
           }
         },
         messages: {
@@ -77,14 +79,16 @@ router.get('/conversation/:userId', authenticate, async (req, res) => {
           select: {
             id: true,
             fullName: true,
-            avatar: true
+            avatar: true,
+            role: true
           }
         },
         user2: {
           select: {
             id: true,
             fullName: true,
-            avatar: true
+            avatar: true,
+            role: true
           }
         }
       }
@@ -98,22 +102,24 @@ router.get('/conversation/:userId', authenticate, async (req, res) => {
           user2Id: userId
         },
         include: {
-          user1: {
-            select: {
-              id: true,
-              fullName: true,
-              avatar: true
-            }
-          },
-          user2: {
-            select: {
-              id: true,
-              fullName: true,
-              avatar: true
-            }
+        user1: {
+          select: {
+            id: true,
+            fullName: true,
+            avatar: true,
+            role: true
+          }
+        },
+        user2: {
+          select: {
+            id: true,
+            fullName: true,
+            avatar: true,
+            role: true
           }
         }
-      });
+      }
+    });
     }
 
     res.json({ conversation });

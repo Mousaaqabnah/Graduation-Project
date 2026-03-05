@@ -478,28 +478,7 @@ function updateFilterButtonText() {
         }
     }
     
-    // Notification popup
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
+    // Notification popup handled by notifications.js
     
     // Profile popup
     const profileBtn = document.getElementById('profileBtn');
@@ -509,9 +488,8 @@ function updateFilterButtonText() {
         profileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
         
         document.addEventListener('click', (e) => {
@@ -795,7 +773,7 @@ function closeBookingModal() {
 }
 
 // Simplified implementations for booking modal steps
-function loadTimeSlots() {
+async function loadTimeSlots() {
     const container = document.getElementById('timeSlotsGrid');
     if (!container) return;
     
@@ -806,9 +784,40 @@ function loadTimeSlots() {
         slots.push({
             start: startTime,
             end: endTime,
-            available: Math.random() > 0.3
+            available: true // Default to available
         });
     }
+    
+    // Fetch real availability from API if a date is selected
+    let bookedSlots = [];
+    
+    if (bookingState.selectedDate && bookingState.field && typeof API !== 'undefined') {
+        try {
+            container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+            const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
+            
+            if (!availability.available && availability.lockedByOwner) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+                        <p>${availability.message || 'This field is not available on the selected date.'}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            bookedSlots = availability.bookedSlots || [];
+        } catch (error) {
+            console.error('Failed to fetch availability:', error);
+        }
+    }
+    
+    // Mark booked slots as unavailable
+    slots.forEach(slot => {
+        if (bookedSlots.includes(slot.start)) {
+            slot.available = false;
+        }
+    });
     
     container.innerHTML = slots.map(slot => `
         <button class="time-slot ${!slot.available ? 'unavailable' : ''} ${bookingState.selectedTimeSlots.includes(slot.start) ? 'selected' : ''}" 

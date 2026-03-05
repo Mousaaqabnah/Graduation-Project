@@ -473,7 +473,7 @@ function loadPaymentStep() {
 }
 
 // Load available time slots
-function loadTimeSlots() {
+async function loadTimeSlots() {
   const container = document.getElementById('timeSlotsGrid');
   if (!container) {
     console.error('Time slots container not found');
@@ -493,9 +493,47 @@ function loadTimeSlots() {
     slots.push({
       start: startTime,
       end: endTime,
-      available: Math.random() > 0.3 // 70% availability for demo
+      available: true // Default to available
     });
   }
+
+  // Fetch real availability from API if a date is selected
+  let bookedSlots = [];
+  let dayLocked = false;
+  
+  if (bookingState.selectedDate && typeof API !== 'undefined') {
+    try {
+      container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+      console.log('Fetching availability for field:', bookingState.field.id, 'date:', bookingState.selectedDate);
+      const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
+      console.log('Availability response:', availability);
+      
+      if (!availability.available && availability.lockedByOwner) {
+        // Entire day is locked by owner
+        dayLocked = true;
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: #dc3545;">
+            <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+            <p>${availability.message || 'This field is not available on the selected date.'}</p>
+          </div>
+        `;
+        return;
+      }
+      
+      bookedSlots = availability.bookedSlots || [];
+      console.log('Booked slots:', bookedSlots);
+    } catch (error) {
+      console.error('Failed to fetch availability:', error);
+      // Continue with all slots available if API fails
+    }
+  }
+
+  // Mark booked slots as unavailable
+  slots.forEach(slot => {
+    if (bookedSlots.includes(slot.start)) {
+      slot.available = false;
+    }
+  });
 
   container.innerHTML = slots.map(slot => `
     <button class="time-slot ${!slot.available ? 'unavailable' : ''} ${bookingState.selectedTimeSlots.includes(slot.start) ? 'selected' : ''}" 
@@ -554,13 +592,20 @@ function updatePlayersList() {
   }
 
   container.innerHTML = bookingState.players.map((player, index) => `
-    <div class="player-item">
-      <div class="player-info">
-        <i class="fi fi-rr-user"></i>
-        <span>${player.name}</span>
-        <span class="player-id">ID: ${player.id}</span>
+    <div class="player-item" style="display: flex; align-items: center; padding: 10px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px;">
+      <div class="player-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 12px; overflow: hidden;">
+        ${player.avatar 
+          ? `<img src="${player.avatar}" style="width: 100%; height: 100%; object-fit: cover;">` 
+          : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
       </div>
-      <button class="remove-player-btn" data-index="${index}">
+      <div class="player-info" style="flex: 1;">
+        <div style="font-weight: 500; color: #333;">${player.name}</div>
+        <div style="font-size: 12px; color: #666;">${player.email || ''}</div>
+      </div>
+      <div class="player-payment-status" style="margin-right: 12px; padding: 4px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px;">
+        <i class="fi fi-rr-clock" style="font-size: 10px;"></i> Payment Pending
+      </div>
+      <button class="remove-player-btn" data-index="${index}" style="background: none; border: none; color: #dc3545; cursor: pointer; padding: 4px;">
         <i class="fi fi-rr-cross-small"></i>
       </button>
     </div>
@@ -894,13 +939,7 @@ function initializeBookingModal() {
     });
   }
 
-  // Submit payment button
-  const submitPaymentBtn = document.getElementById('submitPaymentBtn');
-  if (submitPaymentBtn) {
-    submitPaymentBtn.addEventListener('click', () => {
-      handlePaymentSubmission();
-    });
-  }
+  // Submit payment button - handled by initializePaymentModal to avoid duplicate listeners
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
@@ -935,6 +974,9 @@ function initializeBookingModal() {
       }
     });
   }
+  
+  // Setup real-time user search
+  setupPlayerSearch();
 
   // Copy invite link
   const copyLinkBtn = document.getElementById('copyInviteLink');
@@ -1106,34 +1148,145 @@ function validatePaymentForm() {
   return true;
 }
 
-// Add player
+// Search timeout for debouncing
+let searchTimeout = null;
+let selectedSearchUser = null;
+
+// Search users as user types
+function setupPlayerSearch() {
+  const input = document.getElementById('playerSearchInput');
+  const resultsContainer = document.getElementById('playerSearchResults');
+  
+  if (!input || !resultsContainer) return;
+  
+  input.addEventListener('input', function() {
+    const query = this.value.trim();
+    selectedSearchUser = null;
+    
+    // Clear previous timeout
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    // Hide results if query is too short
+    if (query.length < 2) {
+      resultsContainer.style.display = 'none';
+      return;
+    }
+    
+    // Debounce search
+    searchTimeout = setTimeout(() => searchUsers(query), 300);
+  });
+  
+  // Hide results when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !resultsContainer.contains(e.target)) {
+      resultsContainer.style.display = 'none';
+    }
+  });
+}
+
+// Search users via API
+async function searchUsers(query) {
+  const resultsContainer = document.getElementById('playerSearchResults');
+  if (!resultsContainer) return;
+  
+  try {
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
+    resultsContainer.style.display = 'block';
+    
+    const response = await API.users.search(query);
+    const users = response.users || [];
+    
+    // Filter out current user and already added players
+    const currentUser = API.getCurrentUser();
+    const filteredUsers = users.filter(user => {
+      if (currentUser && user.id === currentUser.id) return false;
+      if (bookingState.players.some(p => p.id === user.id)) return false;
+      return true;
+    });
+    
+    if (filteredUsers.length === 0) {
+      resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No users found</div>';
+      return;
+    }
+    
+    resultsContainer.innerHTML = filteredUsers.map(user => `
+      <div class="search-result-item" data-user='${JSON.stringify(user).replace(/'/g, "&#39;")}' 
+           style="display: flex; align-items: center; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;"
+           onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 10px; overflow: hidden;">
+          ${user.avatar 
+            ? `<img src="${user.avatar}" style="width: 100%; height: 100%; object-fit: cover;">` 
+            : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 500; color: #333;">${user.fullName}</div>
+          <div style="font-size: 12px; color: #666;">${user.email}</div>
+        </div>
+        <i class="fi fi-rr-plus" style="color: #007bff;"></i>
+      </div>
+    `).join('');
+    
+    // Add click handlers to results
+    resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', function() {
+        const userData = JSON.parse(this.dataset.user);
+        addPlayerFromSearch(userData);
+        resultsContainer.style.display = 'none';
+        document.getElementById('playerSearchInput').value = '';
+      });
+    });
+    
+  } catch (error) {
+    console.error('Search error:', error);
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+  }
+}
+
+// Add player from search result
+function addPlayerFromSearch(user) {
+  // Check if player already added
+  if (bookingState.players.some(p => p.id === user.id)) {
+    alert('This player is already added.');
+    return;
+  }
+  
+  const player = {
+    id: user.id,
+    name: user.fullName,
+    email: user.email,
+    avatar: user.avatar
+  };
+  
+  bookingState.players.push(player);
+  updatePlayersList();
+  updateCostSplit();
+}
+
+// Add player (fallback for manual entry - now shows search prompt)
 function addPlayer() {
   const input = document.getElementById('playerSearchInput');
   if (!input) return;
 
   const searchValue = input.value.trim();
   if (!searchValue) {
-    alert('Please enter a username or Player ID.');
+    alert('Please enter a username or email to search.');
     return;
   }
-
-  // Simulate player lookup (in real app, this would be an API call)
-  const player = {
-    id: 'player_' + Date.now(),
-    name: searchValue,
-    email: searchValue.toLowerCase().replace(/\s+/g, '.') + '@example.com'
-  };
-
-  // Check if player already added
-  if (bookingState.players.some(p => p.id === player.id || p.name.toLowerCase() === player.name.toLowerCase())) {
-    alert('This player is already added.');
+  
+  // If user selected from search, add them
+  if (selectedSearchUser) {
+    addPlayerFromSearch(selectedSearchUser);
+    input.value = '';
+    selectedSearchUser = null;
     return;
   }
-
-  bookingState.players.push(player);
-  input.value = '';
-  updatePlayersList();
-  updateCostSplit();
+  
+  // Otherwise, trigger search
+  if (searchValue.length >= 2) {
+    searchUsers(searchValue);
+  } else {
+    alert('Please enter at least 2 characters to search.');
+  }
 }
 
 // Confirm booking
@@ -1195,20 +1348,50 @@ function confirmBooking() {
   saveBookingAndSendInvitations(booking);
 }
 
+// Guard to prevent duplicate API create (double-click)
+var isBookingSubmissionInProgress = false;
+
 // Save booking via API and show confirmation
 function saveBookingAndSendInvitations(booking) {
   if (typeof API === 'undefined' || !API.getAuthToken()) {
     alert('Please log in to create a booking.');
     return;
   }
-  var slots = bookingState.selectedTimeSlots || [];
+  if (isBookingSubmissionInProgress) {
+    return; // Prevent double submission
+  }
+  var slots = (bookingState.selectedTimeSlots || []).slice().sort();
   if (slots.length === 0) {
     alert('Please select at least one time slot.');
     return;
   }
-  var timeSlotStart = slots[0];
-  var lastHour = parseInt(slots[slots.length - 1].split(':')[0], 10);
-  var timeSlotEnd = (lastHour + 1).toString().padStart(2, '0') + ':00';
+  isBookingSubmissionInProgress = true;
+  var confirmBtn = document.getElementById('confirmBookingBtn');
+  var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Creating...'; }
+  if (submitPaymentBtn) { submitPaymentBtn.disabled = true; }
+
+  // Group consecutive hours into ranges (supports non-contiguous: e.g. 13:00-14:00 and 20:00-21:00)
+  var ranges = [];
+  for (var i = 0; i < slots.length; i++) {
+    var start = slots[i];
+    var startHour = parseInt(start.split(':')[0], 10);
+    var endHour = startHour + 1;
+    while (i + 1 < slots.length) {
+      var next = slots[i + 1];
+      var nextHour = parseInt(next.split(':')[0], 10);
+      if (nextHour !== endHour) break;
+      endHour++;
+      i++;
+    }
+    ranges.push({ start: start, end: endHour.toString().padStart(2, '0') + ':00' });
+  }
+
+  var timeSlotStart = ranges[0].start;
+  var timeSlotEnd = ranges[0].end;
+  if (ranges.length > 1) {
+    timeSlotEnd = ranges[ranges.length - 1].end;
+  }
   var payload = {
     fieldId: bookingState.field.id,
     date: bookingState.selectedDate,
@@ -1217,19 +1400,109 @@ function saveBookingAndSendInvitations(booking) {
     paymentMethod: (bookingState.paymentMethod || 'SPLIT').toUpperCase().replace('ORGANIZER', 'ORGANIZER').replace('SPLIT', 'SPLIT').replace('MIXED', 'MIXED'),
     teamSize: (bookingState.players.length + 1) || 1
   };
+  if (ranges.length > 1) {
+    payload.timeSlotRanges = ranges;
+  }
   if (payload.paymentMethod === 'MIXED' && bookingState.mixedPaymentDistribution) {
     payload.mixedPaymentDistribution = bookingState.mixedPaymentDistribution;
   }
   API.bookings.create(payload)
-    .then(function(res) {
+    .then(async function(res) {
+      const createdBooking = res.booking;
+      console.log('Booking created:', createdBooking);
+      
+      // If organizer already paid during booking flow, remember it locally
+      try {
+        if (booking.organizerPaymentStatus === 'paid' && createdBooking && createdBooking.id) {
+          var organizerPaidKey = 'organizerPaidBookings';
+          var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+          organizerPaid[String(createdBooking.id)] = true;
+          localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
+
+          // Also store a local copy of the booking with organizerPaymentStatus so merge can pick it up
+          var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+          var existingIdx = allBookings.findIndex(function(b) { return String(b.id) === String(createdBooking.id); });
+          var mergedLocal = Object.assign({}, createdBooking, { organizerPaymentStatus: 'paid' });
+          if (existingIdx !== -1) {
+            allBookings[existingIdx] = mergedLocal;
+          } else {
+            allBookings.push(mergedLocal);
+          }
+          localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+        }
+      } catch (e) {
+        console.warn('Failed to persist initial organizer payment state', e);
+      }
+      
+      // Add participants to the booking if there are any players
+      if (bookingState.players.length > 0 && createdBooking && createdBooking.id) {
+        try {
+          // Add each player as a participant
+          for (const player of bookingState.players) {
+            try {
+              await API.bookings.addParticipant(createdBooking.id, player.id);
+              console.log('Added participant:', player.name);
+            } catch (partErr) {
+              console.error('Failed to add participant:', player.name, partErr);
+            }
+          }
+          
+          // Create notifications for invited players
+          createPaymentNotifications(createdBooking, bookingState.players);
+        } catch (err) {
+          console.error('Error adding participants:', err);
+        }
+      }
+      
       var isFullyPaid = false;
       showBookingConfirmation(booking, isFullyPaid);
       closeBookingModal();
       setTimeout(function() { window.location.href = 'bookings.html'; }, 2000);
     })
     .catch(function(err) {
+      isBookingSubmissionInProgress = false;
+      var confirmBtn = document.getElementById('confirmBookingBtn');
+      var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Booking'; }
+      if (submitPaymentBtn) { submitPaymentBtn.disabled = false; }
       alert(err.message || 'Failed to create booking.');
     });
+}
+
+// Create payment notifications for invited players
+function createPaymentNotifications(booking, players) {
+  const totalPlayers = players.length + 1; // +1 for organizer
+  const equalShare = Math.round(booking.totalCost / totalPlayers);
+  const organizerName = bookingState.organizer?.name || 'The organizer';
+  const fieldName = bookingState.field?.name || booking.field?.name || 'the field';
+  const isMixed = (bookingState.paymentMethod || booking.paymentMethod || '').toLowerCase() === 'mixed';
+  const mixedDist = booking.mixedPaymentDistribution || bookingState.mixedPaymentDistribution || {};
+  
+  players.forEach(player => {
+    const amount = isMixed
+      ? (mixedDist[player.id] ?? mixedDist[String(player.id)] ?? equalShare)
+      : equalShare;
+    const notification = {
+      id: 'notif_' + Date.now() + '_' + player.id,
+      type: 'booking_payment_request',
+      playerId: player.id,
+      bookingId: booking.id,
+      title: 'Payment Required',
+      message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ₺${amount}.`,
+      date: bookingState.selectedDate,
+      time: bookingState.selectedTimeSlots.join(', '),
+      paymentAmount: amount,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Store notification in localStorage (will be replaced with real notification system later)
+    const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    notifications.push(notification);
+    localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+    
+    console.log('Created payment notification for:', player.name, notification);
+  });
 }
 
 // Check if full payment is received
@@ -1355,6 +1628,27 @@ function closeConfirmationModal() {
 window.closeConfirmationModal = closeConfirmationModal;
 
 // Notify field owner
+function notifyOrganizerOfPayment(booking, payerData, amount) {
+  const organizerId = String((booking.organizer && booking.organizer.id) || booking.organizerId || '');
+  if (!organizerId) return;
+  const fieldName = (booking.field && booking.field.name) || booking.fieldName || 'the field';
+  const payerName = payerData && (payerData.fullName || payerData.name || payerData.email || 'A player');
+  const notification = {
+    id: 'notif_' + Date.now(),
+    type: 'player_paid_booking',
+    playerId: organizerId,
+    bookingId: booking.id,
+    title: 'Player Paid Their Share',
+    message: payerName + ' has paid ₺' + amount + ' for your booking at ' + fieldName + '.',
+    date: booking.date,
+    status: 'unread',
+    createdAt: new Date().toISOString()
+  };
+  const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+  notifications.push(notification);
+  localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+}
+
 function notifyFieldOwner(booking) {
   // In a real app, this would send a notification/email to the field owner
   // For now, we'll store it in localStorage for the owner to see
@@ -1446,12 +1740,16 @@ function openPaymentModal(options) {
         </div>
         ${paymentState.booking ? `
           <div class="payment-details">
-            <p><strong>${paymentState.booking.fieldName}</strong></p>
+            <p><strong>${(paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || 'Field'}</strong></p>
             <p>${formatDate(paymentState.booking.date)}</p>
-            <p>${paymentState.booking.timeSlots.map(slot => {
-              const hour = parseInt(slot.split(':')[0]);
-              return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
-            }).join(', ')}</p>
+            <p>${(paymentState.booking.timeSlots && paymentState.booking.timeSlots.length
+              ? paymentState.booking.timeSlots.map(slot => {
+                  const hour = parseInt(String(slot).split(':')[0], 10);
+                  return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
+                }).join(', ')
+              : (paymentState.booking.timeSlotStart && paymentState.booking.timeSlotEnd)
+                ? (paymentState.booking.timeSlotStart + ' - ' + paymentState.booking.timeSlotEnd)
+                : paymentState.booking.time || 'Not specified')}</p>
           </div>
         ` : ''}
       </div>
@@ -1584,7 +1882,7 @@ function formatExpiryDate(e) {
   e.target.value = value;
 }
 
-// Handle payment submission (from booking modal step)
+// Handle payment submission (booking modal step 5 OR Pay Your Share for existing booking)
 function handlePaymentSubmission() {
   const form = document.getElementById('paymentForm');
   if (!form) return;
@@ -1594,7 +1892,6 @@ function handlePaymentSubmission() {
     return;
   }
 
-  // Get form data
   const formData = {
     cardholderName: document.getElementById('cardholderName').value,
     cardNumber: document.getElementById('cardNumber').value.replace(/\s/g, ''),
@@ -1604,32 +1901,36 @@ function handlePaymentSubmission() {
     billingCity: document.getElementById('billingCity').value,
     billingPostalCode: document.getElementById('billingPostalCode').value,
     billingCountry: document.getElementById('billingCountry').value,
-    amount: bookingState.paymentAmount || bookingState.totalCost
+    amount: paymentState.bookingId ? paymentState.amount : (bookingState.paymentAmount || bookingState.totalCost)
   };
 
-  // Store payment data
-  bookingState.paymentData = formData;
-
-  // Show processing state
   const submitBtn = document.getElementById('submitPaymentBtn');
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Processing...';
   }
 
-  // Simulate payment processing (in real app, this would be an API call)
+  // Paying for EXISTING booking (Pay Your Share from bookings page)
+  if (paymentState.bookingId) {
+    setTimeout(function() {
+      processPayment(formData);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Pay & Confirm Booking';
+      }
+    }, 1500);
+    return;
+  }
+
+  // New booking flow (step 5)
+  bookingState.paymentData = formData;
   setTimeout(() => {
-    // Payment successful, move to confirmation step
     bookingState.currentStep = 6;
     updateStepDisplay();
-    
-    // Reset button
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = 'Pay & Confirm Booking';
     }
-    
-    // Show success message
     const summary = document.getElementById('paymentInfoSummary');
     if (summary) {
       const paymentSummary = summary.querySelector('.payment-summary');
@@ -1646,31 +1947,13 @@ function handlePaymentSubmission() {
   }, 2000);
 }
 
-// Validate card number (Luhn algorithm)
+// Validate card number (accept any 12–19 digits for now; restore Luhn/real validation later)
 function validateCardNumber(cardNumber) {
   const number = cardNumber.replace(/\s/g, '');
-  if (number.length < 13 || number.length > 19) {
+  if (number.length < 12 || number.length > 19) {
     return false;
   }
-
-  let sum = 0;
-  let isEven = false;
-
-  for (let i = number.length - 1; i >= 0; i--) {
-    let digit = parseInt(number.charAt(i));
-
-    if (isEven) {
-      digit *= 2;
-      if (digit > 9) {
-        digit -= 9;
-      }
-    }
-
-    sum += digit;
-    isEven = !isEven;
-  }
-
-  return sum % 10 === 0;
+  return /^\d+$/.test(number);
 }
 
 // Validate expiry date
@@ -1704,21 +1987,50 @@ function processPayment(paymentData) {
 
   let updatedBooking = null;
 
-  // Update booking payment status
+  // Update booking payment status (paying for an EXISTING booking - do NOT create a new one)
   if (paymentState.booking) {
     if (paymentState.isOrganizer) {
       paymentState.booking.organizerPaymentStatus = 'paid';
+      var organizerPaidKey = 'organizerPaidBookings';
+      var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+      organizerPaid[String(paymentState.bookingId)] = true;
+      localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
     } else {
       // Update player payment status
       const playerData = getPlayerData();
-      const player = paymentState.booking.players.find(p => p.id === playerData.id);
+      const players = paymentState.booking.players || paymentState.booking.participants || [];
+      const player = players.find(p => (p.id || p.userId) === playerData.id);
       if (player) {
         player.paymentStatus = 'paid';
       }
+      // Notify organizer that participant paid
+      notifyOrganizerOfPayment(paymentState.booking, playerData, paymentState.amount);
+      // Store in dedicated key so refresh always shows paid (works with API + localStorage)
+      var paidKey = 'playerPaidBookings';
+      var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
+      var uid = String((playerData && (playerData.id || playerData._id)) || '');
+      paid[String(paymentState.bookingId) + '_' + uid] = true;
+      localStorage.setItem(paidKey, JSON.stringify(paid));
     }
 
-    // Save booking
-    saveBookingAndSendInvitations(paymentState.booking);
+    // Persist to localStorage (merge into playerBookings so refresh shows updated status)
+    const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+    const idx = allBookings.findIndex(b => String(b.id) === String(paymentState.bookingId));
+    if (idx !== -1) {
+      allBookings[idx] = paymentState.booking;
+    } else {
+      allBookings.push(paymentState.booking);
+    }
+    localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+    // Do NOT call saveBookingAndSendInvitations - that creates a NEW booking and causes duplicates
+    const isFullyPaid = checkFullPayment(paymentState.booking);
+    if (isFullyPaid && paymentState.booking.status !== 'confirmed') {
+      paymentState.booking.status = 'confirmed';
+      paymentState.booking.confirmedAt = new Date().toISOString();
+      localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+      notifyFieldOwner(paymentState.booking);
+      showBookingConfirmation(paymentState.booking, true);
+    }
     updatedBooking = paymentState.booking;
   } else if (paymentState.bookingId) {
     // Update existing booking
@@ -1730,12 +2042,24 @@ function processPayment(paymentData) {
       
       if (paymentState.isOrganizer) {
         booking.organizerPaymentStatus = 'paid';
+        var organizerPaidKey = 'organizerPaidBookings';
+        var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+        organizerPaid[String(paymentState.bookingId)] = true;
+        localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
       } else {
         const playerData = getPlayerData();
-        const player = booking.players.find(p => p.id === playerData.id);
+        const players = booking.players || booking.participants || [];
+        const player = players.find(p => (p.id || p.userId) === playerData.id);
         if (player) {
           player.paymentStatus = 'paid';
         }
+        // Notify organizer that participant paid
+        notifyOrganizerOfPayment(booking, playerData, paymentState.amount);
+        var paidKey = 'playerPaidBookings';
+        var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
+        var uid = String((playerData && (playerData.id || playerData._id)) || '');
+        paid[String(paymentState.bookingId) + '_' + uid] = true;
+        localStorage.setItem(paidKey, JSON.stringify(paid));
       }
       
       // Check if full payment is received
@@ -1756,23 +2080,15 @@ function processPayment(paymentData) {
     }
   }
 
-  // Show success message
-  if (updatedBooking && updatedBooking.status === 'confirmed') {
-    // Confirmation message will be shown by showBookingConfirmation
-  } else {
-    alert('Payment successful!');
-  }
-
-  // Close modals
+  // Close payment modal
   closePaymentModal();
   if (paymentState.booking) {
     closeBookingModal();
   }
 
-  // Redirect to bookings page
-  setTimeout(() => {
-    window.location.href = 'bookings.html';
-  }, updatedBooking && updatedBooking.status === 'confirmed' ? 3000 : 1000);
+  // Single success message, then refresh page to show updated state
+  alert('Payment successful! Your share has been paid.');
+  window.location.href = 'bookings.html';
 }
 
 // Make functions available globally for use from other pages
@@ -1838,39 +2154,7 @@ function setupEventListeners() {
                      (window.location.pathname.endsWith('/') && !window.location.pathname.includes('bookings.html'));
   
   if (isHomePage) {
-      // Notification popup
-      const notificationBtn = document.querySelector('.notification-btn');
-      const notificationPopup = document.getElementById('notificationPopup');
-      const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-      
-      if (notificationBtn && notificationPopup) {
-          notificationBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              notificationPopup.classList.toggle('active');
-              // Close profile popup if open
-              const profilePopup = document.getElementById('profilePopup');
-              if (profilePopup && profilePopup.classList.contains('active')) {
-                  profilePopup.classList.remove('active');
-              }
-          });
-          
-          // Close notification button
-          if (closeNotificationBtn) {
-              closeNotificationBtn.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  notificationPopup.classList.remove('active');
-              });
-          }
-          
-          // Close popup when clicking outside
-          document.addEventListener('click', (e) => {
-              if (notificationPopup && notificationPopup.classList.contains('active')) {
-                  if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                      notificationPopup.classList.remove('active');
-                  }
-              }
-          });
-      }
+      // Notification popup is handled by shared notifications.js
       
       // Profile popup
       const profileBtn = document.getElementById('profileBtn');
@@ -1881,6 +2165,7 @@ function setupEventListeners() {
               e.stopPropagation();
               profilePopup.classList.toggle('active');
               // Close notification popup if open
+              const notificationPopup = document.getElementById('notificationPopup');
               if (notificationPopup && notificationPopup.classList.contains('active')) {
                   notificationPopup.classList.remove('active');
               }
@@ -1968,6 +2253,8 @@ function loadFavoritesFromStorage() {
       });
   }
 }
+
+// Notifications are handled by shared notifications.js (loaded on all player pages)
 
 
 

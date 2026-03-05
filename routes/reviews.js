@@ -6,6 +6,27 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Get current user's reviews (for profile stats - average rating given)
+router.get('/user/me', authenticate, async (req, res) => {
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { userId: req.user.id },
+      select: { rating: true }
+    });
+    const avgRating = reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+      : 0;
+    res.json({
+      reviews,
+      averageRating: Math.round(avgRating * 10) / 10,
+      count: reviews.length
+    });
+  } catch (error) {
+    console.error('Get user reviews error:', error);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
 // Get reviews for a field
 router.get('/field/:fieldId', async (req, res) => {
   try {

@@ -106,7 +106,8 @@ router.put('/:id', authenticate, [
   body('phone').optional(),
   body('dateOfBirth').optional(),
   body('gender').optional(),
-  body('location').optional()
+  body('location').optional(),
+  body('avatar').optional()
 ], async (req, res) => {
   try {
     const { id } = req.params;
@@ -121,7 +122,7 @@ router.put('/:id', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fullName, phone, dateOfBirth, gender, location } = req.body;
+    const { fullName, phone, dateOfBirth, gender, location, avatar } = req.body;
 
     const updateData = {};
     if (fullName) updateData.fullName = fullName;
@@ -129,6 +130,7 @@ router.put('/:id', authenticate, [
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
     if (location) updateData.location = location;
+    if (avatar !== undefined && typeof avatar === 'string') updateData.avatar = avatar;
 
     const user = await prisma.user.update({
       where: { id },

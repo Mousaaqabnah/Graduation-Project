@@ -42,7 +42,7 @@
                 <h2 class="login-title">Log in to your account</h2>
                 <p class="welcome-text">Welcome back! Please enter your details.</p>
                 
-                <form class="login-form" id="loginForm">
+                <form class="login-form" id="loginForm" autocomplete="off">
                     <div class="form-group">
                         <label for="email">Email</label>
                         <input 
@@ -50,6 +50,7 @@
                             id="email" 
                             name="email" 
                             placeholder="Enter your email"
+                            autocomplete="email"
                             required
                         >
                     </div>
@@ -61,6 +62,7 @@
                             id="password" 
                             name="password" 
                             placeholder="Enter your password"
+                            autocomplete="new-password"
                             required
                         >
                     </div>
@@ -99,6 +101,19 @@
     
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/auth/login.js"></script>
+    <script>
+      // Keep user on login when pressing Back: ensure every Back stays on login
+      (function() {
+        if (typeof history === 'undefined' || !history.pushState) return;
+        var loginUrl = location.pathname + (location.search || '');
+        // Add several login entries so Back always lands on login
+        for (var i = 0; i < 3; i++) history.pushState({ loginPage: true }, '', loginUrl);
+        window.addEventListener('popstate', function() {
+          // Always push another login so the next Back again stays on login
+          history.pushState({ loginPage: true }, '', loginUrl);
+        });
+      })();
+    </script>
 </body>
 </html>
 
