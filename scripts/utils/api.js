@@ -134,6 +134,13 @@ const usersAPI = {
     });
   },
 
+  updateStatus: async (id, status) => {
+    return apiRequest(`/users/${id}/status`, {
+      method: 'PUT',
+      body: { status }
+    });
+  },
+
   search: async (query) => {
     return apiRequest(`/users/search/users?q=${encodeURIComponent(query)}`);
   }
@@ -274,6 +281,22 @@ const favoritesAPI = {
   }
 };
 
+// Support / Contact API
+const supportAPI = {
+  contact: async (data) => {
+    return apiRequest('/support/contact', {
+      method: 'POST',
+      body: data
+    });
+  }
+};
+
+// User Notifications API (admin replies, etc.)
+const notificationsAPI = {
+  getMine: async () => apiRequest('/notifications/me'),
+  clearAll: async () => apiRequest('/notifications/me', { method: 'DELETE' })
+};
+
 // Messages API
 const messagesAPI = {
   getConversations: async () => {
@@ -294,6 +317,26 @@ const messagesAPI = {
       method: 'POST',
       body: { content }
     });
+  },
+
+  markAsRead: async (conversationId, messageId) => {
+    return apiRequest(`/messages/conversation/${conversationId}/messages/${messageId}/read`, {
+      method: 'PUT'
+    });
+  },
+
+  setBlocked: async (conversationId, blocked) => {
+    return apiRequest(`/messages/conversation/${conversationId}/block`, {
+      method: 'PATCH',
+      body: { blocked }
+    });
+  },
+
+  setStarred: async (conversationId, starred) => {
+    return apiRequest(`/messages/conversation/${conversationId}/star`, {
+      method: 'PATCH',
+      body: { starred }
+    });
   }
 };
 
@@ -301,6 +344,18 @@ const messagesAPI = {
 const adminAPI = {
   getStats: async () => {
     return apiRequest('/admin/stats');
+  },
+
+  getNotifications: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/notifications${queryString ? '?' + queryString : ''}`);
+  },
+
+  sendNotification: async (data) => {
+    return apiRequest('/admin/notifications/send', {
+      method: 'POST',
+      body: data
+    });
   },
 
   getVerifications: async (params = {}) => {
@@ -325,6 +380,8 @@ window.API = {
   reviews: reviewsAPI,
   favorites: favoritesAPI,
   messages: messagesAPI,
+  notifications: notificationsAPI,
+  support: supportAPI,
   admin: adminAPI,
   getAuthToken,
   setAuthToken,

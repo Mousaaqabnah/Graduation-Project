@@ -106,11 +106,6 @@ router.post('/login', [
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Check if account is active
-    if (user.status !== 'ACTIVE') {
-      return res.status(403).json({ error: 'Account is suspended' });
-    }
-
     // Generate token
     const token = generateToken(user.id);
 

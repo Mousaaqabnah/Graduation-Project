@@ -253,7 +253,7 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, sport, description, type, location, address, phone, pricePerHour, features, images } = req.body;
+    const { name, sport, description, type, location, address, phone, pricePerHour, features, images, latitude, longitude } = req.body;
 
     // Check if owner is verified (if they're an owner)
     if (req.user.role === 'OWNER') {
@@ -279,6 +279,8 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
         pricePerHour: parseInt(pricePerHour),
         features: features || [],
         images: images || [],
+        latitude: latitude != null ? parseFloat(latitude) : null,
+        longitude: longitude != null ? parseFloat(longitude) : null,
         ownerId: req.user.id
       },
       include: {
@@ -328,14 +330,16 @@ router.put('/:id', authenticate, [
     }
 
     const updateData = {};
-    const allowedFields = ['name', 'sport', 'description', 'type', 'location', 'address', 'phone', 'pricePerHour', 'features', 'images', 'isActive'];
+    const allowedFields = ['name', 'sport', 'description', 'type', 'location', 'address', 'phone', 'pricePerHour', 'features', 'images', 'isActive', 'latitude', 'longitude'];
     
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        if (field === 'pricePerHour') {
-          updateData[field] = parseInt(req.body[field]);
+    allowedFields.forEach(f => {
+      if (req.body[f] !== undefined) {
+        if (f === 'pricePerHour') {
+          updateData[f] = parseInt(req.body[f]);
+        } else if (f === 'latitude' || f === 'longitude') {
+          updateData[f] = req.body[f] != null ? parseFloat(req.body[f]) : null;
         } else {
-          updateData[field] = req.body[field];
+          updateData[f] = req.body[f];
         }
       }
     });

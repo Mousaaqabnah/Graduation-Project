@@ -127,7 +127,12 @@ async function loadConversations() {
 
   try {
     const res = await API.messages.getConversations();
-    const convs = (res.conversations || []).map(c => mapConversation(c, currentUserId));
+    const mapped = (res.conversations || []).map(c => mapConversation(c, currentUserId));
+    // Exclude Admin conversations - Contact Us is one-way; Chat is for players & owners only
+    const convs = mapped.filter(c => {
+      const role = (c.otherUser && c.otherUser.role) ? String(c.otherUser.role).toUpperCase() : '';
+      return role !== 'ADMIN';
+    });
     chatState.conversations = convs;
     renderMessageList();
 
@@ -472,7 +477,7 @@ function openStartChatModal() {
 
     emptyEl.style.display = 'none';
     listEl.innerHTML = users
-      .filter(u => u.id !== currentUserId)
+      .filter(u => u.id !== currentUserId && String(u.role || '').toUpperCase() !== 'ADMIN')
       .map(user => {
         const isExisting = chatState.conversations.some(c => c.userId === user.id);
         return `

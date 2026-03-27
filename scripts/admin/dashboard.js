@@ -52,6 +52,91 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// Load dashboard stats from API
+async function loadDashboardStats() {
+    const els = {
+        totalUsers: document.getElementById('statTotalUsers'),
+        usersSubtext: document.getElementById('statUsersSubtext'),
+        activeOwners: document.getElementById('statActiveOwners'),
+        ownersSubtext: document.getElementById('statOwnersSubtext'),
+        bookings: document.getElementById('statBookings'),
+        bookingsSubtext: document.getElementById('statBookingsSubtext'),
+        revenue: document.getElementById('statRevenue')
+    };
+    if (!els.totalUsers || !API?.admin?.getStats) return;
+    try {
+        const res = await API.admin.getStats();
+        const s = res.stats || {};
+        const fmt = (n) => (n ?? 0).toLocaleString();
+        els.totalUsers.textContent = fmt(s.totalUsers);
+        els.usersSubtext.textContent = s.usersThisWeek > 0
+            ? `+${s.usersThisWeek} this week`
+            : 'No new users this week';
+        els.activeOwners.textContent = fmt(s.activeOwners);
+        els.ownersSubtext.textContent = s.pendingVerifications > 0
+            ? `${s.pendingVerifications} pending approval`
+            : 'All verified';
+        els.bookings.textContent = fmt(s.recentBookings);
+        els.bookingsSubtext.textContent = s.bookingsPercent >= 0
+            ? `+${s.bookingsPercent}% vs last week`
+            : `${s.bookingsPercent}% vs last week`;
+        const revTry = Math.round((s.totalRevenue || 0) / 100);
+        els.revenue.textContent = '\u20BA' + revTry.toLocaleString();
+    } catch (err) {
+        console.warn('Dashboard stats load failed:', err);
+        els.totalUsers.textContent = '-';
+        els.usersSubtext.textContent = 'Failed to load';
+        els.activeOwners.textContent = '-';
+        els.ownersSubtext.textContent = '-';
+        els.bookings.textContent = '-';
+        els.bookingsSubtext.textContent = '-';
+        els.revenue.textContent = '-';
+    }
+}
+loadDashboardStats();
+
+// Load recent notifications sent by admin (runs after DOM ready)
+async function loadRecentNotifications() {
+    if (!recentNotifications || !API?.admin?.getNotifications) return;
+    try {
+        const res = await API.admin.getNotifications({ limit: 4 });
+        const list = res.notifications || [];
+        recentNotifications.innerHTML = '';
+        if (list.length === 0) {
+            recentNotifications.innerHTML = '<div class="no-results"><p>No notifications sent yet.</p></div>';
+            return;
+        }
+        const audienceDisplay = { all: 'All users', players: 'Players', owners: 'Field owners', admins: 'Admins', private: 'Private' };
+        list.forEach((n) => {
+            const channels = Array.isArray(n.channels) ? n.channels : ['In-app'];
+            const audName = audienceDisplay[n.audience] || n.audience;
+            const timeStr = formatTimeAgo(new Date(n.createdAt));
+            const item = document.createElement('div');
+            item.className = 'notification-list-item';
+            item.innerHTML = `
+                <div class="notification-list-content">
+                    <h3 class="notification-list-title">${escapeHtml(n.title)}</h3>
+                    <p class="notification-list-message">${escapeHtml(n.message)}</p>
+                    <p class="notification-list-time">${escapeHtml(timeStr)}</p>
+                </div>
+                <div class="notification-list-tags">
+                    ${channels.map(c => `<span class="notification-tag">${escapeHtml(c)}</span>`).join('')}
+                    ${n.audience === 'private' ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audName)}</span>`}
+                </div>
+            `;
+            recentNotifications.appendChild(item);
+        });
+    } catch (err) {
+        console.warn('Load recent notifications failed:', err);
+        recentNotifications.innerHTML = '<div class="no-results"><p>Failed to load notifications.</p></div>';
+    }
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => loadRecentNotifications());
+} else {
+    loadRecentNotifications();
+}
+
 // Tag Selector functionality
 tagButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -91,22 +176,46 @@ tagButtons.forEach(btn => {
 // User search functionality
 let searchTimeout;
 
-// Function to perform user search
-function performUserSearch(searchTerm) {
+// Function to perform user search (uses API for real users when available)
+async function performUserSearch(searchTerm) {
     if (!userDropdown) return;
     
     const term = searchTerm.trim().toLowerCase();
     
-    if (term.length === 0) {
+    if (term.length < 2) {
         userDropdown.innerHTML = '';
         userDropdown.classList.remove('active');
         return;
     }
     
-    const filteredUsers = allUsers.filter(user => 
-        user.name.toLowerCase().includes(term) ||
-        user.email.toLowerCase().includes(term)
-    );
+    userDropdown.innerHTML = '<div class="user-dropdown-loading">Searching...</div>';
+    userDropdown.classList.add('active');
+    
+    let filteredUsers = [];
+    if (typeof API !== 'undefined' && API.users && API.users.search) {
+        try {
+            const res = await API.users.search(term);
+            const users = res.users || [];
+            filteredUsers = users.map((u) => ({
+                id: u.id,
+                name: u.fullName || u.email || 'User',
+                email: u.email || '',
+                role: (u.role || '').toLowerCase(),
+                avatar: u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName || 'U')}&background=007BFF&color=fff`
+            }));
+        } catch (e) {
+            console.warn('User search failed, using local:', e);
+            filteredUsers = allUsers.filter((user) =>
+                (user.name || '').toLowerCase().includes(term) ||
+                (user.email || '').toLowerCase().includes(term)
+            );
+        }
+    } else {
+        filteredUsers = allUsers.filter((user) =>
+            (user.name || '').toLowerCase().includes(term) ||
+            (user.email || '').toLowerCase().includes(term)
+        );
+    }
     
     if (filteredUsers.length === 0) {
         userDropdown.innerHTML = '<div class="user-dropdown-empty">No users found</div>';
@@ -130,8 +239,9 @@ function performUserSearch(searchTerm) {
     // Add click handlers to dropdown items
     userDropdown.querySelectorAll('.user-dropdown-item').forEach(item => {
         item.addEventListener('click', () => {
-            const userId = parseInt(item.dataset.userId);
-            selectUser(userId);
+            const userId = item.dataset.userId;
+            const user = filteredUsers.find((u) => u.id === userId || String(u.id) === userId);
+            if (user) selectUser(user);
         });
     });
 }
@@ -169,12 +279,12 @@ if (userSearchInput && userDropdown) {
     });
 }
 
-// Select user function
-function selectUser(userId) {
-    const user = allUsers.find(u => u.id === userId);
+// Select user function (user can be object or id)
+function selectUser(userOrId) {
+    const user = typeof userOrId === 'object' ? userOrId : allUsers.find((u) => u.id === userOrId || String(u.id) === String(userOrId));
     if (!user) return;
     
-    selectedUserId.value = userId;
+    selectedUserId.value = user.id;
     userSearchInput.value = '';
     userDropdown.innerHTML = '';
     userDropdown.classList.remove('active');
@@ -216,17 +326,15 @@ function formatUserRole(role) {
 
 // Send Notification functionality
 if (sendNotificationBtn) {
-    sendNotificationBtn.addEventListener('click', () => {
+    sendNotificationBtn.addEventListener('click', async () => {
         const title = notificationTitle.value.trim();
         const message = notificationMessage.value.trim();
         
-        // Get selected audience
         const selectedAudience = document.querySelector('.tag-selector [data-audience].active')?.dataset.audience || 'all';
         const isPrivate = selectedAudience === 'private';
         
-        // Get selected channels
         const selectedChannels = Array.from(document.querySelectorAll('.tag-selector [data-channel].active'))
-            .map(btn => btn.dataset.channel === 'inapp' ? 'In-app' : 'Email');
+            .map(btn => (btn.dataset.channel === 'inapp' ? 'In-app' : 'Email'));
         
         const selectedUser = selectedUserId ? selectedUserId.value : '';
         
@@ -245,60 +353,67 @@ if (sendNotificationBtn) {
             return;
         }
         
-        // Get selected user details if private
         let selectedUserData = null;
         if (isPrivate && selectedUser) {
-            selectedUserData = allUsers.find(u => u.id === parseInt(selectedUser));
+            const id = typeof selectedUser === 'string' ? selectedUser : String(selectedUser);
+            selectedUserData = (typeof allUsers !== 'undefined' && allUsers) ? allUsers.find(u => u.id === id || u.id === selectedUser) : null;
         }
         
-        // Create notification object
-        const notification = {
-            title,
-            message,
-            audience: selectedAudience,
-            channels: selectedChannels,
-            isPrivate: isPrivate,
-            selectedUser: selectedUserData,
-            time: 'Just now'
-        };
+        const btn = sendNotificationBtn;
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
         
-        // Add to recent notifications
-        addNotificationToList(notification);
-        
-        // Reset form
-        notificationTitle.value = '';
-        notificationMessage.value = '';
-        if (privateUserSelector) {
-            privateUserSelector.style.display = 'none';
+        try {
+            const payload = {
+                title,
+                message,
+                audience: selectedAudience,
+                channels: selectedChannels
+            };
+            if (isPrivate && selectedUser) {
+                payload.targetUserId = typeof selectedUser === 'string' ? selectedUser : String(selectedUser);
+            }
+            
+            await API.admin.sendNotification(payload);
+            
+            const notification = {
+                title,
+                message,
+                audience: selectedAudience,
+                channels: selectedChannels,
+                isPrivate,
+                selectedUser: selectedUserData,
+                time: 'Just now'
+            };
+                addNotificationToList(notification);
+            
+            // Reset form
+            notificationTitle.value = '';
+            notificationMessage.value = '';
+            if (privateUserSelector) privateUserSelector.style.display = 'none';
+            if (selectedUserId) selectedUserId.value = '';
+            if (selectedUserDisplay) selectedUserDisplay.style.display = 'none';
+            if (userSearchInput) userSearchInput.value = '';
+            if (userDropdown) {
+                userDropdown.innerHTML = '';
+                userDropdown.classList.remove('active');
+            }
+            
+            document.querySelectorAll('.tag-selector [data-channel]').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tag-selector [data-audience]').forEach(b => b.classList.remove('active'));
+            const audBtn = document.querySelector('[data-audience="all"]');
+            const chBtn = document.querySelector('[data-channel="inapp"]');
+            if (audBtn) audBtn.classList.add('active');
+            if (chBtn) chBtn.classList.add('active');
+            
+            showNotificationSuccess();
+        } catch (err) {
+            console.error('Send notification error:', err);
+            alert(err.message || 'Failed to send notification. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send now';
         }
-        if (selectedUserId) {
-            selectedUserId.value = '';
-        }
-        if (selectedUserDisplay) {
-            selectedUserDisplay.style.display = 'none';
-        }
-        if (userSearchInput) {
-            userSearchInput.value = '';
-        }
-        if (userDropdown) {
-            userDropdown.innerHTML = '';
-            userDropdown.classList.remove('active');
-        }
-        
-        // Reset channel selection
-        document.querySelectorAll('.tag-selector [data-channel]').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Set default: All users and In-app
-        document.querySelectorAll('.tag-selector [data-audience]').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        document.querySelector('.tag-selector [data-audience]').classList.add('active');
-        document.querySelector('.tag-selector [data-channel]').classList.add('active');
-        
-        // Show success message (you can customize this)
-        showNotificationSuccess();
     });
 }
 
@@ -353,9 +468,9 @@ function addNotificationToList(notification) {
             <p class="notification-list-time">${notification.time}</p>
         </div>
         <div class="notification-list-tags">
-            ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
-            ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : ''}
-            ${notification.isPrivate ? userInfo : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
+${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
+                        ${notification.isPrivate && notification.selectedUser ? userInfo : ''}
         </div>
     `;
     
@@ -378,12 +493,26 @@ function escapeHtml(text) {
 
 // Show success notification
 function showNotificationSuccess() {
-    // You can customize this to show a toast notification or similar
     const btn = sendNotificationBtn;
     const originalText = btn.textContent;
     btn.textContent = 'Sent!';
     btn.style.background = '#007A55';
-    
+
+    // Show success toast
+    const existing = document.getElementById('successToast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'successToast';
+    toast.className = 'success-toast';
+    toast.innerHTML = '<i class="fi fi-rr-badge-check"></i><span>Notification sent successfully!</span>';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        toast.style.transition = 'opacity 0.3s, transform 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+
     setTimeout(() => {
         btn.textContent = originalText;
         btn.style.background = '';
@@ -521,95 +650,38 @@ const notificationSearch = document.getElementById('notificationSearch');
 const filterAudience = document.getElementById('filterAudience');
 const filterChannel = document.getElementById('filterChannel');
 
-// Extract notifications from the page and populate allNotifications array
-function initializeNotifications() {
-    const notificationItems = document.querySelectorAll('#recentNotifications .notification-list-item');
-    allNotifications = Array.from(notificationItems).map(item => {
-        const titleEl = item.querySelector('.notification-list-title');
-        const messageEl = item.querySelector('.notification-list-message');
-        const timeEl = item.querySelector('.notification-list-time');
-        const tags = Array.from(item.querySelectorAll('.notification-tag')).map(tag => tag.textContent.trim());
-        
-        // Determine audience and channels from tags
-        const channels = tags.filter(tag => tag === 'In-app' || tag === 'Email');
-        const audiences = tags.filter(tag => !channels.includes(tag));
-        
-        const isPrivate = tags.some(tag => tag.toLowerCase() === 'private');
-        
-        // Extract user info if private notification
-        const userTag = tags.find(tag => tag.toLowerCase().startsWith('to:'));
-        let selectedUser = null;
-        if (userTag && isPrivate) {
-            const userName = userTag.replace('To:', '').trim();
-            selectedUser = allUsers.find(u => u.name === userName) || { name: userName };
-        }
-        
-        return {
-            title: titleEl ? titleEl.textContent.trim() : '',
-            message: messageEl ? messageEl.textContent.trim() : '',
-            time: timeEl ? timeEl.textContent.trim() : '',
-            channels: channels,
-            audience: audiences.length > 0 ? audiences[0].toLowerCase().replace(' ', '-') : 'all-users',
-            isPrivate: isPrivate,
-            selectedUser: selectedUser,
-            originalElement: item
-        };
-    });
-    
-    // Add some sample notifications for demonstration
-    allNotifications.push(
-        {
-            title: 'System maintenance scheduled',
-            message: 'The platform will be under maintenance on Saturday from 2 AM to 4 AM.',
-            time: '2 hours ago',
-            channels: ['In-app', 'Email'],
-            audience: 'all-users',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'New payment method available',
-            message: 'We now support credit card payments directly on the platform.',
-            time: '3 hours ago',
-            channels: ['In-app'],
-            audience: 'players',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Updated field owner guidelines',
-            message: 'Please review the updated guidelines for field owners in your dashboard.',
-            time: '1 day ago',
-            channels: ['Email'],
-            audience: 'field-owners',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Welcome to MatchField!',
-            message: 'Thank you for joining MatchField. Start exploring fields near you!',
-            time: '2 days ago',
-            channels: ['In-app', 'Email'],
-            audience: 'players',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Monthly report available',
-            message: 'Your monthly earnings report is now available in your dashboard.',
-            time: '3 days ago',
-            channels: ['Email'],
-            audience: 'field-owners',
-            isPrivate: false,
-            selectedUser: null
-        }
-    );
+// Load all notifications for View all modal (admin-sent only, excludes Contact Us replies)
+async function initializeNotifications() {
+    if (!API?.admin?.getNotifications) {
+        allNotifications = [];
+        return;
+    }
+    try {
+        const res = await API.admin.getNotifications({ limit: 100 });
+        const list = res.notifications || [];
+        const audienceDisplay = { all: 'all-users', players: 'players', owners: 'field-owners', admins: 'admins', private: 'private' };
+        allNotifications = list.map((n) => {
+            const channels = Array.isArray(n.channels) ? n.channels : ['In-app'];
+            return {
+                title: n.title,
+                message: n.message,
+                time: formatTimeAgo(new Date(n.createdAt)),
+                channels,
+                audience: audienceDisplay[n.audience] || n.audience || 'all-users',
+                isPrivate: n.audience === 'private',
+                selectedUser: null
+            };
+        });
+    } catch (err) {
+        console.warn('Load notifications for View all failed:', err);
+        allNotifications = [];
+    }
 }
 
 // Open modal
 if (viewAllNotificationsBtn && viewAllNotificationsModal) {
-    viewAllNotificationsBtn.addEventListener('click', () => {
-        initializeNotifications();
+    viewAllNotificationsBtn.addEventListener('click', async () => {
+        await initializeNotifications();
         renderAllNotifications();
         viewAllNotificationsModal.classList.add('active');
         document.body.style.overflow = 'hidden';
@@ -650,7 +722,7 @@ function renderAllNotifications(filteredNotifications = null) {
         allNotificationsList.innerHTML = `
             <div class="no-results">
                 <i class="fi fi-rr-search-alt"></i>
-                <p>No notifications found matching your criteria.</p>
+                <p>No notifications sent yet.</p>
             </div>
         `;
         return;
@@ -667,10 +739,9 @@ function renderAllNotifications(filteredNotifications = null) {
                     </div>
                     <div class="notification-list-tags">
                         ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
-                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : ''}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
                         ${notification.isPrivate && notification.selectedUser 
-                            ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>`
-                            : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
+                            ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>` : ''}
                     </div>
                 </div>
             `).join('')}

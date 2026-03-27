@@ -16,11 +16,13 @@ router.get('/conversations', authenticate, async (req, res) => {
           { user2Id: req.user.id }
         ]
       },
+      take: 500,
       include: {
         user1: {
           select: {
             id: true,
             fullName: true,
+            email: true,
             avatar: true,
             role: true
           }
@@ -29,6 +31,7 @@ router.get('/conversations', authenticate, async (req, res) => {
           select: {
             id: true,
             fullName: true,
+            email: true,
             avatar: true,
             role: true
           }
@@ -36,7 +39,11 @@ router.get('/conversations', authenticate, async (req, res) => {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          include: {
+          select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            readAt: true,
             sender: {
               select: {
                 id: true,
@@ -232,10 +239,130 @@ router.post('/conversation/:conversationId/messages', authenticate, [
       data: { updatedAt: new Date() }
     });
 
+    // Notify the recipient (other user in conversation)
+    const recipientId = conversation.user1Id === req.user.id ? conversation.user2Id : conversation.user1Id;
+    const senderName = message.sender ? message.sender.fullName : 'Support';
+    try {
+      const notification = await prisma.notification.create({
+        data: {
+          title: 'Reply from MatchField Support',
+          message: content,
+          audience: 'private',
+          channels: ['in-app'],
+          targetUserId: recipientId,
+          sentById: req.user.id
+        }
+      });
+      await prisma.userNotification.create({
+        data: {
+          userId: recipientId,
+          notificationId: notification.id
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Could not create in-app notification for reply:', notifErr);
+    }
+
     res.status(201).json({ message: 'Message sent', message });
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Star/unstar conversation (admin marks as important)
+router.patch('/conversation/:conversationId/star', authenticate, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { starred } = req.body;
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { starredAt: starred ? new Date() : null }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Star conversation error:', error);
+    res.status(500).json({ error: 'Failed to update star status' });
+  }
+});
+
+// Block/unblock conversation (admin marks as spam or restores to normal)
+router.patch('/conversation/:conversationId/block', authenticate, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { blocked } = req.body; // true = block, false = unblock
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { blockedAt: blocked ? new Date() : null }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Block conversation error:', error);
+    res.status(500).json({ error: 'Failed to update block status' });
+  }
+});
+
+// Mark message as read
+router.put('/conversation/:conversationId/messages/:messageId/read', authenticate, async (req, res) => {
+  try {
+    const { conversationId, messageId } = req.params;
+
+    const message = await prisma.message.findFirst({
+      where: {
+        id: messageId,
+        conversationId
+      },
+      include: {
+        conversation: true
+      }
+    });
+
+    if (!message || !message.conversation) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const conv = message.conversation;
+    if (conv.user1Id !== req.user.id && conv.user2Id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { readAt: new Date() }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark message read error:', error);
+    res.status(500).json({ error: 'Failed to mark message as read' });
   }
 });
 

@@ -1,80 +1,11 @@
 // Messages Management functionality
+// Note: allMessages is populated by loadMessagesFromAPI() from the inline script in messages.html
 
 // DOM Elements - will be initialized on DOMContentLoaded
 let notificationBtn, notificationPopup, profileBtn, profilePopup;
 let messageSearch, statusFilter, messagesList;
 let messageModal, closeMessageModal, messageContent;
 let spamBlockedBtn;
-
-// Sample messages data
-let allMessages = [
-    {
-        id: 1,
-        fullName: 'Mousa Aqabnah',
-        email: 'mousa.aqabnah@example.com',
-        phone: '+90 555 123 4567',
-        topic: 'Question about field availability',
-        message: 'Hi, I would like to know if Field A is available for booking next weekend. We are planning a tournament and need to confirm the availability.',
-        date: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        status: 'unread',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 2,
-        fullName: 'Baraa Qasem',
-        email: 'Baraa.Qasem@example.com',
-        phone: '+90 555 234 5678',
-        topic: 'Reservation confirmation issue',
-        message: 'I made a reservation yesterday but haven\'t received a confirmation email yet. My booking reference is #12345. Can you please check?',
-        date: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3 hours ago
-        status: 'pending',
-        starred: true,
-        important: true,
-        blocked: false
-    },
-    {
-        id: 3,
-        fullName: 'Alex Morgan',
-        email: 'alex.morgan@example.com',
-        phone: '+90 555 345 6789',
-        topic: 'Booking problem',
-        message: 'I booked a field for tomorrow but I need to cancel it. How can I do that?',
-        date: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-        status: 'read',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 4,
-        fullName: 'Sarah Johnson',
-        email: 'sarah.johnson@example.com',
-        phone: '+90 555 456 7890',
-        topic: 'Payment issue',
-        message: 'I tried to pay for my booking but the payment failed. Can you help me resolve this?',
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
-        status: 'read',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 5,
-        fullName: 'Michael Brown',
-        email: 'michael.brown@example.com',
-        phone: '+90 555 567 8901',
-        topic: 'Field availability',
-        message: 'I want to know if the football field is available this weekend for a tournament.',
-        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        status: 'replied',
-        starred: false,
-        important: false,
-        blocked: false
-    }
-];
-
 
 // Calculate time ago
 function getTimeAgo(date) {
@@ -94,8 +25,9 @@ function getTimeAgo(date) {
     return date.toLocaleDateString();
 }
 
-// Render messages as cards
-function renderMessages(messages = allMessages) {
+// Render messages as cards (uses allMessages from inline script in messages.html)
+function renderMessages(messages) {
+    if (messages === undefined) messages = typeof allMessages !== 'undefined' ? allMessages : [];
     if (!messagesList) {
         console.error('messagesList element not found!');
         return;
@@ -123,6 +55,8 @@ function renderMessages(messages = allMessages) {
             const badges = [];
             
             if (msg.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
+            else if (msg.status === 'read') badges.push({ text: 'Read', class: 'read' });
+            if (msg.starred) badges.push({ text: '(marked)', class: 'marked' });
             if (msg.status === 'pending') badges.push({ text: 'Pending', class: 'pending' });
             if (msg.important) badges.push({ text: 'Important', class: 'important' });
             
@@ -150,8 +84,8 @@ function renderMessages(messages = allMessages) {
                         <button class="message-icon-btn ${msg.starred ? 'starred' : ''}" onclick="toggleStar(${msg.id})" title="${msg.starred ? 'Unstar' : 'Star'}">
                             <i class="fi ${msg.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
                         </button>
-                        <button class="message-icon-btn" onclick="blockMessage(${msg.id})" title="Block/Spam">
-                            <i class="fi fi-rr-circle-xmark"></i>
+                        <button class="message-icon-btn ${msg.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock(${msg.id})" title="${msg.blocked ? 'Unblock (move to normal)' : 'Block/Spam'}">
+                            <i class="fi ${msg.blocked ? 'fi-rr-check-circle' : 'fi-rr-circle-xmark'}"></i>
                         </button>
                     </div>
                     <p class="message-time">${timeAgo}</p>
@@ -211,84 +145,141 @@ function filterMessages() {
 
 
 // Toggle star
-function toggleStar(messageId) {
+async function toggleStar(messageId) {
     const message = allMessages.find(m => m.id === messageId);
     if (!message) return;
-    
-    message.starred = !message.starred;
-    filterMessages(); // Re-render to show updated star state
-}
-
-// Block/Spam message
-function blockMessage(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    if (confirm(`Block/Spam message from ${message.fullName}?`)) {
-        message.blocked = true;
-        filterMessages(); // Re-render to remove blocked message
-        console.log(`Message from ${message.fullName} blocked`);
+    const newStarred = !message.starred;
+    try {
+        if (API && API.messages && API.messages.setStarred) {
+            await API.messages.setStarred(message.conversationId, newStarred);
+        }
+        message.starred = newStarred;
+        filterMessages();
+    } catch (e) {
+        console.warn('Could not update star:', e);
     }
 }
 
-// Show message detail modal
-function showMessageDetail(messageId) {
+// Toggle Block: block normal message, or unblock to move back to normal
+async function toggleBlock(messageId) {
     const message = allMessages.find(m => m.id === messageId);
     if (!message) return;
     
-    // Mark as read when viewing
+    if (message.blocked) {
+        if (!confirm(`Do you want to unblock this message from ${message.fullName}?`)) return;
+        try {
+            if (API && API.messages && API.messages.setBlocked) {
+                await API.messages.setBlocked(message.conversationId, false);
+            }
+            message.blocked = false;
+            filterMessages();
+        } catch (e) {
+            console.warn('Could not unblock:', e);
+            alert('Failed to unblock. Please try again.');
+        }
+    } else {
+        if (!confirm(`Block/Spam message from ${message.fullName}?`)) return;
+        try {
+            if (API && API.messages && API.messages.setBlocked) {
+                await API.messages.setBlocked(message.conversationId, true);
+            }
+            message.blocked = true;
+            filterMessages();
+        } catch (e) {
+            console.warn('Could not block:', e);
+            alert('Failed to block. Please try again.');
+        }
+    }
+}
+
+// Show message detail modal - fetches and displays full conversation history
+async function showMessageDetail(messageId) {
+    const message = allMessages.find(m => m.id === messageId);
+    if (!message || !messageContent || !messageModal) return;
+    
+    // Mark as read when viewing (persist to backend)
     if (message.status === 'unread') {
         message.status = 'read';
-        filterMessages(); // Re-render to update status
+        filterMessages();
+        if (message.conversationId && message.latestMessageId && window.API && API.messages && API.messages.markAsRead) {
+            try {
+                await API.messages.markAsRead(message.conversationId, message.latestMessageId);
+            } catch (e) {
+                console.warn('Could not mark message as read:', e);
+            }
+        }
     }
     
-    if (messageContent) {
-        const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
-        const timeAgo = getTimeAgo(message.date);
-        
-        messageContent.innerHTML = `
-            <div class="message-detail-header">
-                <div class="message-detail-avatar">
-                    ${initials}
-                </div>
-                <div class="message-detail-info">
-                    <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
-                    <p class="message-detail-email">${escapeHtml(message.email)}</p>
-                    ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
-                </div>
+    const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
+    const currentUser = (window.API && API.getCurrentUser) ? API.getCurrentUser() : null;
+    
+    messageContent.innerHTML = `
+        <div class="message-detail-header">
+            <div class="message-detail-avatar">${initials}</div>
+            <div class="message-detail-info">
+                <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
+                <p class="message-detail-email">${escapeHtml(message.email)}</p>
+                ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
             </div>
-            
-            <div class="message-detail-content">
-                <div class="message-detail-topic">
-                    ${escapeHtml(message.topic || 'No topic')}
-                </div>
-                <div class="message-detail-text">
-                    ${escapeHtml(message.message)}
-                </div>
-                <div class="message-detail-meta">
-                    <span>Received: ${timeAgo}</span>
-                    <span class="status-badge ${message.status}">${formatStatus(message.status)}</span>
-                </div>
-            </div>
-            
-            <div class="message-detail-actions">
-                <button class="btn-mark-read" onclick="markAsRead(${message.id}); closeMessageModal();" ${message.status === 'read' || message.status === 'replied' ? 'style="display:none"' : ''}>
-                    <i class="fi fi-rr-check"></i> Mark as Read
-                </button>
-                <button class="btn-reply" onclick="replyToMessage(${message.id})">
-                    <i class="fi fi-rr-envelope"></i> Reply
-                </button>
-                <button class="btn-delete" onclick="deleteMessage(${message.id}); closeMessageModal();">
-                    <i class="fi fi-rr-trash"></i> Delete
-                </button>
-            </div>
-        `;
+        </div>
+        <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> Loading full conversation...</div>
+        <div class="message-detail-thread" id="messageDetailThread" style="display:none;"></div>
+    `;
+    messageModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    try {
+        const res = await API.messages.getMessages(message.conversationId, { page: 1, limit: 200 });
+        const messages = res.messages || [];
+        const threadEl = document.getElementById('messageDetailThread');
+        const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
+        if (loadingEl) loadingEl.remove();
+        if (messages.length === 0) {
+            threadEl.innerHTML = '<div class="message-detail-empty">No messages in this conversation.</div>';
+        } else {
+            const threadHtml = messages.map(m => {
+                const isFromAdmin = currentUser && m.sender && m.sender.id === currentUser.id;
+                const senderName = m.sender ? m.sender.fullName : 'Unknown';
+                const timeStr = m.createdAt ? getTimeAgo(m.createdAt) : '';
+                return `<div class="message-detail-item ${isFromAdmin ? 'from-admin' : 'from-user'}">
+                    <div class="message-detail-item-header">${escapeHtml(senderName)} · ${escapeHtml(timeStr)}</div>
+                    <div class="message-detail-item-text">${escapeHtml(m.content)}</div>
+                </div>`;
+            }).join('');
+            threadEl.innerHTML = '<div class="message-detail-thread-label">Full conversation history</div>' + threadHtml;
+        }
+        threadEl.style.display = 'block';
+    } catch (e) {
+        console.warn('Could not load full conversation:', e);
+        const threadEl = document.getElementById('messageDetailThread');
+        const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
+        if (loadingEl) loadingEl.remove();
+        if (threadEl) {
+            threadEl.innerHTML = '<div class="message-detail-empty">Could not load full conversation.</div><div class="message-detail-item from-user"><div class="message-detail-item-text">' + escapeHtml(message.message) + '</div></div>';
+            threadEl.style.display = 'block';
+        }
     }
     
-    if (messageModal) {
-        messageModal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
+    const replyDiv = document.createElement('div');
+    replyDiv.innerHTML = `
+        <div class="reply-section">
+            <h4 class="reply-section-title">Reply to ${escapeHtml(message.fullName)}</h4>
+            <form class="reply-form" id="replyForm${message.id}" onsubmit="handleReplySubmit(event, ${message.id})">
+                <div class="reply-form-group">
+                    <label for="replyMessage${message.id}" class="reply-label">Your Reply</label>
+                    <textarea id="replyMessage${message.id}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
+                </div>
+                <div class="reply-form-actions">
+                    <button type="button" class="btn-cancel-reply" onclick="cancelReply(${message.id})">Cancel</button>
+                    <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
+                </div>
+            </form>
+        </div>
+        <div class="message-detail-actions">
+            <button class="btn-reply-toggle" onclick="toggleReplySection(${message.id})"><i class="fi fi-rr-envelope"></i> Reply</button>
+        </div>
+    `;
+    while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
 }
 
 // Mark message as read
@@ -344,7 +335,7 @@ window.replyToMessage = replyToMessage;
 window.deleteMessage = deleteMessage;
 window.closeMessageModal = closeMessageModal;
 window.toggleStar = toggleStar;
-window.blockMessage = blockMessage;
+window.toggleBlock = toggleBlock;
 window.initializeMessages = initializeMessages;
 window.renderMessages = renderMessages;
 

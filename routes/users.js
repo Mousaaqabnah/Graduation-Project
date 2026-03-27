@@ -35,6 +35,7 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
           email: true,
           fullName: true,
           phone: true,
+          location: true,
           role: true,
           status: true,
           avatar: true,

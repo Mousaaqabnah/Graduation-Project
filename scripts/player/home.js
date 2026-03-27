@@ -1887,6 +1887,19 @@ function handlePaymentSubmission() {
   const form = document.getElementById('paymentForm');
   if (!form) return;
 
+  // If account is suspended, block payment and show message
+  try {
+    if (window.API && typeof window.API.getCurrentUser === 'function') {
+      const currentUser = window.API.getCurrentUser();
+      if (currentUser && currentUser.status && String(currentUser.status).toUpperCase() !== 'ACTIVE') {
+        alert('Your account is suspended. You cannot complete payments. Please contact support to resolve this.');
+        return;
+      }
+    }
+  } catch (e) {
+    // If we can't read user, continue to normal validation below
+  }
+
   // Validate form
   if (!validatePaymentForm()) {
     return;
