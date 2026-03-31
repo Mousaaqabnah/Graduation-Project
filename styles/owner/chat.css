@@ -700,6 +700,141 @@ body {
     margin-top: 2px;
 }
 
+/* Message list empty / loading states */
+.message-list-empty,
+.message-list-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: #9CA3AF;
+}
+
+.message-list-empty i,
+.message-list-loading i {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.message-list-empty p,
+.message-list-loading p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0 0 4px 0;
+}
+
+.message-list-empty-hint {
+    font-size: 12px !important;
+    color: #9CA3AF !important;
+    margin-top: 8px !important;
+}
+
+.message-list-loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Messages loading state */
+.messages-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #9CA3AF;
+}
+
+.messages-loading i {
+    font-size: 32px;
+    margin-bottom: 12px;
+    animation: spin 1s linear infinite;
+}
+
+.messages-loading p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0;
+}
+
+.empty-chat-hint {
+    font-size: 13px !important;
+    color: #9CA3AF !important;
+    margin-top: 8px !important;
+}
+
+/* Chat toast notification */
+.chat-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    padding: 16px 20px;
+    z-index: 10000;
+    opacity: 0;
+    transform: translateX(100px);
+    transition: all 0.3s ease;
+    min-width: 280px;
+}
+
+.chat-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.chat-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.chat-toast-content i {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.chat-toast-success .chat-toast-content i {
+    color: #10B981;
+}
+
+.chat-toast-info .chat-toast-content i {
+    color: #007BFF;
+}
+
+.chat-toast-error .chat-toast-content i {
+    color: #DC2626;
+}
+
+.chat-toast-content span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #212529;
+}
+
+/* Friend modal loading */
+.friend-modal-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    color: #6B7280;
+    font-size: 14px;
+}
+
+.friend-modal-loading i {
+    font-size: 20px;
+    animation: spin 1s linear infinite;
+}
+
 /* Chat Conversation Container */
 .chat-conversation-container {
     flex: 1;

@@ -276,6 +276,132 @@
     box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
+.btn-primary {
+    background: #007BFF;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0066CC;
+}
+
+/* Change Password Modal */
+.change-password-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    padding: 20px;
+}
+
+.change-password-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.change-password-modal {
+    background: white;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.change-password-modal-header {
+    padding: 24px;
+    border-bottom: 1px solid #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.change-password-modal-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+}
+
+.change-password-modal-close {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #F3F4F6;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #6B7280;
+    transition: all 0.2s;
+}
+
+.change-password-modal-close:hover {
+    background: #E5E7EB;
+    color: #212529;
+}
+
+.change-password-modal-body {
+    padding: 24px;
+}
+
+.change-password-modal-body .form-group {
+    margin-bottom: 20px;
+}
+
+.change-password-modal-body .form-group:last-of-type {
+    margin-bottom: 16px;
+}
+
+.change-password-modal-body label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.change-password-modal-body input[type="password"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: 'Poppins', sans-serif;
+    box-sizing: border-box;
+}
+
+.change-password-modal-body input[type="password"]:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.change-password-error {
+    color: #DC2626;
+    font-size: 14px;
+    margin: 0 0 16px 0;
+    min-height: 20px;
+}
+
+.change-password-modal-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding-top: 8px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .settings-card-header,

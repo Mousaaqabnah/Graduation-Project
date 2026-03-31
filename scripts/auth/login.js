@@ -1,29 +1,33 @@
 // Form submission handler
-document.getElementById('loginForm').addEventListener('submit', function(e) {
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const remember = document.getElementById('remember').checked;
     
-    // Here you would typically send this data to your backend
-    console.log('Login attempt:', {
-        email,
-        password: '***',
-        remember
-    });
-    
-    // Simulate login process
     const loginButton = document.querySelector('.btn-primary');
     const originalText = loginButton.textContent;
     loginButton.textContent = 'Logging in...';
     loginButton.disabled = true;
     
-    setTimeout(() => {
-        alert('Login functionality would connect to your backend API here.');
+    try {
+        const response = await API.auth.login(email, password);
+        
+        // Redirect based on user role
+        const user = response.user;
+        if (user.role === 'ADMIN') {
+            window.location.href = '/pages/admin/dashboard.html';
+        } else if (user.role === 'OWNER') {
+            window.location.href = '/pages/owner/dashboard.html';
+        } else {
+            window.location.href = '/pages/player/home.html';
+        }
+    } catch (error) {
+        alert(error.message || 'Login failed. Please check your credentials.');
         loginButton.textContent = originalText;
         loginButton.disabled = false;
-    }, 1000);
+    }
 });
 
 // Google Sign In handler
@@ -53,4 +57,27 @@ document.querySelectorAll('input').forEach(input => {
     });
 });
 
+// Always clear login form fields when we land on the login page
+// This prevents old email/password from appearing after logout + back navigation
+(function() {
+    function clearLoginForm() {
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const rememberCheckbox = document.getElementById('remember');
+        
+        if (emailInput) emailInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        if (rememberCheckbox) rememberCheckbox.checked = false;
+    }
+
+    // Clear immediately on script load (login.html loads this at the end of body)
+    clearLoginForm();
+
+    // Also clear when page is restored from back/forward cache
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) {
+            clearLoginForm();
+        }
+    });
+})();
 

@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <link rel="stylesheet" href="../../styles/player/map.css">
 </head>
 <body>
@@ -211,28 +212,22 @@
                 <!-- Right Panel - Map View -->
                 <div class="map-panel">
                     <div class="map-header-panel">
-                        <h2 class="map-title">Map view (preview)</h2>
+                        <h2 class="map-title">Map view</h2>
                         <p class="field-count" id="fieldCount">3 fields found</p>
                     </div>
-                    <div class="map-container" id="mapContainer">
-                        <!-- Map markers will be positioned here -->
-                        <div class="map-marker" style="top: 25%; left: 30%;" data-field="fozl">
-                            <div class="marker-price">€1500 / h</div>
-                        </div>
-                        <div class="map-marker" style="top: 50%; left: 60%;" data-field="sunset">
-                            <div class="marker-price">€900 / h</div>
-                        </div>
-                        <div class="map-marker" style="top: 70%; left: 40%;" data-field="indoor">
-                            <div class="marker-price">€1100 / h</div>
-                        </div>
-                        <p class="map-disclaimer">This is a static preview. In your real app, this area will be a live map.</p>
-                    </div>
+                    <div class="map-container" id="mapContainer"></div>
                     <button class="btn-recenter">Re-center</button>
                 </div>
             </div>
         </main>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/mapService.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
     <script src="../../scripts/player/map.js"></script>
 </body>
 </html>
