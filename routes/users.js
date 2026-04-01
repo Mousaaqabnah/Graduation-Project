@@ -62,6 +62,39 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
   }
 });
 
+// Search users (must be before /:id so "search" is not treated as an id)
+router.get('/search/users', authenticate, async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q || q.length < 2) {
+      return res.json({ users: [] });
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { fullName: { contains: q } },
+          { email: { contains: q } }
+        ]
+      },
+      take: 10,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        avatar: true,
+        role: true
+      }
+    });
+
+    res.json({ users });
+  } catch (error) {
+    console.error('Search users error:', error);
+    res.status(500).json({ error: 'Failed to search users' });
+  }
+});
+
 // Get user by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {
@@ -186,39 +219,6 @@ router.put('/:id/status', authenticate, requireRole('ADMIN'), [
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ error: 'Failed to update user status' });
-  }
-});
-
-// Search users (for admin notifications, etc.)
-router.get('/search/users', authenticate, async (req, res) => {
-  try {
-    const { q } = req.query;
-    
-    if (!q || q.length < 2) {
-      return res.json({ users: [] });
-    }
-
-    const users = await prisma.user.findMany({
-      where: {
-        OR: [
-          { fullName: { contains: q } },
-          { email: { contains: q } }
-        ]
-      },
-      take: 10,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        avatar: true,
-        role: true
-      }
-    });
-
-    res.json({ users });
-  } catch (error) {
-    console.error('Search users error:', error);
-    res.status(500).json({ error: 'Failed to search users' });
   }
 });
 
