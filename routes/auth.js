@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { mongoUserSetFields } = require('../lib/mongoUserWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -102,6 +103,14 @@ router.post('/login', [
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+      console.error('Login: user missing password_hash', email);
+      return res.status(500).json({
+        error:
+          'Account data is incomplete. Run npm run db:seed to repair demo users, or reset your password from Settings.'
+      });
+    }
+
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
@@ -181,6 +190,13 @@ router.put('/password', authenticate, [
       where: { id: userId }
     });
 
+    if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
+      return res.status(400).json({
+        error:
+          'Account has no password on file. Run npm run db:seed if this is a demo account, or contact support.'
+      });
+    }
+
     // Verify current password
     const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!isValidPassword) {
@@ -190,11 +206,7 @@ router.put('/password', authenticate, [
     // Hash new password
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    // Update password
-    await prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash }
-    });
+    await mongoUserSetFields(userId, { password_hash: passwordHash });
 
     res.json({ message: 'Password updated successfully' });
   } catch (error) {

@@ -184,6 +184,13 @@ const usersAPI = {
     });
   },
 
+  updateAvatar: async (id, avatarDataUrl) => {
+    return apiRequest(`/users/${id}/avatar`, {
+      method: 'PUT',
+      body: { avatar: avatarDataUrl }
+    });
+  },
+
   submitOwnerVerification: async (idFrontUrl, idBackUrl) => {
     return apiRequest('/users/me/verification', {
       method: 'POST',

@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -105,14 +106,21 @@ router.put('/verify-owner/:userId', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const updateData = {
-      verificationStatus,
-      verifiedAt: verificationStatus === 'APPROVED' ? new Date() : null
-    };
+    const idTrim = typeof userId === 'string' ? userId.trim() : '';
+    if (!isMongoObjectIdString(idTrim)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
+    const matched = await mongoUserSetFields(idTrim, {
+      verification_status: verificationStatus,
+      verified_at: verificationStatus === 'APPROVED' ? new Date() : null
+    });
+    if (!matched) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: idTrim },
       select: {
         id: true,
         email: true,

@@ -24,11 +24,25 @@ function now() {
  * Inserts match Prisma's @map field names in MongoDB (snake_case where mapped).
  */
 async function ensureUser(collection, { email, plainPassword, fullName, role, verificationStatus }) {
-  const existing = await collection.findOne({ email });
-  if (existing) return existing;
-
   const password_hash = await bcrypt.hash(plainPassword, 10);
   const t = now();
+  const existing = await collection.findOne({ email });
+
+  if (existing) {
+    const $set = {
+      password_hash,
+      full_name: fullName,
+      role,
+      status: 'ACTIVE',
+      updated_at: t
+    };
+    if (verificationStatus !== undefined && verificationStatus !== null) {
+      $set.verification_status = verificationStatus;
+    }
+    await collection.updateOne({ _id: existing._id }, { $set });
+    return collection.findOne({ email });
+  }
+
   const doc = {
     email,
     password_hash,
@@ -36,7 +50,7 @@ async function ensureUser(collection, { email, plainPassword, fullName, role, ve
     role,
     status: 'ACTIVE',
     created_at: t,
-    updated_at: t,
+    updated_at: t
   };
   if (verificationStatus !== undefined && verificationStatus !== null) {
     doc.verification_status = verificationStatus;

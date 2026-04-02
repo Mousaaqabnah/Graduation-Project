@@ -301,8 +301,18 @@ function saveAndShowAvatar(avatarUrl) {
     var user = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
     var userId = user ? user.id : null;
 
-    if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && userId && API.users && API.users.update) {
-        API.users.update(userId, { avatar: avatarUrl })
+    if (
+        typeof API !== 'undefined' &&
+        API.getAuthToken &&
+        API.getAuthToken() &&
+        userId &&
+        API.users &&
+        (API.users.updateAvatar || API.users.update)
+    ) {
+        var savePromise = API.users.updateAvatar
+            ? API.users.updateAvatar(userId, avatarUrl)
+            : API.users.update(userId, { avatar: avatarUrl });
+        savePromise
             .then(function(res) {
                 if (res && res.user && API.setCurrentUser) {
                     API.setCurrentUser(res.user);

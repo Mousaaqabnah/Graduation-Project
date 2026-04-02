@@ -25,6 +25,14 @@ router.get('/stats', async (req, res) => {
 
     const fieldIds = fields.map((f) => f.id);
 
+    const ownerUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { createdAt: true }
+    });
+    const monthsActive = ownerUser
+      ? Math.max(1, Math.floor((Date.now() - ownerUser.createdAt.getTime()) / (30.44 * 24 * 60 * 60 * 1000)))
+      : 0;
+
     if (fieldIds.length === 0) {
       return res.json({
         stats: {
@@ -34,7 +42,12 @@ router.get('/stats', async (req, res) => {
           upcomingBookings: 0,
           todayBookings: 0,
           revenueThisWeek: 0,
-          revenueLastWeek: 0
+          revenueLastWeek: 0,
+          revenueChangePercent: 0,
+          totalBookings: 0,
+          averageFieldRating: null,
+          revenueThisMonth: 0,
+          monthsActive
         },
         fields: []
       });
@@ -51,12 +64,28 @@ router.get('/stats', async (req, res) => {
 
     const bookingBase = { fieldId: { in: fieldIds } };
 
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const endOfMonth = new Date(
+      startOfMonth.getFullYear(),
+      startOfMonth.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
+
     const [
       pendingBookings,
       upcomingBookings,
       todayBookings,
       revenueThisWeek,
-      revenueLastWeek
+      revenueLastWeek,
+      totalBookings,
+      revenueThisMonthAgg,
+      fieldsForRating
     ] = await Promise.all([
       prisma.booking.count({
         where: {
@@ -93,12 +122,37 @@ router.get('/stats', async (req, res) => {
           status: { in: ['CONFIRMED', 'COMPLETED'] }
         },
         _sum: { totalCost: true }
+      }),
+      prisma.booking.count({
+        where: {
+          ...bookingBase,
+          status: { not: 'CANCELLED' }
+        }
+      }),
+      prisma.booking.aggregate({
+        where: {
+          ...bookingBase,
+          date: { gte: startOfMonth, lte: endOfMonth },
+          status: { in: ['CONFIRMED', 'COMPLETED'] }
+        },
+        _sum: { totalCost: true }
+      }),
+      prisma.field.findMany({
+        where: fieldWhere,
+        select: { rating: true, reviewCount: true }
       })
     ]);
 
     const rev7 = revenueThisWeek._sum.totalCost || 0;
     const revPrev = revenueLastWeek._sum.totalCost || 0;
     const revenuePercent = revPrev > 0 ? Math.round(((rev7 - revPrev) / revPrev) * 100) : rev7 > 0 ? 100 : 0;
+    const revMonth = revenueThisMonthAgg._sum.totalCost || 0;
+
+    const ratedFields = fieldsForRating.filter((f) => f.rating != null && (f.reviewCount || 0) > 0);
+    const averageFieldRating =
+      ratedFields.length > 0
+        ? Math.round((ratedFields.reduce((s, f) => s + f.rating, 0) / ratedFields.length) * 10) / 10
+        : null;
 
     res.json({
       stats: {
@@ -109,7 +163,11 @@ router.get('/stats', async (req, res) => {
         todayBookings,
         revenueThisWeek: rev7,
         revenueLastWeek: revPrev,
-        revenueChangePercent: revenuePercent
+        revenueChangePercent: revenuePercent,
+        totalBookings,
+        averageFieldRating,
+        revenueThisMonth: revMonth,
+        monthsActive
       },
       fieldIds
     });

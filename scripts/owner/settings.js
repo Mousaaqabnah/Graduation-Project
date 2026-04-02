@@ -39,12 +39,92 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Change Password Button
     const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordModalClose = document.getElementById('changePasswordModalClose');
+    const changePasswordCancel = document.getElementById('changePasswordCancel');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const changePasswordError = document.getElementById('changePasswordError');
+
+    function openChangePasswordModal() {
+        if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+            alert('Please log in to change your password.');
+            return;
+        }
+        if (changePasswordModal) {
+            changePasswordModal.classList.add('active');
+            if (changePasswordForm) changePasswordForm.reset();
+            if (changePasswordError) changePasswordError.textContent = '';
+            var cur = document.getElementById('currentPassword');
+            if (cur) cur.focus();
+        }
+    }
+
+    function closeChangePasswordModal() {
+        if (changePasswordModal) changePasswordModal.classList.remove('active');
+    }
+
     if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', function() {
-            // TODO: Open change password modal
-            alert('Change password functionality will be implemented soon!');
+        changePasswordBtn.addEventListener('click', openChangePasswordModal);
+    }
+    if (changePasswordModalClose) {
+        changePasswordModalClose.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordCancel) {
+        changePasswordCancel.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordModal) {
+        changePasswordModal.addEventListener('click', function(e) {
+            if (e.target === changePasswordModal) closeChangePasswordModal();
+        });
+    }
+
+    if (changePasswordForm && typeof API !== 'undefined' && API.auth && API.auth.updatePassword) {
+        changePasswordForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var currentPwd = document.getElementById('currentPassword').value;
+            var newPwd = document.getElementById('newPassword').value;
+            var confirmPwd = document.getElementById('confirmPassword').value;
+
+            if (changePasswordError) changePasswordError.textContent = '';
+
+            if (newPwd.length < 8) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'New password must be at least 8 characters.';
+                }
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'New passwords do not match.';
+                }
+                return;
+            }
+
+            var submitBtn = document.getElementById('changePasswordSubmit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Updating...';
+            }
+
+            API.auth.updatePassword(currentPwd, newPwd)
+                .then(function() {
+                    closeChangePasswordModal();
+                    alert('Your password has been updated successfully.');
+                })
+                .catch(function(err) {
+                    if (changePasswordError) {
+                        changePasswordError.textContent =
+                            (err && err.message) ||
+                            'Failed to update password. Check your current password.';
+                    }
+                })
+                .finally(function() {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Update Password';
+                    }
+                });
         });
     }
     

@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -130,13 +131,14 @@ router.post(
         return res.status(400).json({ error: 'Account is already verified' });
       }
 
-      const updated = await prisma.user.update({
+      await mongoUserSetFields(req.user.id, {
+        id_front_url: idFrontUrl,
+        id_back_url: idBackUrl,
+        verification_status: 'PENDING'
+      });
+
+      const updated = await prisma.user.findUnique({
         where: { id: req.user.id },
-        data: {
-          idFrontUrl,
-          idBackUrl,
-          verificationStatus: 'PENDING'
-        },
         select: {
           id: true,
           verificationStatus: true,
@@ -159,7 +161,7 @@ router.get('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     
     // Users can only view their own profile unless they're admin
-    if (req.user.id !== id && req.user.role !== 'ADMIN') {
+    if (String(req.user.id) !== String(id) && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -192,21 +194,80 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Avatar only — large base64 body; Prisma Mongo can fail on some updates, so use native $set.
+router.put('/:id/avatar', authenticate, async (req, res) => {
+  try {
+    const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+    if (!isMongoObjectIdString(id)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+    if (String(req.user.id) !== String(id) && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const avatar = req.body && req.body.avatar;
+    if (typeof avatar !== 'string' || !avatar.startsWith('data:image/')) {
+      return res.status(400).json({
+        error: 'Invalid image: expected a data URL (data:image/jpeg;base64,...)'
+      });
+    }
+    if (avatar.length > 4_000_000) {
+      return res.status(400).json({ error: 'Image data is too large; use a smaller photo' });
+    }
+
+    const matched = await mongoUserSetFields(id, { avatar });
+    if (!matched) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        dateOfBirth: true,
+        gender: true,
+        location: true,
+        avatar: true,
+        role: true,
+        status: true,
+        updatedAt: true
+      }
+    });
+
+    res.json({ message: 'Avatar updated successfully', user });
+  } catch (error) {
+    console.error('Update avatar error:', error);
+    const details =
+      process.env.NODE_ENV !== 'production' && error && error.message
+        ? { details: error.message }
+        : {};
+    res.status(500).json({ error: 'Failed to update avatar', ...details });
+  }
+});
+
 // Update user profile
 router.put('/:id', authenticate, [
-  body('fullName').trim().optional(),
-  body('phone').optional(),
-  body('dateOfBirth').optional(),
-  body('gender').optional(),
-  body('location').optional(),
+  body('fullName').optional().trim(),
+  body('phone').optional({ nullable: true }),
+  body('dateOfBirth').optional({ nullable: true }),
+  body('gender').optional({ nullable: true }),
+  body('location').optional({ nullable: true }),
   body('avatar').optional()
 ], async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const idTrim = typeof id === 'string' ? id.trim() : '';
+
     // Users can only update their own profile unless they're admin
-    if (req.user.id !== id && req.user.role !== 'ADMIN') {
+    if (String(req.user.id) !== String(idTrim) && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!isMongoObjectIdString(idTrim)) {
+      return res.status(400).json({ error: 'Invalid user id' });
     }
 
     const errors = validationResult(req);
@@ -216,17 +277,28 @@ router.put('/:id', authenticate, [
 
     const { fullName, phone, dateOfBirth, gender, location, avatar } = req.body;
 
-    const updateData = {};
-    if (fullName) updateData.fullName = fullName;
-    if (phone !== undefined) updateData.phone = phone;
-    if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
-    if (gender) updateData.gender = gender;
-    if (location) updateData.location = location;
-    if (avatar !== undefined && typeof avatar === 'string') updateData.avatar = avatar;
+    const $set = {};
+    if (fullName !== undefined && String(fullName).trim()) $set.full_name = String(fullName).trim();
+    if (phone !== undefined) $set.phone = phone ? String(phone).trim() : null;
+    if (dateOfBirth !== undefined) {
+      $set.date_of_birth =
+        dateOfBirth && String(dateOfBirth).trim() ? new Date(dateOfBirth) : null;
+    }
+    if (gender !== undefined) $set.gender = gender ? String(gender).trim() : null;
+    if (location !== undefined) $set.location = location ? String(location).trim() : null;
+    if (avatar !== undefined && typeof avatar === 'string') $set.avatar = avatar;
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: updateData,
+    if (Object.keys($set).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const matched = await mongoUserSetFields(idTrim, $set);
+    if (!matched) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: idTrim },
       select: {
         id: true,
         email: true,
@@ -245,7 +317,11 @@ router.put('/:id', authenticate, [
     res.json({ message: 'Profile updated successfully', user });
   } catch (error) {
     console.error('Update user error:', error);
-    res.status(500).json({ error: 'Failed to update profile' });
+    const details =
+      process.env.NODE_ENV !== 'production' && error && error.message
+        ? { details: error.message }
+        : {};
+    res.status(500).json({ error: 'Failed to update profile', ...details });
   }
 });
 
@@ -262,9 +338,18 @@ router.put('/:id/status', authenticate, requireRole('ADMIN'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: { status },
+    const idTrim = typeof id === 'string' ? id.trim() : '';
+    if (!isMongoObjectIdString(idTrim)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    const matched = await mongoUserSetFields(idTrim, { status });
+    if (!matched) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: idTrim },
       select: {
         id: true,
         email: true,
