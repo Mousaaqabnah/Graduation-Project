@@ -1,7 +1,31 @@
-// API utility for making requests to the backend (uses same host/port as the page)
-const API_BASE_URL = (typeof window !== 'undefined' && window.location?.origin
-  ? window.location.origin
-  : 'http://localhost:3000') + '/api';
+// API utility for making requests to the backend.
+// When the HTML is opened from Live Server / another port (or file:), the page origin is not the API server (Express on :3000).
+// POSTing to /api on a static server returns 405 Method Not Allowed — use the real API origin instead.
+function isLikelyLocalDevHost(hostname) {
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  return /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+}
+
+function resolveApiOrigin() {
+  if (typeof window === 'undefined') return 'http://localhost:3000';
+  if (window.__API_ORIGIN__) {
+    return String(window.__API_ORIGIN__).replace(/\/$/, '');
+  }
+  const loc = window.location;
+  if (loc.origin === 'null' || loc.protocol === 'file:') {
+    return 'http://localhost:3000';
+  }
+  const host = loc.hostname;
+  const port = loc.port;
+  if (isLikelyLocalDevHost(host) && port && port !== '3000') {
+    return `http://${host}:3000`;
+  }
+  return loc.origin;
+}
+
+const API_BASE_URL = `${resolveApiOrigin()}/api`;
 
 // Get auth token from localStorage
 function getAuthToken() {
@@ -69,7 +93,21 @@ async function apiRequest(endpoint, options = {}) {
 
     return data;
   } catch (error) {
-    console.error('API request error:', error);
+    console.error('API request error:', error, { url });
+    const name = error && error.name;
+    const msg = (error && error.message) || '';
+    if (name === 'TypeError' || /failed to fetch/i.test(msg)) {
+      const httpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const httpApi = /^http:\/\//i.test(url);
+      if (httpsPage && httpApi) {
+        throw new Error(
+          'Blocked mixed content: this page is HTTPS but the API is HTTP. Open the site over http:// (not https), or set window.__API_ORIGIN__ to your API URL.'
+        );
+      }
+      throw new Error(
+        `Cannot reach the API (${url}). Start the backend in the project folder: npm start  (or npm run dev). Then open the app at http://localhost:3000/pages/auth/login.html — or keep using Live Server; requests are sent to port 3000. API base: ${API_BASE_URL}`
+      );
+    }
     throw error;
   }
 }
@@ -373,6 +411,7 @@ const adminAPI = {
 
 // Export all APIs
 window.API = {
+  apiBaseUrl: API_BASE_URL,
   auth: authAPI,
   users: usersAPI,
   fields: fieldsAPI,

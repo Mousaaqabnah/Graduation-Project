@@ -15,7 +15,7 @@ const generateToken = (userId) => {
 
 // Register new user
 router.post('/register', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').trim().isEmail(),
   body('password').isLength({ min: 8 }),
   body('fullName').trim().notEmpty(),
   body('role').isIn(['PLAYER', 'OWNER']).optional()
@@ -26,7 +26,8 @@ router.post('/register', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, fullName, phone, dateOfBirth, gender, location, role } = req.body;
+    const email = String(req.body.email).trim().toLowerCase();
+    const { password, fullName, phone, dateOfBirth, gender, location, role } = req.body;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -80,7 +81,7 @@ router.post('/register', [
 
 // Login
 router.post('/login', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').trim().isEmail(),
   body('password').notEmpty()
 ], async (req, res) => {
   try {
@@ -89,7 +90,8 @@ router.post('/login', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password } = req.body;
+    const email = String(req.body.email).trim().toLowerCase();
+    const { password } = req.body;
 
     // Find user
     const user = await prisma.user.findUnique({
