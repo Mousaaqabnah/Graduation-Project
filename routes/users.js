@@ -95,6 +95,64 @@ router.get('/search/users', authenticate, async (req, res) => {
   }
 });
 
+// Submit owner ID verification (must be before /:id)
+router.post(
+  '/me/verification',
+  authenticate,
+  requireRole('OWNER'),
+  [
+    body('idFrontUrl').trim().notEmpty(),
+    body('idBackUrl').trim().notEmpty()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { idFrontUrl, idBackUrl } = req.body;
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { verificationStatus: true, role: true }
+      });
+
+      if (!user || user.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Only field owners can submit verification' });
+      }
+
+      if (user.verificationStatus === 'PENDING') {
+        return res.status(400).json({ error: 'Verification is already pending review' });
+      }
+
+      if (user.verificationStatus === 'APPROVED') {
+        return res.status(400).json({ error: 'Account is already verified' });
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: req.user.id },
+        data: {
+          idFrontUrl,
+          idBackUrl,
+          verificationStatus: 'PENDING'
+        },
+        select: {
+          id: true,
+          verificationStatus: true,
+          idFrontUrl: true,
+          idBackUrl: true
+        }
+      });
+
+      res.json({ message: 'Verification submitted', user: updated });
+    } catch (error) {
+      console.error('Submit verification error:', error);
+      res.status(500).json({ error: 'Failed to submit verification' });
+    }
+  }
+);
+
 // Get user by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {

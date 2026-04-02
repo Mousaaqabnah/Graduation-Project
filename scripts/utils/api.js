@@ -8,6 +8,8 @@ function isLikelyLocalDevHost(hostname) {
   return /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
 }
 
+// Returns '' when the page is already served from the API server (port 3000) — use relative /api
+// so fetch stays same-origin (fixes localhost vs 127.0.0.1 localStorage + connection quirks).
 function resolveApiOrigin() {
   if (typeof window === 'undefined') return 'http://localhost:3000';
   if (window.__API_ORIGIN__) {
@@ -18,14 +20,18 @@ function resolveApiOrigin() {
     return 'http://localhost:3000';
   }
   const host = loc.hostname;
-  const port = loc.port;
-  if (isLikelyLocalDevHost(host) && port && port !== '3000') {
+  const port = loc.port || (loc.protocol === 'https:' ? '443' : '80');
+  if (isLikelyLocalDevHost(host) && String(port) === '3000') {
+    return '';
+  }
+  if (isLikelyLocalDevHost(host) && String(port) !== '3000') {
     return `http://${host}:3000`;
   }
   return loc.origin;
 }
 
-const API_BASE_URL = `${resolveApiOrigin()}/api`;
+const _apiOriginResolved = resolveApiOrigin();
+const API_BASE_URL = _apiOriginResolved === '' ? '/api' : `${_apiOriginResolved}/api`;
 
 // Get auth token from localStorage
 function getAuthToken() {
@@ -88,7 +94,9 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      throw new Error(data.error || response.statusText || 'Request failed');
+      const base = data.error || response.statusText || 'Request failed';
+      const extra = data.details ? ` ${data.details}` : '';
+      throw new Error(base + extra);
     }
 
     return data;
@@ -104,8 +112,12 @@ async function apiRequest(endpoint, options = {}) {
           'Blocked mixed content: this page is HTTPS but the API is HTTP. Open the site over http:// (not https), or set window.__API_ORIGIN__ to your API URL.'
         );
       }
+      const absForMsg =
+        typeof window !== 'undefined' && url.startsWith('/')
+          ? `${window.location.origin}${url}`
+          : url;
       throw new Error(
-        `Cannot reach the API (${url}). Start the backend in the project folder: npm start  (or npm run dev). Then open the app at http://localhost:3000/pages/auth/login.html — or keep using Live Server; requests are sent to port 3000. API base: ${API_BASE_URL}`
+        `Cannot reach the API (${absForMsg}). Start the backend in the project folder: npm start (or npm run dev). Open http://localhost:3000/pages/auth/login.html and log in as OWNER, or use Live Server (API stays on port 3000). API base: ${API_BASE_URL}`
       );
     }
     throw error;
@@ -172,6 +184,13 @@ const usersAPI = {
     });
   },
 
+  submitOwnerVerification: async (idFrontUrl, idBackUrl) => {
+    return apiRequest('/users/me/verification', {
+      method: 'POST',
+      body: { idFrontUrl, idBackUrl }
+    });
+  },
+
   updateStatus: async (id, status) => {
     return apiRequest(`/users/${id}/status`, {
       method: 'PUT',
@@ -217,6 +236,27 @@ const fieldsAPI = {
 
   getByOwner: async (ownerId) => {
     return apiRequest(`/fields/owner/${ownerId}`);
+  },
+
+  getMine: async () => {
+    return apiRequest('/fields/me');
+  },
+
+  listUnavailableDates: async (fieldId) => {
+    return apiRequest(`/fields/${fieldId}/unavailable-dates`);
+  },
+
+  addUnavailableDate: async (fieldId, dateYmd) => {
+    return apiRequest(`/fields/${fieldId}/unavailable-dates`, {
+      method: 'POST',
+      body: { date: dateYmd }
+    });
+  },
+
+  removeUnavailableDate: async (fieldId, dateYmd) => {
+    return apiRequest(`/fields/${fieldId}/unavailable-dates?date=${encodeURIComponent(dateYmd)}`, {
+      method: 'DELETE'
+    });
   },
 
   getAvailability: async (fieldId, date) => {
@@ -378,6 +418,13 @@ const messagesAPI = {
   }
 };
 
+// Field owner API
+const ownerAPI = {
+  getStats: async () => {
+    return apiRequest('/owner/stats');
+  }
+};
+
 // Admin API
 const adminAPI = {
   getStats: async () => {
@@ -421,6 +468,7 @@ window.API = {
   messages: messagesAPI,
   notifications: notificationsAPI,
   support: supportAPI,
+  owner: ownerAPI,
   admin: adminAPI,
   getAuthToken,
   setAuthToken,

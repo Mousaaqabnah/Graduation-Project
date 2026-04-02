@@ -51,6 +51,7 @@ app.use('/api/favorites', require('./routes/favorites'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/owner', require('./routes/owner'));
 app.use('/api/admin', require('./routes/admin'));
 
 // Error handling middleware
@@ -68,10 +69,11 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Start server
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+// Start server (0.0.0.0 so http://127.0.0.1:PORT and http://localhost:PORT both reach the API on Windows)
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://localhost:${PORT} (and http://127.0.0.1:${PORT})`);
   console.log(`📊 API available at http://localhost:${PORT}/api`);
+  console.log(`📄 Open app: http://localhost:${PORT}/pages/auth/login.html`);
 });
 
 // Graceful shutdown

@@ -51,7 +51,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearch();
     setupMapMarkers();
     updateFieldCount();
-    setupNotifications();
     setupProfile();
 });
 
@@ -279,32 +278,7 @@ document.querySelector('.btn-manage-location')?.addEventListener('click', functi
     alert('In a real app, this would allow you to edit field locations on the map.');
 });
 
-// Setup notifications
-function setupNotifications() {
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        // Close popup when clicking outside
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
-}
+// Notifications: scripts/player/notifications.js
 
 // Setup profile popup
 function setupProfile() {

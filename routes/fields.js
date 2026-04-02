@@ -1,10 +1,59 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+/**
+ * Prisma wraps MongoDB deleteMany chains in transactions (replica set required).
+ * Standalone mongod rejects those — delete related docs with the driver instead.
+ * Collection / field names match prisma @@map.
+ */
+async function deleteFieldCascadeNative(fieldIdHex) {
+  const oid = new ObjectId(fieldIdHex);
+  const client = new MongoClient(process.env.DATABASE_URL);
+  try {
+    await client.connect();
+    const db = client.db();
+
+    const bookingsCol = db.collection('bookings');
+    const participantsCol = db.collection('booking_participants');
+    const reviewsCol = db.collection('field_reviews');
+    const favoritesCol = db.collection('favorites');
+    const unavailableCol = db.collection('field_unavailable_dates');
+    const fieldsCol = db.collection('fields');
+
+    const bookings = await bookingsCol
+      .find({ field_id: oid }, { projection: { _id: 1 } })
+      .toArray();
+    const bookingOids = bookings.map((b) => b._id);
+    if (bookingOids.length > 0) {
+      await participantsCol.deleteMany({ booking_id: { $in: bookingOids } });
+    }
+    await bookingsCol.deleteMany({ field_id: oid });
+    await reviewsCol.deleteMany({ field_id: oid });
+    await favoritesCol.deleteMany({ field_id: oid });
+    await unavailableCol.deleteMany({ field_id: oid });
+    const { deletedCount } = await fieldsCol.deleteOne({ _id: oid });
+    return deletedCount === 1;
+  } finally {
+    await client.close();
+  }
+}
+
+function dayUtcRangeFromYmd(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
+  const [year, month, day] = parts;
+  return {
+    start: new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999))
+  };
+}
 
 // Get all fields
 router.get('/', async (req, res) => {
@@ -69,6 +118,33 @@ router.get('/', async (req, res) => {
   }
 });
 
+// My fields (authenticated owner or admin) — includes inactive fields for the owner
+router.get('/me', authenticate, requireRole('OWNER', 'ADMIN'), async (req, res) => {
+  try {
+    const ownerId = req.user.id;
+    const fields = await prisma.field.findMany({
+      where: { ownerId },
+      include: {
+        unavailableDates: {
+          orderBy: { date: 'asc' }
+        },
+        _count: {
+          select: {
+            reviews: true,
+            bookings: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ fields });
+  } catch (error) {
+    console.error('Get my fields error:', error);
+    res.status(500).json({ error: 'Failed to fetch your fields' });
+  }
+});
+
 // Get fields by owner (must be before /:id to avoid "owner" being matched as id)
 router.get('/owner/:ownerId', async (req, res) => {
   try {
@@ -94,6 +170,136 @@ router.get('/owner/:ownerId', async (req, res) => {
   } catch (error) {
     console.error('Get owner fields error:', error);
     res.status(500).json({ error: 'Failed to fetch fields' });
+  }
+});
+
+// List dates the owner has marked unavailable (authenticated owner of field or admin)
+router.get('/:id/unavailable-dates', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const field = await prisma.field.findUnique({
+      where: { id },
+      select: { ownerId: true }
+    });
+
+    if (!field) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+
+    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const rows = await prisma.fieldUnavailableDate.findMany({
+      where: { fieldId: id },
+      orderBy: { date: 'asc' }
+    });
+
+    res.json({ unavailableDates: rows });
+  } catch (error) {
+    console.error('List unavailable dates error:', error);
+    res.status(500).json({ error: 'Failed to list unavailable dates' });
+  }
+});
+
+// Block a full calendar day for bookings (owner or admin)
+router.post(
+  '/:id/unavailable-dates',
+  authenticate,
+  [body('date').trim().matches(/^\d{4}-\d{2}-\d{2}$/)],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { date } = req.body;
+
+      const field = await prisma.field.findUnique({
+        where: { id },
+        select: { ownerId: true, id: true }
+      });
+
+      if (!field) {
+        return res.status(404).json({ error: 'Field not found' });
+      }
+
+      if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const range = dayUtcRangeFromYmd(date);
+      if (!range) {
+        return res.status(400).json({ error: 'Invalid date' });
+      }
+
+      const created = await prisma.fieldUnavailableDate.create({
+        data: {
+          fieldId: id,
+          date: range.start
+        }
+      });
+
+      res.status(201).json({ message: 'Date blocked', unavailableDate: created });
+    } catch (error) {
+      if (error.code === 'P2002') {
+        return res.status(409).json({ error: 'This date is already blocked' });
+      }
+      console.error('Add unavailable date error:', error);
+      res.status(500).json({ error: 'Failed to block date' });
+    }
+  }
+);
+
+// Unblock a day
+router.delete('/:id/unavailable-dates', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date } = req.query;
+
+    if (!date || typeof date !== 'string') {
+      return res.status(400).json({ error: 'Query parameter date is required (YYYY-MM-DD)' });
+    }
+
+    const field = await prisma.field.findUnique({
+      where: { id },
+      select: { ownerId: true }
+    });
+
+    if (!field) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+
+    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const range = dayUtcRangeFromYmd(date);
+    if (!range) {
+      return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    const deleted = await prisma.fieldUnavailableDate.deleteMany({
+      where: {
+        fieldId: id,
+        date: {
+          gte: range.start,
+          lte: range.end
+        }
+      }
+    });
+
+    if (deleted.count === 0) {
+      return res.status(404).json({ error: 'No blocked date found for that day' });
+    }
+
+    res.json({ message: 'Date unblocked', removed: deleted.count });
+  } catch (error) {
+    console.error('Delete unavailable date error:', error);
+    res.status(500).json({ error: 'Failed to unblock date' });
   }
 });
 
@@ -365,10 +571,18 @@ router.put('/:id', authenticate, [
   }
 });
 
+function isMongoObjectIdParam(id) {
+  return typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id.trim());
+}
+
 // Delete field (Owner or Admin)
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = typeof rawId === 'string' ? rawId.trim() : '';
+    if (!isMongoObjectIdParam(id)) {
+      return res.status(400).json({ error: 'Invalid field id' });
+    }
 
     const field = await prisma.field.findUnique({
       where: { id },
@@ -379,18 +593,25 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Field not found' });
     }
 
-    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const ownerId = String(field.ownerId);
+    const userId = String(req.user.id);
+    if (ownerId !== userId && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    await prisma.field.delete({
-      where: { id }
-    });
+    const deleted = await deleteFieldCascadeNative(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
 
     res.json({ message: 'Field deleted successfully' });
   } catch (error) {
     console.error('Delete field error:', error);
-    res.status(500).json({ error: 'Failed to delete field' });
+    const details =
+      process.env.NODE_ENV !== 'production' && error && error.message
+        ? { details: error.message }
+        : {};
+    res.status(500).json({ error: 'Failed to delete field', ...details });
   }
 });
 

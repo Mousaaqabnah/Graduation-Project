@@ -1,79 +1,141 @@
-// Dashboard functionality
+// Dashboard — same data-loading pattern as player pages: API.* after auth (see player/bookings.js, player/home.js).
 
-// Sample bookings data
-const bookingsData = {
-    today: [
-        {
-            time: "18:00-19:30",
-            team: "Istanbul United",
-            field: "Main football field",
-            type: "Football",
-            price: "₺1,500",
-            status: "confirmed"
-        },
-        {
-            time: "20:00-21:00",
-            team: "Evening 5v5",
-            field: "Indoor futsal court",
-            type: "Futsal",
-            price: "₺900",
-            status: "pending"
-        },
-        {
-            time: "22:00-23:30",
-            team: "Night Owls",
-            field: "Main football field",
-            type: "Football",
-            price: "₺1,700",
-            status: "confirmed"
+function ownerBookingId(b) {
+    if (!b) return '';
+    return String(b.id != null ? b.id : b._id || '');
+}
+
+function isSameLocalCalendarDay(d, ref) {
+    const a = new Date(d);
+    const b = ref || new Date();
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function ownerStatusBadgeClass(status) {
+    const s = (status || '').toUpperCase();
+    if (s === 'CONFIRMED' || s === 'UPCOMING' || s === 'COMPLETED') return 'badge-confirmed';
+    if (s === 'PENDING') return 'badge-pending';
+    if (s === 'CANCELLED') return 'badge-cancelled';
+    return 'badge-pending';
+}
+
+function ownerStatusLabel(status) {
+    const s = (status || '').toUpperCase();
+    if (s === 'UPCOMING') return 'Upcoming';
+    return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+function formatOwnerTry(amount) {
+    const n = Number(amount) || 0;
+    return '₺' + n.toLocaleString('tr-TR');
+}
+
+/** Load stats + today's bookings + field cards from API (owner-scoped on the server). */
+async function loadOwnerDashboard() {
+    if (typeof API === 'undefined') return;
+
+    try {
+        const [statsRes, bookingsRes] = await Promise.all([
+            API.owner && API.owner.getStats ? API.owner.getStats() : Promise.resolve(null),
+            API.bookings.getAll({ limit: 200 })
+        ]);
+
+        let fieldsRes = { fields: [] };
+        if (API.fields && API.fields.getMine) {
+            try {
+                fieldsRes = await API.fields.getMine();
+            } catch (fieldErr) {
+                console.warn('loadOwnerDashboard: fields/me failed', fieldErr);
+                const grid = document.getElementById('dashboardFieldsGrid');
+                if (grid) {
+                    grid.innerHTML =
+                        '<p style="padding:16px;color:#B45309;font-size:14px;">Could not load fields. Use the server URL <code>http://localhost:3000/...</code>, log in as <strong>OWNER</strong> (seed: <code>owner@matchfield.com</code>), and run <code>npm run db:seed</code> if the database is empty.</p>';
+                }
+            }
         }
-    ],
-    week: [
-        {
-            time: "18:00-19:30",
-            team: "Istanbul United",
-            field: "Main football field",
-            type: "Football",
-            price: "₺1,500",
-            status: "confirmed"
-        },
-        {
-            time: "20:00-21:00",
-            team: "Evening 5v5",
-            field: "Indoor futsal court",
-            type: "Futsal",
-            price: "₺900",
-            status: "pending"
-        },
-        {
-            time: "22:00-23:30",
-            team: "Night Owls",
-            field: "Main football field",
-            type: "Football",
-            price: "₺1,700",
-            status: "confirmed"
-        },
-        {
-            time: "14:00-15:30",
-            team: "Weekend Warriors",
-            field: "Indoor futsal court",
-            type: "Futsal",
-            price: "₺1,200",
-            status: "confirmed"
-        },
-        {
-            time: "16:00-17:30",
-            team: "City FC",
-            field: "Main football field",
-            type: "Football",
-            price: "₺1,600",
-            status: "pending"
+
+        if (statsRes && statsRes.stats) {
+            const s = statsRes.stats;
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            setVal('statValToday', s.todayBookings != null ? String(s.todayBookings) : '0');
+            setVal('statValUpcoming', s.upcomingBookings != null ? String(s.upcomingBookings) : '0');
+            setVal('statValFields', s.totalFields != null ? String(s.totalFields) : '0');
+            setVal('statValRevenue', formatOwnerTry(s.revenueThisWeek));
+            const sub = document.getElementById('statSubRevenue');
+            if (sub && typeof s.revenueChangePercent === 'number') {
+                const sign = s.revenueChangePercent >= 0 ? '+' : '';
+                sub.textContent = sign + s.revenueChangePercent + '% vs last week';
+            }
         }
-    ]
-};
+
+        const list = (bookingsRes && bookingsRes.bookings) ? bookingsRes.bookings : [];
+        const today = new Date();
+        const todayBookings = list.filter(function(b) {
+            if (!b.date) return false;
+            if ((b.status || '').toUpperCase() === 'CANCELLED') return false;
+            return isSameLocalCalendarDay(b.date, today);
+        });
+
+        bookingsData.today = todayBookings.map(function(b) {
+            const field = b.field || {};
+            const org = b.organizer || {};
+            const start = (b.timeSlotStart || '').toString();
+            const end = (b.timeSlotEnd || '').toString();
+            return {
+                time: start && end ? start + '-' + end : start,
+                team: org.fullName || 'Organizer',
+                field: field.name || 'Field',
+                type: field.sport || '—',
+                price: formatOwnerTry(b.totalCost),
+                statusRaw: b.status || ''
+            };
+        });
+
+        updateBookingsTable();
+
+        const grid = document.getElementById('dashboardFieldsGrid');
+        const fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+        if (grid) {
+            grid.innerHTML = fields.slice(0, 6).map(function(f) {
+                const img = (f.images && f.images[0]) || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop';
+                const typeTag = f.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
+                const rating = f.rating != null ? f.rating : '—';
+                const rc = f.reviewCount != null ? f.reviewCount : 0;
+                return (
+                    '<div class="field-list-card" data-field-name="' + String(f.name || '').replace(/"/g, '&quot;') + '">' +
+                    '<div class="field-list-image"><img src="' + img + '" alt=""></div>' +
+                    '<div class="field-list-content"><div class="field-list-info">' +
+                    '<h3 class="field-list-name">' + (f.name || '') + '</h3>' +
+                    '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + (f.location || '') + '</p>' +
+                    '<div class="field-list-rating"><span class="field-star-yellow">★</span> ' +
+                    '<span class="field-rating-value">' + rating + '</span> <span class="field-reviews-count">(' + rc + ')</span></div>' +
+                    '<div class="field-list-tags">' +
+                    '<span class="field-tag">' + typeTag + '</span>' +
+                    '<span class="field-tag">' + (f.sport || '') + '</span>' +
+                    '</div></div>' +
+                    '<div class="field-list-actions">' +
+                    '<div class="field-list-price-container">' +
+                    '<span class="field-list-price-label">Price</span>' +
+                    '<span class="field-list-price">' + formatOwnerTry(f.pricePerHour) + '/h</span>' +
+                    '</div>' +
+                    '<div class="field-list-buttons">' +
+                    '<button type="button" class="manage-btn" onclick="openModal(\'' + ownerBookingId(f) + '\')">Manage</button>' +
+                    '<button type="button" class="action-btn" onclick="viewFieldDetails(this)" title="View"><i class="fi fi-rr-eye"></i></button>' +
+                    '</div></div></div></div>'
+                );
+            }).join('');
+            if (fields.length === 0) {
+                grid.innerHTML = '<p style="padding:16px;color:#6B7280;">No fields yet. Use <strong>Add new field</strong> to create one.</p>';
+            }
+        }
+    } catch (e) {
+        console.error('loadOwnerDashboard failed', e);
+    }
+}
+
+const bookingsData = { today: [], week: [] };
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
 const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
@@ -81,17 +143,7 @@ const bookingsTableBody = document.getElementById('bookingsTableBody');
 const addFieldBtn = document.getElementById('addFieldBtn');
 const manageBtns = document.querySelectorAll('.manage-btn');
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        // Close profile popup if open
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Notification bell: scripts/player/notifications.js (loads API list). Do not toggle here — double handlers cancel the popup.
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
@@ -105,42 +157,40 @@ if (profileBtn && profilePopup) {
     });
 }
 
-// Close popups when clicking outside
+// Close profile when clicking outside (notification panel is handled by notifications.js)
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
-    if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+    if (profilePopup && profileBtn && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
 });
 
-// Update Bookings Table - Only shows today's bookings
+// Update Bookings Table — today's rows from bookingsData.today (filled by loadOwnerDashboard)
 function updateBookingsTable() {
     if (!bookingsTableBody) return;
-    
+
     const bookings = bookingsData.today;
-    
-    // Clear existing rows
     bookingsTableBody.innerHTML = '';
-    
-    // Add new rows
-    bookings.forEach(booking => {
+
+    if (!bookings.length) {
         const row = document.createElement('tr');
-        
-        const statusClass = booking.status === 'confirmed' ? 'badge-confirmed' : 
-                           booking.status === 'pending' ? 'badge-pending' : 'badge-cancelled';
-        const statusText = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
-        
-        row.innerHTML = `
-            <td>${booking.time}</td>
-            <td>${booking.team}</td>
-            <td>${booking.field}</td>
-            <td>${booking.type}</td>
-            <td>${booking.price}</td>
-            <td><span class="badge ${statusClass}">${statusText}</span></td>
-        `;
-        
+        row.innerHTML = '<td colspan="6" style="color:#6B7280;padding:16px;">No bookings on your fields today.</td>';
+        bookingsTableBody.appendChild(row);
+        return;
+    }
+
+    bookings.forEach(function(booking) {
+        const row = document.createElement('tr');
+        const raw = booking.statusRaw || booking.status || '';
+        const statusClass = ownerStatusBadgeClass(raw);
+        const statusText = ownerStatusLabel(raw);
+
+        row.innerHTML =
+            '<td>' + (booking.time || '') + '</td>' +
+            '<td>' + (booking.team || '') + '</td>' +
+            '<td>' + (booking.field || '') + '</td>' +
+            '<td>' + (booking.type || '') + '</td>' +
+            '<td>' + (booking.price || '') + '</td>' +
+            '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
         bookingsTableBody.appendChild(row);
     });
 }
@@ -159,37 +209,32 @@ if (addFieldBtn && addFieldModal) {
     });
 }
 
-// Initialize table with today's bookings
-if (bookingsTableBody) {
-    updateBookingsTable();
-}
-
-// Update greeting based on time of day
+// Update greeting — same idea as player header: use API.getCurrentUser().fullName
 function updateGreeting() {
-    const greetingElement = document.querySelector('.greeting-section .greeting');
+    const greetingElement = document.getElementById('ownerGreeting');
     if (!greetingElement) return;
-    
+
     const hour = new Date().getHours();
-    let timeGreeting = '';
-    
-    if (hour < 12) {
-        timeGreeting = 'Good morning';
-    } else if (hour < 18) {
-        timeGreeting = 'Good afternoon';
-    } else {
-        timeGreeting = 'Good evening';
+    let timeGreeting = 'Good evening';
+    if (hour < 12) timeGreeting = 'Good morning';
+    else if (hour < 18) timeGreeting = 'Good afternoon';
+
+    var name = 'Field owner';
+    if (typeof API !== 'undefined' && API.getCurrentUser) {
+        const u = API.getCurrentUser();
+        if (u && u.fullName) name = u.fullName;
     }
-    
-    // Keep the existing name part
-    const currentText = greetingElement.textContent;
-    const nameMatch = currentText.match(/, (.+?) 👋/);
-    const name = nameMatch ? nameMatch[1] : 'Fozl court';
-    
-    greetingElement.textContent = `${timeGreeting}, ${name} 👋`;
+    greetingElement.textContent = timeGreeting + ', ' + name + ' 👋';
 }
 
-// Update greeting on page load
-updateGreeting();
+document.addEventListener('DOMContentLoaded', function() {
+    updateGreeting();
+    if (typeof API !== 'undefined' && API.owner && API.owner.getStats) {
+        loadOwnerDashboard();
+    } else if (bookingsTableBody) {
+        updateBookingsTable();
+    }
+});
 
 // Format currency helper
 function formatCurrency(amount) {

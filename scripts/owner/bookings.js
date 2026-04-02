@@ -1,25 +1,111 @@
-// Bookings Page JavaScript
+// Bookings — owner scope comes from the API (same JWT + API.bookings pattern as player/bookings.js).
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Notification toggle
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
+var ownerBookingsCache = [];
+var calendarBookings = {};
 
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-        });
+function escHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+}
 
-        // Close notification popup when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!notificationBtn.contains(e.target) && !notificationPopup.contains(e.target)) {
-                notificationPopup.classList.remove('active');
-            }
-        });
+function ownerStatusUiLabel(status) {
+    var s = (status || '').toUpperCase();
+    if (s === 'PENDING') return 'Pending';
+    if (s === 'CONFIRMED' || s === 'UPCOMING') return 'Confirmed';
+    if (s === 'COMPLETED') return 'Completed';
+    if (s === 'CANCELLED') return 'Cancelled';
+    return s || '—';
+}
+
+function ownerPaymentUiLabel(b) {
+    if (b.paymentMethod === 'ORGANIZER') {
+        var o = (b.organizerPaymentStatus || '').toUpperCase();
+        return o === 'PAID' ? 'Paid' : 'Pending';
+    }
+    return 'Split';
+}
+
+function renderOwnerBookingsTable() {
+    var tbody = document.getElementById('bookingsTableBody');
+    if (!tbody) return;
+
+    if (!ownerBookingsCache.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:24px;color:#6B7280;">No bookings on your fields yet.</td></tr>';
+        return;
     }
 
-    // Profile toggle
+    tbody.innerHTML = ownerBookingsCache.map(function(b) {
+        var id = String(b.id != null ? b.id : b._id || '');
+        var org = b.organizer || {};
+        var field = b.field || {};
+        var name = org.fullName || 'Player';
+        var avatar = org.avatar || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=007BFF&color=fff&size=128');
+        var dateObj = b.date ? new Date(b.date) : new Date();
+        var dateStr = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        var timeStr = (b.timeSlotStart || '') + '-' + (b.timeSlotEnd || '');
+        var st = (b.status || '').toUpperCase();
+        var statusClass = st === 'CANCELLED' ? 'badge-cancelled' : (st === 'PENDING' ? 'badge-pending' : 'badge-confirmed');
+        var payClass = ownerPaymentUiLabel(b) === 'Paid' ? 'badge-paid' : 'badge-pending-payment';
+
+        var actions = '<div class="action-buttons">' +
+            '<button type="button" class="action-icon-btn" title="View"><i class="fi fi-rr-eye"></i></button>';
+        if (st === 'PENDING') {
+            actions += '<button type="button" class="action-icon-btn approve" title="Approve"><i class="fi fi-rr-check"></i></button>' +
+                '<button type="button" class="action-icon-btn decline" title="Decline"><i class="fi fi-rr-cross"></i></button>';
+        }
+        actions += '</div>';
+
+        return '<tr data-booking-id="' + escHtml(id) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(ownerStatusUiLabel(b.status)) + '">' +
+            '<td><div class="customer-cell"><img src="' + escHtml(avatar) + '" alt="" class="customer-avatar"><span>' + escHtml(name) + '</span></div></td>' +
+            '<td>' + escHtml(field.name || '') + '</td>' +
+            '<td><div class="date-time-cell"><span class="date-text">' + escHtml(dateStr) + '</span><span class="time-text">' + escHtml(timeStr) + '</span></div></td>' +
+            '<td>—</td>' +
+            '<td><span class="badge ' + payClass + '">' + ownerPaymentUiLabel(b) + '</span></td>' +
+            '<td><span class="badge ' + statusClass + '">' + ownerStatusUiLabel(b.status) + '</span></td>' +
+            '<td>' + actions + '</td></tr>';
+    }).join('');
+}
+
+function syncCalendarFromCache() {
+    calendarBookings = {};
+    ownerBookingsCache.forEach(function(b) {
+        if (!b.date) return;
+        var d = new Date(b.date);
+        var key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (!calendarBookings[key]) calendarBookings[key] = [];
+        var org = b.organizer || {};
+        var field = b.field || {};
+        var initials = (org.fullName || 'P').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+        calendarBookings[key].push({
+            name: org.fullName || 'Player',
+            initials: initials,
+            field: field.name || '',
+            time: (b.timeSlotStart || '') + ' - ' + (b.timeSlotEnd || ''),
+            duration: '—',
+            status: ownerStatusUiLabel(b.status),
+            avatarColor: '#007BFF'
+        });
+    });
+}
+
+async function loadOwnerBookingsFromApi() {
+    if (typeof API === 'undefined' || !API.bookings || !API.bookings.getAll) return;
+    try {
+        var res = await API.bookings.getAll({ limit: 500 });
+        ownerBookingsCache = (res && res.bookings) ? res.bookings : [];
+        renderOwnerBookingsTable();
+        syncCalendarFromCache();
+    } catch (e) {
+        console.error('Owner bookings load failed', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Notifications: scripts/player/notifications.js (no duplicate toggle here)
+
+    const notificationPopup = document.getElementById('notificationPopup');
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
 
@@ -27,9 +113,9 @@ document.addEventListener('DOMContentLoaded', function() {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
 
-        // Close profile popup when clicking outside
         document.addEventListener('click', function(e) {
             if (!profileBtn.contains(e.target) && !profilePopup.contains(e.target)) {
                 profilePopup.classList.remove('active');
@@ -100,23 +186,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Action buttons
-    const actionButtons = document.querySelectorAll('.action-icon-btn');
-    actionButtons.forEach(btn => {
-        btn.addEventListener('click', function(e) {
+    // Actions (delegated — works with API-rendered rows, same pattern as player bookings list)
+    const bookingsTbody = document.getElementById('bookingsTableBody');
+    if (bookingsTbody) {
+        bookingsTbody.addEventListener('click', function(e) {
+            const btn = e.target.closest('.action-icon-btn');
+            if (!btn) return;
             e.stopPropagation();
-            const action = this.title.toLowerCase();
-            const row = this.closest('tr');
-            
+            const action = (btn.getAttribute('title') || '').toLowerCase();
+            const row = btn.closest('tr');
+            const bookingId = row && row.getAttribute('data-booking-id');
             if (action === 'view') {
                 viewBooking(row);
             } else if (action === 'approve') {
-                approveBooking(row);
+                approveBookingById(bookingId, row);
             } else if (action === 'decline') {
-                declineBooking(row);
+                declineBookingById(bookingId, row);
             }
         });
-    });
+    }
+
+    loadOwnerBookingsFromApi();
 });
 
 // Filter bookings by search term
@@ -152,18 +242,18 @@ function applyFilters() {
         
         let show = true;
 
-        // Field filter - check if field name contains the selected field type
+        // Field filter — match sport on row (data-field-sport from API)
         if (fieldFilter !== 'All Fields') {
-            const fieldNameLower = fieldName.toLowerCase();
+            const sportAttr = (row.getAttribute('data-field-sport') || '').toLowerCase();
             const filterLower = fieldFilter.toLowerCase();
-            // Check if field name contains the field type (e.g., "football court" contains "football")
-            if (!fieldNameLower.includes(filterLower)) {
+            if (!sportAttr.includes(filterLower) && !fieldName.toLowerCase().includes(filterLower)) {
                 show = false;
             }
         }
 
-        // Status filter
-        if (statusFilter !== 'All Status' && statusBadge !== statusFilter) {
+        // Status filter — compare to data-status-label for API-driven rows
+        const rowStatus = row.getAttribute('data-status-label') || statusBadge;
+        if (statusFilter !== 'All Status' && rowStatus !== statusFilter) {
             show = false;
         }
 
@@ -202,97 +292,36 @@ function viewBooking(row) {
     alert(`View booking for ${customer} at ${field}`);
 }
 
-// Approve booking
-function approveBooking(row) {
-    const customer = row.querySelector('.customer-cell span')?.textContent || '';
-    const field = row.cells[1]?.textContent || '';
-    
-    if (confirm(`Approve booking for ${customer} at ${field}?`)) {
-        // Update status badge
-        const statusCell = row.cells[5];
-        statusCell.innerHTML = '<span class="badge badge-confirmed">Confirmed</span>';
-        
-        // Remove approve/decline buttons, keep only view
-        const actionsCell = row.cells[6];
-        actionsCell.innerHTML = `
-            <div class="action-buttons">
-                <button class="action-icon-btn" title="View">
-                    <i class="fi fi-rr-eye"></i>
-                </button>
-            </div>
-        `;
-        
-        // Re-attach event listener
-        const viewBtn = actionsCell.querySelector('.action-icon-btn');
-        if (viewBtn) {
-            viewBtn.addEventListener('click', function() {
-                viewBooking(row);
-            });
-        }
-        
-        console.log('Booking approved');
+async function approveBookingById(bookingId, row) {
+    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) return;
+    const customer = row && row.querySelector('.customer-cell span') ? row.querySelector('.customer-cell span').textContent : '';
+    const field = row && row.cells[1] ? row.cells[1].textContent : '';
+    if (!confirm('Approve booking for ' + customer + ' at ' + field + '?')) return;
+    try {
+        await API.bookings.updateStatus(bookingId, 'CONFIRMED');
+        await loadOwnerBookingsFromApi();
+        if (typeof renderCalendar === 'function') renderCalendar();
+    } catch (e) {
+        alert((e && e.message) ? e.message : 'Could not approve booking');
     }
 }
 
-// Decline booking
-function declineBooking(row) {
-    const customer = row.querySelector('.customer-cell span')?.textContent || '';
-    const field = row.cells[1]?.textContent || '';
-    
-    if (confirm(`Decline booking for ${customer} at ${field}?`)) {
-        // Update status badge
-        const statusCell = row.cells[5];
-        statusCell.innerHTML = '<span class="badge badge-cancelled">Cancelled</span>';
-        
-        // Remove approve/decline buttons, keep only view
-        const actionsCell = row.cells[6];
-        actionsCell.innerHTML = `
-            <div class="action-buttons">
-                <button class="action-icon-btn" title="View">
-                    <i class="fi fi-rr-eye"></i>
-                </button>
-            </div>
-        `;
-        
-        // Re-attach event listener
-        const viewBtn = actionsCell.querySelector('.action-icon-btn');
-        if (viewBtn) {
-            viewBtn.addEventListener('click', function() {
-                viewBooking(row);
-            });
-        }
-        
-        console.log('Booking declined');
+async function declineBookingById(bookingId, row) {
+    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) return;
+    const customer = row && row.querySelector('.customer-cell span') ? row.querySelector('.customer-cell span').textContent : '';
+    const field = row && row.cells[1] ? row.cells[1].textContent : '';
+    if (!confirm('Decline booking for ' + customer + ' at ' + field + '?')) return;
+    try {
+        await API.bookings.updateStatus(bookingId, 'CANCELLED');
+        await loadOwnerBookingsFromApi();
+        if (typeof renderCalendar === 'function') renderCalendar();
+    } catch (e) {
+        alert((e && e.message) ? e.message : 'Could not cancel booking');
     }
 }
 
-// Calendar functionality
-let currentCalendarDate = new Date(2025, 11, 21); // December 21, 2025
-
-// Sample bookings data for calendar
-const calendarBookings = {
-    '2025-12-21': [
-        { name: 'John Smith', initials: 'JS', field: 'Fozi football court', time: '14:00 - 15:30', duration: '1.5 hours', status: 'Confirmed', avatarColor: '#007BFF' },
-        { name: 'Emma Wilson', initials: 'EW', field: 'Basketball Court Elite', time: '18:00 - 19:00', duration: '1 hour', status: 'Pending', avatarColor: '#10B981' },
-        { name: 'John Smith', initials: 'JS', field: 'Fozi football court', time: '20:00 - 21:30', duration: '1.5 hours', status: 'Confirmed', avatarColor: '#007BFF' },
-        { name: 'Emma Wilson', initials: 'EW', field: 'Basketball Court Elite', time: '22:00 - 23:00', duration: '1 hour', status: 'Pending', avatarColor: '#10B981' }
-    ],
-    '2025-12-22': [
-        { name: 'John Smith', initials: 'JS', field: 'Fozi football court', time: '14:00 - 15:30', duration: '1.5 hours', status: 'Confirmed', avatarColor: '#007BFF' }
-    ],
-    '2025-12-23': [
-        { name: 'Emma Wilson', initials: 'EW', field: 'Basketball Court Elite', time: '18:00 - 19:00', duration: '1 hour', status: 'Pending', avatarColor: '#10B981' }
-    ],
-    '2025-12-24': [
-        { name: 'John Smith', initials: 'JS', field: 'Fozi football court', time: '14:00 - 15:30', duration: '1.5 hours', status: 'Confirmed', avatarColor: '#007BFF' }
-    ],
-    '2025-12-28': [
-        { name: 'Emma Wilson', initials: 'EW', field: 'Basketball Court Elite', time: '18:00 - 19:00', duration: '1 hour', status: 'Pending', avatarColor: '#10B981' }
-    ],
-    '2025-12-29': [
-        { name: 'John Smith', initials: 'JS', field: 'Fozi football court', time: '14:00 - 15:30', duration: '1.5 hours', status: 'Confirmed', avatarColor: '#007BFF' }
-    ]
-};
+// Calendar — filled from ownerBookingsCache via syncCalendarFromCache()
+let currentCalendarDate = new Date();
 
 function initCalendar() {
     renderCalendar();

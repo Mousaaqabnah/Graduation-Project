@@ -1,7 +1,10 @@
 // Shared notifications - loads from API (admin replies, etc.) + localStorage (booking updates)
 
 document.addEventListener('DOMContentLoaded', function () {
-  const notificationBtn = document.querySelector('.notification-btn');
+  // Prefer #notificationBtn when present (owner pages); else first .notification-btn (player pages)
+  const notificationBtn =
+    document.getElementById('notificationBtn') ||
+    document.querySelector('.notification-btn');
   const notificationPopup = document.getElementById('notificationPopup');
 
   if (!notificationBtn || !notificationPopup) return;

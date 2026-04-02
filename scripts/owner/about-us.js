@@ -3,53 +3,22 @@ document.addEventListener('DOMContentLoaded', function() {
     setupPopups();
 });
 
-// Setup popups (notifications and profile)
+// Setup popups — notifications: scripts/player/notifications.js
 function setupPopups() {
-    // Notification popup
-    const notificationBtn = document.getElementById('notificationBtn');
     const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        // Close popup when clicking outside
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
-    
-    // Profile popup
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
-    
+
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
-        
-        // Close popup when clicking outside
+
         document.addEventListener('click', (e) => {
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                if (!profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
-                    profilePopup.classList.remove('active');
-                }
+            if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+                profilePopup.classList.remove('active');
             }
         });
     }

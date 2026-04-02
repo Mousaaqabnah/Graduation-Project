@@ -1,7 +1,78 @@
-// Fields page functionality
+// Fields page — API.fields.getMine / create / delete / unavailable-dates (same auth + fetch pattern as player).
+
+function ownerFieldEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+}
+
+function formatOwnerFieldPrice(n) {
+    return '₺' + (Number(n) || 0).toLocaleString('tr-TR');
+}
+
+function renderOwnerFieldsList(fields) {
+    const list = document.getElementById('fieldsList');
+    if (!list) return;
+    if (!fields || !fields.length) {
+        list.innerHTML = '<p style="padding:24px;color:#6B7280;">No fields yet. Click <strong>Add new field</strong> to create one (requires verified owner account).</p>';
+        return;
+    }
+    list.innerHTML = fields.map(function(f) {
+        const id = String(f.id != null ? f.id : f._id || '');
+        const img = (f.images && f.images[0]) || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop';
+        const typeTag = f.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
+        const rating = f.rating != null ? f.rating : '—';
+        const rc = f.reviewCount != null ? f.reviewCount : 0;
+        return (
+            '<div class="field-list-card" data-field-name="' + ownerFieldEsc(f.name) + '" data-field-id="' + ownerFieldEsc(id) + '">' +
+            '<div class="field-list-image"><img src="' + ownerFieldEsc(img) + '" alt=""></div>' +
+            '<div class="field-list-content"><div class="field-list-info">' +
+            '<h3 class="field-list-name">' + ownerFieldEsc(f.name) + '</h3>' +
+            '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + ownerFieldEsc(f.location || '') + '</p>' +
+            '<div class="field-list-rating"><span class="field-star-yellow">★</span> ' +
+            '<span class="field-rating-value">' + ownerFieldEsc(rating) + '</span> <span class="field-reviews-count">(' + rc + ')</span></div>' +
+            '<div class="field-list-tags">' +
+            '<span class="field-tag">' + typeTag + '</span>' +
+            '<span class="field-tag">' + ownerFieldEsc(f.sport || '') + '</span>' +
+            '</div></div>' +
+            '<div class="field-list-actions">' +
+            '<div class="field-list-price-container">' +
+            '<span class="field-list-price-label">Price</span>' +
+            '<span class="field-list-price">' + formatOwnerFieldPrice(f.pricePerHour) + '/h</span>' +
+            '</div>' +
+            '<div class="field-list-buttons">' +
+            '<button type="button" class="manage-btn" onclick="openModal(\'' + id + '\')">Manage</button>' +
+            '<button type="button" class="action-btn" onclick="viewFieldDetails(this)" title="View"><i class="fi fi-rr-eye"></i></button>' +
+            '<button type="button" class="action-btn delete" onclick="deleteField(this)" title="Delete"><i class="fi fi-rr-trash"></i></button>' +
+            '</div></div></div></div>'
+        );
+    }).join('');
+}
+
+async function loadOwnerFieldsFromApi() {
+    const list = document.getElementById('fieldsList');
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getMine) {
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load fields: API is not available. Start the server (<code>npm run dev</code>) and open this page from <code>http://localhost:3000</code>.</p>';
+        }
+        return;
+    }
+    try {
+        const res = await API.fields.getMine();
+        const fields = (res && res.fields) ? res.fields : [];
+        renderOwnerFieldsList(fields);
+    } catch (e) {
+        console.error('loadOwnerFieldsFromApi', e);
+        const msg = (e && e.message) ? String(e.message) : 'Request failed';
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load your fields: ' +
+                ownerFieldEsc(msg) +
+                '. Log in as an <strong>OWNER</strong> (e.g. <code>owner@matchfield.com</code> after <code>npm run db:seed</code>), or check the browser Network tab for <code>/api/fields/me</code>.</p>';
+        }
+    }
+}
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
 const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
@@ -15,16 +86,7 @@ const viewFieldModal = document.getElementById('viewFieldModal');
 let currentModalDate = new Date();
 let selectedDate = new Date();
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Notification bell: scripts/player/notifications.js (API). No duplicate toggle here.
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
@@ -37,12 +99,8 @@ if (profileBtn && profilePopup) {
     });
 }
 
-// Close popups when clicking outside
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
-    if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+    if (profilePopup && profileBtn && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
 });
@@ -477,13 +535,73 @@ function submitFieldForm() {
         visibility: document.getElementById('fieldVisibilityToggle').classList.contains('active')
     };
     
-    console.log('Submitting field form:', formData);
-    
-    // Here you would typically send the data to your backend API
-    // For now, we'll show a success message
-    alert('Field submitted successfully! It will be reviewed and approved by the admin.');
-    
-    closeAddFieldModal();
+    if (typeof API === 'undefined' || !API.fields || !API.fields.create) {
+        alert('Unable to submit: API not loaded.');
+        return;
+    }
+
+    const sportSelect = document.getElementById('fieldType');
+    const sportVal = sportSelect ? sportSelect.value : 'other';
+    const sportLabel = sportVal ? sportVal.charAt(0).toUpperCase() + sportVal.slice(1) : 'Football';
+    const indoorCb = document.querySelector('input[name="features"][value="indoor"]');
+    const outdoorCb = document.querySelector('input[name="features"][value="outdoor"]');
+    const isIndoor = indoorCb && indoorCb.checked && !(outdoorCb && outdoorCb.checked);
+    const cityEl = document.getElementById('fieldCity');
+    const distEl = document.getElementById('fieldDistrict');
+    const addrEl = document.getElementById('fieldAddress');
+    const locationLine = [cityEl && cityEl.value, distEl && distEl.value].filter(Boolean).join(', ') || (addrEl && addrEl.value) || '—';
+    const latEl = document.getElementById('latitude');
+    const lngEl = document.getElementById('longitude');
+    const latStr = latEl ? latEl.textContent.trim() : '';
+    const lngStr = lngEl ? lngEl.textContent.trim() : '';
+    const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
+    const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
+    const features = highlights.concat(amenities).concat(feat).filter(Boolean);
+
+    const payload = {
+        name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
+        sport: sportLabel,
+        description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
+        type: isIndoor ? 'INDOOR' : 'OUTDOOR',
+        location: locationLine,
+        address: (addrEl && addrEl.value) || undefined,
+        pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour') && document.getElementById('pricePerHour').value) || 0),
+        features: features,
+        images: [],
+        latitude: latStr && latStr !== '-' ? parseFloat(latStr) : undefined,
+        longitude: lngStr && lngStr !== '-' ? parseFloat(lngStr) : undefined,
+        isActive: document.getElementById('fieldVisibilityToggle') ? document.getElementById('fieldVisibilityToggle').classList.contains('active') : true
+    };
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    API.fields.create(payload).then(async function(res) {
+        const field = res && res.field;
+        const fieldId = field && field.id;
+        if (fieldId && unavailableDates && unavailableDates.length && API.fields.addUnavailableDate) {
+            for (let i = 0; i < unavailableDates.length; i++) {
+                try {
+                    await API.fields.addUnavailableDate(fieldId, unavailableDates[i]);
+                } catch (err) {
+                    console.warn('unavailable date', err);
+                }
+            }
+        }
+        alert('Field created successfully.');
+        closeAddFieldModal();
+        loadOwnerFieldsFromApi();
+    }).catch(function(err) {
+        alert(err.message || 'Could not create field. Owner verification may be required.');
+    }).finally(function() {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit for Approval';
+        }
+    });
 }
 
 // Close modal when clicking outside
@@ -910,16 +1028,18 @@ if (viewFieldModal) {
 
 // Delete Field
 function deleteField(button) {
-    if (confirm('Are you sure you want to delete this field? This action cannot be undone.')) {
-        const fieldCard = button.closest('.field-list-card');
-        fieldCard.style.transition = 'opacity 0.3s, transform 0.3s';
-        fieldCard.style.opacity = '0';
-        fieldCard.style.transform = 'translateX(-20px)';
-        
-        setTimeout(() => {
-            fieldCard.remove();
-        }, 300);
+    if (!confirm('Are you sure you want to delete this field? This action cannot be undone.')) return;
+    const fieldCard = button.closest('.field-list-card');
+    const fieldId = fieldCard && fieldCard.getAttribute('data-field-id');
+    if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.delete) {
+        if (fieldCard) fieldCard.remove();
+        return;
     }
+    API.fields.delete(fieldId).then(function() {
+        loadOwnerFieldsFromApi();
+    }).catch(function(err) {
+        alert(err.message || 'Could not delete field');
+    });
 }
 
 // Calendar Functions
@@ -1380,11 +1500,9 @@ function updateRadioLabels() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Set initial selected date
+    loadOwnerFieldsFromApi();
     selectedDate = new Date();
-    // Initialize day schedules
     initializeDaySchedules();
-    // Update radio labels styling
     updateRadioLabels();
 });
 
