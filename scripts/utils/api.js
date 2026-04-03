@@ -295,7 +295,7 @@ const fieldsAPI = {
   },
 
   getById: async (id) => {
-    return apiRequest(`/fields/${id}`);
+    return apiRequest(`/fields/${encodeURIComponent(id)}`);
   },
 
   create: async (fieldData) => {
@@ -306,20 +306,20 @@ const fieldsAPI = {
   },
 
   update: async (id, fieldData) => {
-    return apiRequest(`/fields/${id}`, {
+    return apiRequest(`/fields/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: fieldData
     });
   },
 
   delete: async (id) => {
-    return apiRequest(`/fields/${id}`, {
+    return apiRequest(`/fields/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
   },
 
   getByOwner: async (ownerId) => {
-    return apiRequest(`/fields/owner/${ownerId}`);
+    return apiRequest(`/fields/owner/${encodeURIComponent(ownerId)}`);
   },
 
   getMine: async () => {
@@ -327,24 +327,29 @@ const fieldsAPI = {
   },
 
   listUnavailableDates: async (fieldId) => {
-    return apiRequest(`/fields/${fieldId}/unavailable-dates`);
+    return apiRequest(`/fields/${encodeURIComponent(fieldId)}/unavailable-dates`);
   },
 
   addUnavailableDate: async (fieldId, dateYmd) => {
-    return apiRequest(`/fields/${fieldId}/unavailable-dates`, {
+    return apiRequest(`/fields/${encodeURIComponent(fieldId)}/unavailable-dates`, {
       method: 'POST',
       body: { date: dateYmd }
     });
   },
 
   removeUnavailableDate: async (fieldId, dateYmd) => {
-    return apiRequest(`/fields/${fieldId}/unavailable-dates?date=${encodeURIComponent(dateYmd)}`, {
-      method: 'DELETE'
-    });
+    return apiRequest(
+      `/fields/${encodeURIComponent(fieldId)}/unavailable-dates?date=${encodeURIComponent(dateYmd)}`,
+      {
+        method: 'DELETE'
+      }
+    );
   },
 
   getAvailability: async (fieldId, date) => {
-    return apiRequest(`/fields/${fieldId}/availability?date=${encodeURIComponent(date)}`);
+    return apiRequest(
+      `/fields/${encodeURIComponent(fieldId)}/availability?date=${encodeURIComponent(date)}`
+    );
   }
 };
 

@@ -3,6 +3,14 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
+const {
+  mongoFieldGetOwnerId,
+  mongoFieldUpdateAndFetch,
+  mongoFieldUnavailableDeleteInRange,
+  mongoFieldGetByIdPublicDetail,
+  mongoFieldUnavailableListForField,
+  mongoFieldUnavailableInsertDayStart
+} = require('../lib/mongoFieldWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -177,24 +185,34 @@ router.get('/owner/:ownerId', async (req, res) => {
 router.get('/:id/unavailable-dates', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
+    const idTrim = typeof id === 'string' ? id.trim() : '';
+    if (!isMongoObjectIdParam(idTrim)) {
+      return res.status(400).json({ error: 'Invalid field id' });
+    }
 
-    const field = await prisma.field.findUnique({
-      where: { id },
-      select: { ownerId: true }
-    });
-
-    if (!field) {
+    let fieldOwnerId;
+    try {
+      fieldOwnerId = await mongoFieldGetOwnerId(idTrim);
+    } catch (e) {
+      console.error('List unavailable dates (owner lookup):', e);
+      return res.status(500).json({ error: 'Failed to list unavailable dates' });
+    }
+    if (!fieldOwnerId) {
       return res.status(404).json({ error: 'Field not found' });
     }
 
-    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const uid = String(req.user.id);
+    if (fieldOwnerId !== uid && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const rows = await prisma.fieldUnavailableDate.findMany({
-      where: { fieldId: id },
-      orderBy: { date: 'asc' }
-    });
+    let rows;
+    try {
+      rows = await mongoFieldUnavailableListForField(idTrim);
+    } catch (e) {
+      console.error('List unavailable dates error:', e);
+      return res.status(500).json({ error: 'Failed to list unavailable dates' });
+    }
 
     res.json({ unavailableDates: rows });
   } catch (error) {
@@ -217,17 +235,24 @@ router.post(
 
       const { id } = req.params;
       const { date } = req.body;
+      const idTrim = typeof id === 'string' ? id.trim() : '';
+      if (!isMongoObjectIdParam(idTrim)) {
+        return res.status(400).json({ error: 'Invalid field id' });
+      }
 
-      const field = await prisma.field.findUnique({
-        where: { id },
-        select: { ownerId: true, id: true }
-      });
-
-      if (!field) {
+      let fieldOwnerId;
+      try {
+        fieldOwnerId = await mongoFieldGetOwnerId(idTrim);
+      } catch (e) {
+        console.error('Add unavailable date (owner lookup):', e);
+        return res.status(500).json({ error: 'Failed to block date' });
+      }
+      if (!fieldOwnerId) {
         return res.status(404).json({ error: 'Field not found' });
       }
 
-      if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+      const uid = String(req.user.id);
+      if (fieldOwnerId !== uid && req.user.role !== 'ADMIN') {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -236,18 +261,20 @@ router.post(
         return res.status(400).json({ error: 'Invalid date' });
       }
 
-      const created = await prisma.fieldUnavailableDate.create({
-        data: {
-          fieldId: id,
-          date: range.start
-        }
-      });
+      let created;
+      try {
+        created = await mongoFieldUnavailableInsertDayStart(idTrim, range.start);
+      } catch (error) {
+        console.error('Add unavailable date error:', error);
+        return res.status(500).json({ error: 'Failed to block date' });
+      }
+
+      if (!created) {
+        return res.status(409).json({ error: 'This date is already blocked' });
+      }
 
       res.status(201).json({ message: 'Date blocked', unavailableDate: created });
     } catch (error) {
-      if (error.code === 'P2002') {
-        return res.status(409).json({ error: 'This date is already blocked' });
-      }
       console.error('Add unavailable date error:', error);
       res.status(500).json({ error: 'Failed to block date' });
     }
@@ -264,16 +291,24 @@ router.delete('/:id/unavailable-dates', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Query parameter date is required (YYYY-MM-DD)' });
     }
 
-    const field = await prisma.field.findUnique({
-      where: { id },
-      select: { ownerId: true }
-    });
+    const idTrim = typeof id === 'string' ? id.trim() : '';
+    if (!isMongoObjectIdParam(idTrim)) {
+      return res.status(400).json({ error: 'Invalid field id' });
+    }
 
-    if (!field) {
+    let fieldOwnerId;
+    try {
+      fieldOwnerId = await mongoFieldGetOwnerId(idTrim);
+    } catch (e) {
+      console.error('Delete unavailable date (owner lookup):', e);
+      return res.status(500).json({ error: 'Failed to unblock date' });
+    }
+    if (!fieldOwnerId) {
       return res.status(404).json({ error: 'Field not found' });
     }
 
-    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const uid = String(req.user.id);
+    if (fieldOwnerId !== uid && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -282,21 +317,19 @@ router.delete('/:id/unavailable-dates', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Invalid date' });
     }
 
-    const deleted = await prisma.fieldUnavailableDate.deleteMany({
-      where: {
-        fieldId: id,
-        date: {
-          gte: range.start,
-          lte: range.end
-        }
-      }
-    });
+    let removed;
+    try {
+      removed = await mongoFieldUnavailableDeleteInRange(idTrim, range.start, range.end);
+    } catch (e) {
+      console.error('Delete unavailable date error:', e);
+      return res.status(500).json({ error: 'Failed to unblock date' });
+    }
 
-    if (deleted.count === 0) {
+    if (removed === 0) {
       return res.status(404).json({ error: 'No blocked date found for that day' });
     }
 
-    res.json({ message: 'Date unblocked', removed: deleted.count });
+    res.json({ message: 'Date unblocked', removed });
   } catch (error) {
     console.error('Delete unavailable date error:', error);
     res.status(500).json({ error: 'Failed to unblock date' });
@@ -396,43 +429,21 @@ router.get('/:id/availability', async (req, res) => {
   }
 });
 
-// Get field by ID
+// Get field by ID (native driver — avoids Prisma transaction/replica-set issues on standalone MongoDB)
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+    if (!isMongoObjectIdParam(idTrim)) {
+      return res.status(400).json({ error: 'Invalid field id' });
+    }
 
-    const field = await prisma.field.findUnique({
-      where: { id },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            phone: true
-          }
-        },
-        reviews: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                fullName: true,
-                avatar: true
-              }
-            }
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 10
-        },
-        _count: {
-          select: {
-            reviews: true,
-            bookings: true
-          }
-        }
-      }
-    });
+    let field;
+    try {
+      field = await mongoFieldGetByIdPublicDetail(idTrim);
+    } catch (error) {
+      console.error('Get field error:', error);
+      return res.status(500).json({ error: 'Failed to fetch field' });
+    }
 
     if (!field) {
       return res.status(404).json({ error: 'Field not found' });
@@ -512,7 +523,14 @@ router.put('/:id', authenticate, [
   body('name').trim().optional(),
   body('sport').trim().optional(),
   body('type').isIn(['INDOOR', 'OUTDOOR']).optional(),
-  body('pricePerHour').isInt({ min: 0 }).optional()
+  body('pricePerHour')
+    .optional()
+    .custom((v) => {
+      if (v === undefined || v === null) return true;
+      const n = typeof v === 'string' ? parseInt(v, 10) : Math.round(Number(v));
+      return Number.isInteger(n) && n >= 0;
+    })
+    .withMessage('pricePerHour must be a non-negative integer')
 ], async (req, res) => {
   try {
     const { id } = req.params;
@@ -521,17 +539,24 @@ router.put('/:id', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    // Check if user owns the field or is admin
-    const field = await prisma.field.findUnique({
-      where: { id },
-      select: { ownerId: true }
-    });
+    const idTrim = typeof id === 'string' ? id.trim() : '';
+    if (!isMongoObjectIdParam(idTrim)) {
+      return res.status(400).json({ error: 'Invalid field id' });
+    }
 
-    if (!field) {
+    let fieldOwnerId;
+    try {
+      fieldOwnerId = await mongoFieldGetOwnerId(idTrim);
+    } catch (err) {
+      console.error('Update field (owner lookup) error:', err);
+      return res.status(500).json({ error: 'Failed to update field' });
+    }
+    if (!fieldOwnerId) {
       return res.status(404).json({ error: 'Field not found' });
     }
 
-    if (field.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const uid = String(req.user.id);
+    if (fieldOwnerId !== uid && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -541,7 +566,7 @@ router.put('/:id', authenticate, [
     allowedFields.forEach(f => {
       if (req.body[f] !== undefined) {
         if (f === 'pricePerHour') {
-          updateData[f] = parseInt(req.body[f]);
+          updateData[f] = parseInt(req.body[f], 10);
         } else if (f === 'latitude' || f === 'longitude') {
           updateData[f] = req.body[f] != null ? parseFloat(req.body[f]) : null;
         } else {
@@ -550,19 +575,21 @@ router.put('/:id', authenticate, [
       }
     });
 
-    const updatedField = await prisma.field.update({
-      where: { id },
-      data: updateData,
-      include: {
-        owner: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true
-          }
-        }
+    let updatedField;
+    try {
+      const { matched, field } = await mongoFieldUpdateAndFetch(idTrim, updateData);
+      if (!matched) {
+        return res.status(404).json({ error: 'Field not found' });
       }
-    });
+      updatedField = field;
+    } catch (err) {
+      console.error('Update field error:', err);
+      return res.status(500).json({ error: 'Failed to update field' });
+    }
+
+    if (!updatedField) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
 
     res.json({ message: 'Field updated successfully', field: updatedField });
   } catch (error) {
