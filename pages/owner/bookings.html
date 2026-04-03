@@ -313,6 +313,29 @@
         </main>
     </div>
 
+    <!-- Booking detail (GET /api/bookings/:id) -->
+    <div class="booking-detail-overlay" id="bookingDetailModal" aria-hidden="true">
+        <div class="booking-detail-dialog" role="dialog" aria-labelledby="bookingDetailTitle">
+            <div class="booking-detail-header">
+                <h2 id="bookingDetailTitle">Booking details</h2>
+                <button type="button" class="booking-detail-close" id="bookingDetailClose" aria-label="Close">
+                    <i class="fi fi-rr-cross"></i>
+                </button>
+            </div>
+            <div class="booking-detail-body" id="bookingDetailBody">
+                <p class="booking-detail-loading">Loading…</p>
+            </div>
+            <div class="booking-detail-footer" id="bookingDetailFooter" hidden>
+                <p class="booking-detail-footer-hint">This request is waiting for your approval.</p>
+                <div class="booking-detail-footer-actions">
+                    <button type="button" class="booking-detail-btn booking-detail-btn-decline" data-booking-detail-action="decline">Decline</button>
+                    <button type="button" class="booking-detail-btn booking-detail-btn-approve" data-booking-detail-action="approve">Approve</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>

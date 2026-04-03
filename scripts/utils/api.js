@@ -1,37 +1,110 @@
 // API utility for making requests to the backend.
 // When the HTML is opened from Live Server / another port (or file:), the page origin is not the API server (Express on :3000).
 // POSTing to /api on a static server returns 405 Method Not Allowed — use the real API origin instead.
+
+(function initApiPortFromPageUrl() {
+  if (typeof window === 'undefined') return;
+  if (window.__API_PORT__ != null && String(window.__API_PORT__).trim() !== '') return;
+  var h = window.location.hostname;
+  var local =
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '[::1]' ||
+    h === '::1' ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(h) ||
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h);
+  if (!local) return;
+  var p = window.location.port;
+  if (!p) return;
+  var n = parseInt(p, 10);
+  if (!Number.isNaN(n) && n >= 3000 && n <= 3999) {
+    window.__API_PORT__ = n;
+  }
+})();
+
 function isLikelyLocalDevHost(hostname) {
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1') return true;
   if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
   if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
   return /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
 }
 
-// Returns '' when the page is already served from the API server (port 3000) — use relative /api
-// so fetch stays same-origin (fixes localhost vs 127.0.0.1 localStorage + connection quirks).
+/** Backend port when not using full __API_ORIGIN__ (default 3000). Override: window.__API_PORT__ = 3001 or localStorage matchfield_api_port = 3001 */
+function getDevApiPort() {
+  if (typeof window === 'undefined') return 3000;
+  const fromWin = window.__API_PORT__;
+  if (fromWin != null && String(fromWin).trim() !== '') {
+    const n = parseInt(String(fromWin), 10);
+    if (!Number.isNaN(n) && n > 0 && n <= 65535) return n;
+  }
+  try {
+    const ls = localStorage.getItem('matchfield_api_port');
+    if (ls != null && String(ls).trim() !== '') {
+      const n = parseInt(ls, 10);
+      if (!Number.isNaN(n) && n > 0 && n <= 65535) return n;
+    }
+  } catch (_) {
+    /* private mode */
+  }
+  return 3000;
+}
+
+/** Live Server / Vite / etc. — page is not the Express app; must point at API port. */
+function isTypicalSeparateStaticDevPort(portStr) {
+  const p = parseInt(String(portStr), 10);
+  if (Number.isNaN(p)) return false;
+  return [5500, 5501, 5173, 4173, 8080, 8000, 5000, 4000, 1234].indexOf(p) !== -1;
+}
+
+/** Same machine, page likely served by Express with API (e.g. PORT=3001 → open :3001/pages/...). */
+function isLikelySameNodeServerAsApi(host, pagePortStr) {
+  if (!isLikelyLocalDevHost(host)) return false;
+  const p = parseInt(String(pagePortStr), 10);
+  if (Number.isNaN(p)) return false;
+  return p >= 3000 && p <= 3999;
+}
+
+// Returns '' when the page is served from the same host:port as the API (e.g. Express on 3000 or 3001).
+// Otherwise points at http(s)://<same-host>:<API port> for Live Server / other dev ports.
 function resolveApiOrigin() {
-  if (typeof window === 'undefined') return 'http://localhost:3000';
+  const apiPort = getDevApiPort();
+  if (typeof window === 'undefined') return `http://localhost:${apiPort}`;
   if (window.__API_ORIGIN__) {
     return String(window.__API_ORIGIN__).replace(/\/$/, '');
   }
   const loc = window.location;
   if (loc.origin === 'null' || loc.protocol === 'file:') {
-    return 'http://localhost:3000';
+    return `http://127.0.0.1:${apiPort}`;
   }
   const host = loc.hostname;
   const port = loc.port || (loc.protocol === 'https:' ? '443' : '80');
-  if (isLikelyLocalDevHost(host) && String(port) === '3000') {
+  // Express serves /pages/... and /api on the same origin. If we default apiPort to 3000 but the tab is on 3001,
+  // use relative /api (same origin) instead of guessing :3000. Skip typical Live Server ports (they are not the API).
+  if (
+    isLikelyLocalDevHost(host) &&
+    typeof loc.pathname === 'string' &&
+    loc.pathname.indexOf('/pages/') === 0 &&
+    !isTypicalSeparateStaticDevPort(port)
+  ) {
     return '';
   }
-  if (isLikelyLocalDevHost(host) && String(port) !== '3000') {
-    return `http://${host}:3000`;
+  if (isLikelyLocalDevHost(host) && String(port) === String(apiPort)) {
+    return '';
+  }
+  if (isLikelyLocalDevHost(host) && isLikelySameNodeServerAsApi(host, port) && !isTypicalSeparateStaticDevPort(port)) {
+    return '';
+  }
+  if (isLikelyLocalDevHost(host) && String(port) !== String(apiPort)) {
+    return `http://${host}:${apiPort}`;
   }
   return loc.origin;
 }
 
-const _apiOriginResolved = resolveApiOrigin();
-const API_BASE_URL = _apiOriginResolved === '' ? '/api' : `${_apiOriginResolved}/api`;
+function getApiBaseUrl() {
+  const origin = resolveApiOrigin();
+  return origin === '' ? '/api' : `${origin}/api`;
+}
 
 // Get auth token from localStorage
 function getAuthToken() {
@@ -66,7 +139,7 @@ function removeCurrentUser() {
 
 // Make API request
 async function apiRequest(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = `${getApiBaseUrl()}${endpoint}`;
   const token = getAuthToken();
 
   const config = {
@@ -94,9 +167,11 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      const base = data.error || response.statusText || 'Request failed';
+      const firstValErr =
+        Array.isArray(data.errors) && data.errors[0] && (data.errors[0].msg || data.errors[0].message);
+      const base = data.error || firstValErr || response.statusText || 'Request failed';
       const extra = data.details ? ` ${data.details}` : '';
-      throw new Error(base + extra);
+      throw new Error(String(base) + extra);
     }
 
     return data;
@@ -116,8 +191,10 @@ async function apiRequest(endpoint, options = {}) {
         typeof window !== 'undefined' && url.startsWith('/')
           ? `${window.location.origin}${url}`
           : url;
+      const base = getApiBaseUrl();
+      const absBase = base.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${base}` : base;
       throw new Error(
-        `Cannot reach the API (${absForMsg}). Start the backend in the project folder: npm start (or npm run dev). Open http://localhost:3000/pages/auth/login.html and log in as OWNER, or use Live Server (API stays on port 3000). API base: ${API_BASE_URL}`
+        `Cannot reach the API (${absForMsg}). Start the backend: cd project folder, then npm start (optional: $env:PORT=3001; npm start on Windows). If the API is not on port 3000, set before loading scripts: window.__API_PORT__=3001 or localStorage.setItem('matchfield_api_port','3001'). Open app from the same port as the server (e.g. http://127.0.0.1:3001/pages/auth/login.html). API base: ${absBase}`
       );
     }
     throw error;
@@ -279,7 +356,7 @@ const bookingsAPI = {
   },
 
   getById: async (id) => {
-    return apiRequest(`/bookings/${id}`);
+    return apiRequest(`/bookings/${encodeURIComponent(id)}`);
   },
 
   create: async (bookingData) => {
@@ -290,28 +367,28 @@ const bookingsAPI = {
   },
 
   updateStatus: async (id, status) => {
-    return apiRequest(`/bookings/${id}/status`, {
+    return apiRequest(`/bookings/${encodeURIComponent(id)}/status`, {
       method: 'PUT',
       body: { status }
     });
   },
 
   reschedule: async (id, data) => {
-    return apiRequest(`/bookings/${id}/reschedule`, {
+    return apiRequest(`/bookings/${encodeURIComponent(id)}/reschedule`, {
       method: 'PUT',
       body: data
     });
   },
 
   addParticipant: async (id, userId) => {
-    return apiRequest(`/bookings/${id}/participants`, {
+    return apiRequest(`/bookings/${encodeURIComponent(id)}/participants`, {
       method: 'POST',
       body: { userId }
     });
   },
 
   removeParticipant: async (id) => {
-    return apiRequest(`/bookings/${id}/participants/me`, {
+    return apiRequest(`/bookings/${encodeURIComponent(id)}/participants/me`, {
       method: 'DELETE'
     });
   }
@@ -465,7 +542,11 @@ const adminAPI = {
 
 // Export all APIs
 window.API = {
-  apiBaseUrl: API_BASE_URL,
+  get apiBaseUrl() {
+    return getApiBaseUrl();
+  },
+  getApiBaseUrl,
+  getDevApiPort,
   auth: authAPI,
   users: usersAPI,
   fields: fieldsAPI,

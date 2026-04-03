@@ -10,6 +10,49 @@ function escHtml(s) {
         .replace(/"/g, '&quot;');
 }
 
+/** YYYY-MM-DD in local timezone (for filters; matches calendar display). */
+function bookingDateKeyLocal(d) {
+    if (d == null || d === '') return '';
+    var x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+}
+
+function todayDateKeyLocal() {
+    return bookingDateKeyLocal(new Date());
+}
+
+/** Week starts Sunday (en-US style). Returns { startKey, endKey } as YYYY-MM-DD. */
+function thisWeekRangeKeysLocal() {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var dow = start.getDay();
+    start.setDate(start.getDate() - dow);
+    var end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+    return { startKey: bookingDateKeyLocal(start), endKey: bookingDateKeyLocal(end) };
+}
+
+function rowMatchesDateFilter(row, dateFilter) {
+    if (!dateFilter || dateFilter === 'Date range') return true;
+    var rowKey = row.getAttribute('data-booking-date') || '';
+    if (!rowKey) return false;
+
+    if (dateFilter === 'Today') {
+        return rowKey === todayDateKeyLocal();
+    }
+    if (dateFilter === 'This week') {
+        var w = thisWeekRangeKeysLocal();
+        return rowKey >= w.startKey && rowKey <= w.endKey;
+    }
+    if (dateFilter === 'This month') {
+        var parts = rowKey.split('-');
+        if (parts.length < 2) return false;
+        var now = new Date();
+        return parseInt(parts[0], 10) === now.getFullYear() && parseInt(parts[1], 10) === now.getMonth() + 1;
+    }
+    return true;
+}
+
 function ownerStatusUiLabel(status) {
     var s = (status || '').toUpperCase();
     if (s === 'PENDING') return 'Pending';
@@ -50,14 +93,14 @@ function renderOwnerBookingsTable() {
         var payClass = ownerPaymentUiLabel(b) === 'Paid' ? 'badge-paid' : 'badge-pending-payment';
 
         var actions = '<div class="action-buttons">' +
-            '<button type="button" class="action-icon-btn" title="View"><i class="fi fi-rr-eye"></i></button>';
+            '<button type="button" class="action-icon-btn" data-action="view" title="View"><i class="fi fi-rr-eye"></i></button>';
         if (st === 'PENDING') {
-            actions += '<button type="button" class="action-icon-btn approve" title="Approve"><i class="fi fi-rr-check"></i></button>' +
-                '<button type="button" class="action-icon-btn decline" title="Decline"><i class="fi fi-rr-cross"></i></button>';
+            actions += '<button type="button" class="action-icon-btn approve" data-action="approve" title="Approve"><i class="fi fi-rr-check"></i></button>' +
+                '<button type="button" class="action-icon-btn decline" data-action="decline" title="Decline"><i class="fi fi-rr-cross"></i></button>';
         }
         actions += '</div>';
 
-        return '<tr data-booking-id="' + escHtml(id) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(ownerStatusUiLabel(b.status)) + '">' +
+        return '<tr data-booking-id="' + escHtml(id) + '" data-booking-date="' + escHtml(bookingDateKeyLocal(b.date)) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(ownerStatusUiLabel(b.status)) + '">' +
             '<td><div class="customer-cell"><img src="' + escHtml(avatar) + '" alt="" class="customer-avatar"><span>' + escHtml(name) + '</span></div></td>' +
             '<td>' + escHtml(field.name || '') + '</td>' +
             '<td><div class="date-time-cell"><span class="date-text">' + escHtml(dateStr) + '</span><span class="time-text">' + escHtml(timeStr) + '</span></div></td>' +
@@ -100,6 +143,60 @@ async function loadOwnerBookingsFromApi() {
     } catch (e) {
         console.error('Owner bookings load failed', e);
     }
+}
+
+function closeBookingDetailModal() {
+    var modal = document.getElementById('bookingDetailModal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    syncBookingDetailFooter(null);
+}
+
+function syncBookingDetailFooter(booking) {
+    var foot = document.getElementById('bookingDetailFooter');
+    if (!foot) return;
+    var bid = '';
+    if (booking && String(booking.status || '').toUpperCase() === 'PENDING') {
+        bid = String(booking.id != null ? booking.id : booking._id || '');
+    }
+    foot.dataset.bookingId = bid;
+    foot.hidden = !bid;
+    foot.querySelectorAll('button').forEach(function(b) {
+        b.disabled = false;
+    });
+}
+
+function findCachedOwnerBooking(bookingId) {
+    if (bookingId == null || bookingId === '') return null;
+    return ownerBookingsCache.find(function(b) {
+        return String(b.id != null ? b.id : b._id) === String(bookingId);
+    });
+}
+
+function ownerBookingConfirmLabels(bookingId) {
+    var b = findCachedOwnerBooking(bookingId);
+    var customer = (b && b.organizer && b.organizer.fullName) || 'this customer';
+    var field = (b && b.field && b.field.name) || 'your field';
+    return { customer: customer, field: field };
+}
+
+function setOwnerRowActionLoading(row, loading) {
+    if (!row) return;
+    row.querySelectorAll('.action-icon-btn').forEach(function(btn) {
+        btn.disabled = !!loading;
+        if (loading) btn.setAttribute('aria-busy', 'true');
+        else btn.removeAttribute('aria-busy');
+    });
+}
+
+function setBookingDetailFooterBusy(loading) {
+    var foot = document.getElementById('bookingDetailFooter');
+    if (!foot) return;
+    foot.querySelectorAll('button').forEach(function(b) {
+        b.disabled = !!loading;
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -157,9 +254,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Search functionality
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
-        searchInput.addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            filterBookings(searchTerm);
+        searchInput.addEventListener('input', function() {
+            applyFilters();
         });
     }
 
@@ -193,11 +289,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const btn = e.target.closest('.action-icon-btn');
             if (!btn) return;
             e.stopPropagation();
-            const action = (btn.getAttribute('title') || '').toLowerCase();
+            const action = (btn.getAttribute('data-action') || '').toLowerCase();
             const row = btn.closest('tr');
             const bookingId = row && row.getAttribute('data-booking-id');
             if (action === 'view') {
-                viewBooking(row);
+                viewBookingDetail(bookingId);
             } else if (action === 'approve') {
                 approveBookingById(bookingId, row);
             } else if (action === 'decline') {
@@ -206,25 +302,38 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    loadOwnerBookingsFromApi();
-});
+    var bookingDetailModal = document.getElementById('bookingDetailModal');
+    var bookingDetailClose = document.getElementById('bookingDetailClose');
+    if (bookingDetailClose) {
+        bookingDetailClose.addEventListener('click', closeBookingDetailModal);
+    }
+    if (bookingDetailModal) {
+        bookingDetailModal.addEventListener('click', function(e) {
+            if (e.target === bookingDetailModal) closeBookingDetailModal();
+        });
+    }
 
-// Filter bookings by search term
-function filterBookings(searchTerm) {
-    const rows = document.querySelectorAll('#bookingsTableBody tr');
-    
-    rows.forEach(row => {
-        const customerName = row.querySelector('.customer-cell span')?.textContent.toLowerCase() || '';
-        const fieldName = row.cells[1]?.textContent.toLowerCase() || '';
-        const text = customerName + ' ' + fieldName;
-        
-        if (text.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
+    var bookingDetailFooter = document.getElementById('bookingDetailFooter');
+    if (bookingDetailFooter) {
+        bookingDetailFooter.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-booking-detail-action]');
+            if (!btn) return;
+            var id = bookingDetailFooter.dataset.bookingId;
+            if (!id) return;
+            var act = (btn.getAttribute('data-booking-detail-action') || '').toLowerCase();
+            if (act === 'approve') approveBookingById(id, null);
+            else if (act === 'decline') declineBookingById(id, null);
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && bookingDetailModal && bookingDetailModal.classList.contains('active')) {
+            closeBookingDetailModal();
         }
     });
-}
+
+    loadOwnerBookingsFromApi();
+});
 
 // Apply all filters
 function applyFilters() {
@@ -266,57 +375,263 @@ function applyFilters() {
             }
         }
 
+        // Date range (table rows only — skip empty-state row without data-booking-id)
+        if (dateFilter !== 'Date range') {
+            if (!row.getAttribute('data-booking-id')) {
+                show = false;
+            } else if (!rowMatchesDateFilter(row, dateFilter)) {
+                show = false;
+            }
+        }
+
         row.style.display = show ? '' : 'none';
     });
 }
 
-// View booking details
-function viewBooking(row) {
-    const customer = row.querySelector('.customer-cell span')?.textContent || '';
-    const field = row.cells[1]?.textContent || '';
-    const dateTime = row.querySelector('.date-time-cell')?.textContent || '';
-    const duration = row.cells[3]?.textContent || '';
-    const payment = row.cells[4]?.querySelector('.badge')?.textContent || '';
-    const status = row.cells[5]?.querySelector('.badge')?.textContent || '';
+function formatOwnerBookingMoney(n) {
+    return '₺' + (Number(n) || 0).toLocaleString('tr-TR');
+}
 
-    console.log('View booking:', {
-        customer,
-        field,
-        dateTime,
-        duration,
-        payment,
-        status
+function bookingPaymentMethodLabel(pm) {
+    var p = (pm || '').toUpperCase();
+    if (p === 'ORGANIZER') return 'Organizer pays full';
+    if (p === 'SPLIT') return 'Split equally';
+    if (p === 'MIXED') return 'Mixed / custom split';
+    return pm || '—';
+}
+
+function timeStrToMinutesOwner(s) {
+    if (s == null || s === '') return NaN;
+    var parts = String(s).trim().split(':');
+    var h = parseInt(parts[0], 10);
+    var m = parseInt(parts[1] != null && parts[1] !== '' ? parts[1] : '0', 10);
+    if (isNaN(h) || isNaN(m)) return NaN;
+    return h * 60 + m;
+}
+
+function hoursInRangeOwner(startStr, endStr) {
+    var a = timeStrToMinutesOwner(startStr);
+    var b = timeStrToMinutesOwner(endStr);
+    if (isNaN(a) || isNaN(b) || b <= a) return 0;
+    return (b - a) / 60;
+}
+
+function bookingHoursFromRecord(b) {
+    var ranges = Array.isArray(b.timeSlotRanges) && b.timeSlotRanges.length ? b.timeSlotRanges : null;
+    var list = ranges || [{ start: b.timeSlotStart, end: b.timeSlotEnd }];
+    var total = 0;
+    list.forEach(function(r) {
+        if (!r || r.start == null || r.end == null) return;
+        total += hoursInRangeOwner(r.start, r.end);
     });
+    return total;
+}
 
-    // TODO: Open a modal with booking details
-    alert(`View booking for ${customer} at ${field}`);
+function formatBookingDate(iso) {
+    if (!iso) return '—';
+    try {
+        return new Date(iso).toLocaleString('en-US', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return '—';
+    }
+}
+
+function buildBookingDetailHtml(b) {
+    var field = b.field || {};
+    var owner = field.owner || {};
+    var org = b.organizer || {};
+    var hours = bookingHoursFromRecord(b);
+    var durationStr = '—';
+    if (hours > 0) {
+        var hRounded = Math.round(hours * 1000) / 1000;
+        var hLabel = hRounded % 1 === 0 ? String(Math.round(hRounded)) : String(hRounded);
+        durationStr = hLabel + (Math.abs(hRounded - 1) < 1e-9 ? ' hour' : ' hours');
+    }
+    var slotLine = (b.timeSlotStart || '') + ' – ' + (b.timeSlotEnd || '');
+    var ranges = b.timeSlotRanges;
+    if (Array.isArray(ranges) && ranges.length > 1) {
+        slotLine = ranges
+            .map(function(r) {
+                if (!r || r.start == null || r.end == null) return '';
+                return String(r.start) + ' – ' + String(r.end);
+            })
+            .filter(Boolean)
+            .join(', ');
+    }
+
+    var payExtra = '';
+    if ((b.paymentMethod || '').toUpperCase() === 'ORGANIZER') {
+        payExtra =
+            ' · Organizer payment: ' +
+            ((b.organizerPaymentStatus || '').toUpperCase() === 'PAID' ? 'Paid' : 'Pending');
+    }
+
+    var participantsHtml = '';
+    var parts = b.participants || [];
+    if (!parts.length) {
+        participantsHtml = '<p class="booking-detail-muted">No additional participants listed.</p>';
+    } else {
+        participantsHtml =
+            '<ul class="booking-detail-list">' +
+            parts
+                .map(function(p) {
+                    var u = p.user || {};
+                    var line = escHtml(u.fullName || '—');
+                    if (u.email) line += ' <span class="booking-detail-muted">(' + escHtml(u.email) + ')</span>';
+                    return '<li>' + line + '</li>';
+                })
+                .join('') +
+            '</ul>';
+    }
+
+    return (
+        '<dl class="booking-detail-grid">' +
+        '<dt>Booking ID</dt><dd><code style="font-size:12px;">' +
+        escHtml(String(b.id != null ? b.id : b._id || '')) +
+        '</code></dd>' +
+        '<dt>Status</dt><dd>' +
+        escHtml(ownerStatusUiLabel(b.status)) +
+        ' <span class="booking-detail-muted">(' +
+        escHtml(String(b.status || '')) +
+        ')</span></dd>' +
+        '<dt>Field</dt><dd>' +
+        escHtml(field.name || '—') +
+        '</dd>' +
+        '<dt>Sport / location</dt><dd>' +
+        escHtml(field.sport || '—') +
+        ' · ' +
+        escHtml(field.location || '—') +
+        '</dd>' +
+        '<dt>Date & time</dt><dd>' +
+        formatBookingDate(b.date) +
+        '</dd>' +
+        '<dt>Time slots</dt><dd>' +
+        escHtml(slotLine) +
+        '</dd>' +
+        '<dt>Duration</dt><dd>' +
+        escHtml(durationStr) +
+        '</dd>' +
+        '<dt>Team size</dt><dd>' +
+        escHtml(b.teamSize != null ? String(b.teamSize) : '—') +
+        '</dd>' +
+        '<dt>Payment</dt><dd>' +
+        escHtml(bookingPaymentMethodLabel(b.paymentMethod)) +
+        payExtra +
+        '</dd>' +
+        '<dt>Total</dt><dd><strong>' +
+        formatOwnerBookingMoney(b.totalCost) +
+        '</strong></dd>' +
+        '<dt>Created</dt><dd>' +
+        formatBookingDate(b.createdAt) +
+        '</dd>' +
+        '<dt>Confirmed</dt><dd>' +
+        formatBookingDate(b.confirmedAt) +
+        '</dd>' +
+        '</dl>' +
+        '<div class="booking-detail-section"><h3>Organizer</h3>' +
+        '<dl class="booking-detail-grid">' +
+        '<dt>Name</dt><dd>' +
+        escHtml(org.fullName || '—') +
+        '</dd>' +
+        '<dt>Email</dt><dd>' +
+        escHtml(org.email || '—') +
+        '</dd>' +
+        '<dt>Phone</dt><dd>' +
+        escHtml(org.phone || '—') +
+        '</dd>' +
+        '</dl></div>' +
+        '<div class="booking-detail-section"><h3>Venue owner (you)</h3>' +
+        '<dl class="booking-detail-grid">' +
+        '<dt>Name</dt><dd>' +
+        escHtml(owner.fullName || '—') +
+        '</dd>' +
+        '<dt>Phone</dt><dd>' +
+        escHtml(owner.phone || '—') +
+        '</dd>' +
+        '</dl></div>' +
+        '<div class="booking-detail-section"><h3>Participants</h3>' +
+        participantsHtml +
+        '</div>'
+    );
+}
+
+async function viewBookingDetail(bookingId) {
+    var modal = document.getElementById('bookingDetailModal');
+    var body = document.getElementById('bookingDetailBody');
+    if (!bookingId || !modal || !body) return;
+    if (typeof API === 'undefined' || !API.bookings || !API.bookings.getById) {
+        alert('API is not available.');
+        return;
+    }
+
+    syncBookingDetailFooter(null);
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    body.innerHTML = '<p class="booking-detail-loading">Loading…</p>';
+
+    try {
+        var res = await API.bookings.getById(bookingId);
+        var b = res && res.booking;
+        if (!b) {
+            body.innerHTML = '<p class="booking-detail-error">Booking not found.</p>';
+            return;
+        }
+        body.innerHTML = buildBookingDetailHtml(b);
+        syncBookingDetailFooter(b);
+    } catch (err) {
+        var msg = (err && err.message) || 'Could not load booking.';
+        body.innerHTML = '<p class="booking-detail-error">' + escHtml(msg) + '</p>';
+    }
 }
 
 async function approveBookingById(bookingId, row) {
-    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) return;
-    const customer = row && row.querySelector('.customer-cell span') ? row.querySelector('.customer-cell span').textContent : '';
-    const field = row && row.cells[1] ? row.cells[1].textContent : '';
-    if (!confirm('Approve booking for ' + customer + ' at ' + field + '?')) return;
+    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) {
+        alert('Sign in again or refresh the page.');
+        return;
+    }
+    var labels = ownerBookingConfirmLabels(bookingId);
+    if (!confirm('Approve booking for ' + labels.customer + ' at ' + labels.field + '? This confirms the reservation.')) return;
+    setOwnerRowActionLoading(row, true);
+    setBookingDetailFooterBusy(true);
     try {
         await API.bookings.updateStatus(bookingId, 'CONFIRMED');
         await loadOwnerBookingsFromApi();
         if (typeof renderCalendar === 'function') renderCalendar();
+        closeBookingDetailModal();
     } catch (e) {
-        alert((e && e.message) ? e.message : 'Could not approve booking');
+        alert((e && e.message) ? e.message : 'Could not approve booking.');
+    } finally {
+        setOwnerRowActionLoading(row, false);
+        setBookingDetailFooterBusy(false);
     }
 }
 
 async function declineBookingById(bookingId, row) {
-    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) return;
-    const customer = row && row.querySelector('.customer-cell span') ? row.querySelector('.customer-cell span').textContent : '';
-    const field = row && row.cells[1] ? row.cells[1].textContent : '';
-    if (!confirm('Decline booking for ' + customer + ' at ' + field + '?')) return;
+    if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) {
+        alert('Sign in again or refresh the page.');
+        return;
+    }
+    var labels = ownerBookingConfirmLabels(bookingId);
+    if (!confirm('Decline this request for ' + labels.customer + ' at ' + labels.field + '? The booking will be cancelled.')) return;
+    setOwnerRowActionLoading(row, true);
+    setBookingDetailFooterBusy(true);
     try {
         await API.bookings.updateStatus(bookingId, 'CANCELLED');
         await loadOwnerBookingsFromApi();
         if (typeof renderCalendar === 'function') renderCalendar();
+        closeBookingDetailModal();
     } catch (e) {
-        alert((e && e.message) ? e.message : 'Could not cancel booking');
+        alert((e && e.message) ? e.message : 'Could not decline booking.');
+    } finally {
+        setOwnerRowActionLoading(row, false);
+        setBookingDetailFooterBusy(false);
     }
 }
 

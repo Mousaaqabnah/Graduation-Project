@@ -25,6 +25,13 @@ app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
+// Tells the browser the real HTTP port when PORT≠3000 (must be before express.static('/scripts')).
+app.get('/scripts/utils/runtime-api-port.js', (req, res) => {
+  res.type('application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'no-store, max-age=0');
+  res.send(`window.__API_PORT__=${JSON.stringify(Number(PORT))};`);
+});
+
 // Serve static files with paths that match HTML (../../styles/... → /styles/...)
 app.use('/pages', express.static('pages'));
 app.use('/styles', express.static('styles'));

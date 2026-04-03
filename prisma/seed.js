@@ -15,6 +15,10 @@ const bcrypt = require('bcryptjs');
 
 const USERS = 'users';
 const FIELDS = 'fields';
+const BOOKINGS = 'bookings';
+
+/** Marks rows inserted by seed so re-running `npm run db:seed` can replace them safely. */
+const DEMO_BOOKING_MARKER = 'matchfield_demo_booking';
 
 function now() {
   return new Date();
@@ -189,16 +193,146 @@ async function main() {
       });
     }
 
+    /**
+     * Sample bookings for API / UI testing (owner dashboard, player bookings, stats).
+     * Uses native driver. Organizer = seeded player; fields = seeded owner fields.
+     */
+    async function seedDemoBookings(db, usersCol, fieldsCol) {
+      const bookingsCol = db.collection(BOOKINGS);
+      await bookingsCol.deleteMany({ seed_marker: DEMO_BOOKING_MARKER });
+
+      const ownerDoc = await usersCol.findOne({ email: 'owner@matchfield.com' });
+      const playerDoc = await usersCol.findOne({ email: 'player@matchfield.com' });
+      if (!ownerDoc || !playerDoc) {
+        console.log('Skipping demo bookings: owner or player user missing.');
+        return;
+      }
+
+      const ownerOid = ownerDoc._id instanceof ObjectId ? ownerDoc._id : new ObjectId(ownerDoc._id);
+      const playerOid = playerDoc._id instanceof ObjectId ? playerDoc._id : new ObjectId(playerDoc._id);
+
+      const fieldDocs = await fieldsCol.find({ owner_id: ownerOid }).limit(5).toArray();
+      if (fieldDocs.length === 0) {
+        console.log('Skipping demo bookings: no fields for owner@matchfield.com.');
+        return;
+      }
+
+      const pick = (i) => fieldDocs[Math.min(i, fieldDocs.length - 1)];
+      const pph = (f) => Number(f.price_per_hour) || 1000;
+
+      const n = new Date();
+      const todayNoon = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 12, 0, 0, 0);
+      const addDays = (d, days) => {
+        const x = new Date(d.getTime());
+        x.setDate(x.getDate() + days);
+        return x;
+      };
+
+      const t = now();
+      const base = (overrides) => ({
+        time_slot_ranges: null,
+        mixed_payment_distribution: null,
+        team_size: 6,
+        created_at: t,
+        seed_marker: DEMO_BOOKING_MARKER,
+        ...overrides
+      });
+
+      const rows = [
+        base({
+          field_id: pick(0)._id,
+          organizer_id: playerOid,
+          date: todayNoon,
+          time_slot_start: '18:00',
+          time_slot_end: '20:00',
+          total_cost: pph(pick(0)) * 2,
+          payment_method: 'ORGANIZER',
+          status: 'PENDING',
+          organizer_payment_status: 'PENDING',
+          confirmed_at: null
+        }),
+        base({
+          field_id: pick(0)._id,
+          organizer_id: playerOid,
+          date: addDays(todayNoon, 1),
+          time_slot_start: '10:00',
+          time_slot_end: '11:00',
+          total_cost: pph(pick(0)) * 1,
+          payment_method: 'SPLIT',
+          status: 'UPCOMING',
+          organizer_payment_status: null,
+          confirmed_at: addDays(t, -1)
+        }),
+        base({
+          field_id: pick(1)._id,
+          organizer_id: playerOid,
+          date: addDays(todayNoon, 3),
+          time_slot_start: '14:00',
+          time_slot_end: '16:00',
+          total_cost: pph(pick(1)) * 2,
+          payment_method: 'ORGANIZER',
+          status: 'CONFIRMED',
+          organizer_payment_status: 'PAID',
+          confirmed_at: addDays(t, -2)
+        }),
+        base({
+          field_id: pick(1)._id,
+          organizer_id: playerOid,
+          date: addDays(todayNoon, -4),
+          time_slot_start: '09:00',
+          time_slot_end: '10:00',
+          total_cost: pph(pick(1)) * 1,
+          payment_method: 'ORGANIZER',
+          status: 'COMPLETED',
+          organizer_payment_status: 'PAID',
+          confirmed_at: addDays(t, -10)
+        }),
+        base({
+          field_id: pick(2)._id,
+          organizer_id: playerOid,
+          date: addDays(todayNoon, 5),
+          time_slot_start: '20:00',
+          time_slot_end: '22:00',
+          total_cost: pph(pick(2)) * 2,
+          payment_method: 'MIXED',
+          status: 'PENDING',
+          organizer_payment_status: null,
+          confirmed_at: null
+        }),
+        base({
+          field_id: pick(2)._id,
+          organizer_id: playerOid,
+          date: addDays(todayNoon, 7),
+          time_slot_start: '16:00',
+          time_slot_end: '17:00',
+          total_cost: pph(pick(2)) * 1,
+          payment_method: 'ORGANIZER',
+          status: 'CANCELLED',
+          organizer_payment_status: 'PENDING',
+          confirmed_at: null
+        })
+      ];
+
+      await bookingsCol.insertMany(rows);
+      console.log('Seeded', rows.length, 'demo bookings for player → owner fields.');
+    }
+
     const allOwners = await users.find({ role: 'OWNER' }).toArray();
     for (const o of allOwners) {
       await seedSampleFieldsForOwnerIfEmpty(o);
     }
 
+    await seedDemoBookings(db, users, fields);
+
     console.log('\n--- Login (all roles) ---');
     console.log('ADMIN:  admin@matchfield.com  / Admin123!');
     console.log('OWNER:  owner@matchfield.com  / Owner123!');
     console.log('PLAYER: player@matchfield.com / Player123!');
-    console.log('Seed completed. Collections created: users, fields.');
+    console.log(
+      '\nDemo bookings: organizer = player@matchfield.com on owner fields (PENDING / UPCOMING / CONFIRMED / COMPLETED / CANCELLED).'
+    );
+    console.log('Re-run seed to refresh demo bookings only (rows with seed marker).');
+    console.log('Seed completed. Collections: users, fields, bookings (demo).');
   } finally {
     await client.close();
   }

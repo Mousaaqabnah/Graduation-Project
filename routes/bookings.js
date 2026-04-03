@@ -2,6 +2,8 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { totalCostFromFieldPrice, totalHoursFromRanges } = require('../lib/bookingPricing');
+const { isMongoObjectIdString, mongoBookingSetFields } = require('../lib/mongoBookingWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -148,10 +150,11 @@ router.get('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Check access
-    const isOrganizer = booking.organizerId === req.user.id;
-    const isParticipant = booking.participants.some(p => p.userId === req.user.id);
-    const isFieldOwner = booking.field.ownerId === req.user.id;
+    // Check access (string-compare ids — Mongo / JWT may differ in type)
+    const uid = String(req.user.id);
+    const isOrganizer = String(booking.organizerId) === uid;
+    const isParticipant = booking.participants.some(p => String(p.userId) === uid);
+    const isFieldOwner = String(booking.field.ownerId) === uid;
     const isAdmin = req.user.role === 'ADMIN';
 
     if (!isOrganizer && !isParticipant && !isFieldOwner && !isAdmin) {
@@ -191,16 +194,13 @@ router.post('/', authenticate, [
       return res.status(404).json({ error: 'Field not found or inactive' });
     }
 
-    // Total cost: sum hours from timeSlotRanges if provided, else single range
-    let totalCost;
+    // Total cost: sum fractional hours from ranges (minutes respected, e.g. 18:00–19:30 = 1.5h)
     const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0 ? timeSlotRanges : [{ start: timeSlotStart, end: timeSlotEnd }];
-    let totalHours = 0;
-    ranges.forEach(r => {
-      const sh = parseInt(String(r.start).split(':')[0], 10);
-      const eh = parseInt(String(r.end).split(':')[0], 10);
-      totalHours += (eh - sh);
-    });
-    totalCost = Math.round((field.pricePerHour || 0) * totalHours);
+    const totalHours = totalHoursFromRanges(ranges);
+    if (totalHours <= 0) {
+      return res.status(400).json({ error: 'End time must be after start time.' });
+    }
+    const totalCost = totalCostFromFieldPrice(field.pricePerHour, ranges);
 
     // Create booking (timeSlotStart/timeSlotEnd = first range for backward compat)
     const firstRange = ranges[0];
@@ -267,23 +267,51 @@ router.put('/:id/status', authenticate, [
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Check permissions
-    const isOrganizer = booking.organizerId === req.user.id;
-    const isFieldOwner = booking.field.ownerId === req.user.id;
+    const uid = String(req.user.id);
+    const isOrganizer = String(booking.organizerId) === uid;
+    const isFieldOwner = String(booking.field.ownerId) === uid;
     const isAdmin = req.user.role === 'ADMIN';
 
     if (!isOrganizer && !isFieldOwner && !isAdmin) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const updateData = { status };
-    if (status === 'CONFIRMED' && !booking.confirmedAt) {
-      updateData.confirmedAt = new Date();
+    const prev = booking.status;
+    // Approve pending requests (confirm): only venue owner or admin
+    if (prev === 'PENDING' && (status === 'CONFIRMED' || status === 'UPCOMING')) {
+      if (!isFieldOwner && !isAdmin) {
+        return res.status(403).json({ error: 'Only the field owner can approve booking requests.' });
+      }
+    }
+    // Decline / withdraw while still pending: owner, admin, or organizer
+    if (prev === 'PENDING' && status === 'CANCELLED') {
+      if (!isFieldOwner && !isAdmin && !isOrganizer) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
-    const updatedBooking = await prisma.booking.update({
+    if (!isMongoObjectIdString(id)) {
+      return res.status(400).json({ error: 'Invalid booking id' });
+    }
+
+    const $set = { status };
+    if ((status === 'CONFIRMED' || status === 'UPCOMING') && !booking.confirmedAt) {
+      $set.confirmed_at = new Date();
+    }
+
+    let matched;
+    try {
+      matched = await mongoBookingSetFields(id, $set);
+    } catch (err) {
+      console.error('Update booking error:', err);
+      return res.status(500).json({ error: 'Failed to update booking' });
+    }
+    if (!matched) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const updatedBooking = await prisma.booking.findUnique({
       where: { id },
-      data: updateData,
       include: {
         field: true,
         organizer: true,
@@ -324,12 +352,16 @@ router.put('/:id/reschedule', authenticate, [
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Only organizer, field owner or admin can reschedule
-    const isOrganizer = booking.organizerId === req.user.id;
-    const isFieldOwner = booking.field.ownerId === req.user.id;
+    const uid = String(req.user.id);
+    const isOrganizer = String(booking.organizerId) === uid;
+    const isFieldOwner = String(booking.field.ownerId) === uid;
     const isAdmin = req.user.role === 'ADMIN';
     if (!isOrganizer && !isFieldOwner && !isAdmin) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!isMongoObjectIdString(id)) {
+      return res.status(400).json({ error: 'Invalid booking id' });
     }
 
     // Compute original start datetime
@@ -346,26 +378,33 @@ router.put('/:id/reschedule', authenticate, [
     const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0
       ? timeSlotRanges
       : [{ start: timeSlotStart, end: timeSlotEnd }];
-    let totalHours = 0;
-    ranges.forEach((r) => {
-      const sh = parseInt(String(r.start).split(':')[0], 10);
-      const eh = parseInt(String(r.end).split(':')[0], 10);
-      totalHours += (eh - sh);
-    });
+    const totalHours = totalHoursFromRanges(ranges);
     if (totalHours <= 0) {
       return res.status(400).json({ error: 'End time must be after start time.' });
     }
-    const totalCost = Math.round(booking.field.pricePerHour * totalHours);
+    const totalCost = totalCostFromFieldPrice(booking.field.pricePerHour, ranges);
 
-    const updated = await prisma.booking.update({
+    const $set = {
+      date: new Date(date),
+      time_slot_start: ranges[0].start,
+      time_slot_end: ranges[ranges.length - 1].end,
+      time_slot_ranges: ranges.length > 1 ? ranges : null,
+      total_cost: totalCost
+    };
+
+    let matched;
+    try {
+      matched = await mongoBookingSetFields(id, $set);
+    } catch (err) {
+      console.error('Reschedule booking error:', err);
+      return res.status(500).json({ error: 'Failed to reschedule booking' });
+    }
+    if (!matched) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const updated = await prisma.booking.findUnique({
       where: { id },
-      data: {
-        date: new Date(date),
-        timeSlotStart: ranges[0].start,
-        timeSlotEnd: ranges[ranges.length - 1].end,
-        timeSlotRanges: ranges.length > 1 ? ranges : null,
-        totalCost
-      },
       include: {
         field: true,
         organizer: true,
