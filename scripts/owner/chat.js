@@ -1,6 +1,6 @@
 /**
- * MatchField Chat - Real-time messaging for field owners.
- * Same API as player chat - owners chat with players and other users.
+ * MatchField Chat - Real-time messaging between players and field owners.
+ * Uses API for conversations and messages. Auth required.
  */
 
 // Chat state
@@ -9,9 +9,29 @@ const chatState = {
   currentConversationId: null,
   currentConversation: null,
   messages: [],
+  /** When the other user is an owner — field sidebar */
+  currentFieldInfo: null,
+  /** When the other user is a player — player sidebar */
+  currentPlayerSummary: null,
   isLoading: false,
   isSending: false
 };
+
+function hideChatSidebars() {
+  const playerSb = document.getElementById('playerInfoSidebar');
+  const fieldSb = document.getElementById('fieldInfoSidebar');
+  if (playerSb) {
+    playerSb.classList.remove('visible');
+  }
+  if (fieldSb) {
+    fieldSb.classList.remove('visible');
+  }
+}
+
+function fieldInfoPlayerUrl(fieldId) {
+  if (!fieldId) return '';
+  return `../player/field-info.html?id=${encodeURIComponent(fieldId)}`;
+}
 
 // Helper: Get current user from API
 function getCurrentUserId() {
@@ -73,7 +93,7 @@ function mapConversation(conv, currentUserId) {
     name: other.fullName,
     role: formatRole(other.role),
     avatar: getAvatarUrl(other),
-    status: 'offline',
+    status: 'offline', // TODO: real-time presence
     lastMessage: lastMsg ? lastMsg.content : 'No messages yet',
     lastMessageTime: lastMsg ? lastMsg.createdAt : conv.updatedAt,
     timeAgo: formatTimeAgo(lastMsg ? lastMsg.createdAt : conv.updatedAt),
@@ -128,7 +148,7 @@ async function loadConversations() {
   try {
     const res = await API.messages.getConversations();
     const mapped = (res.conversations || []).map(c => mapConversation(c, currentUserId));
-    // Exclude Admin conversations - Contact Us is one-way; Chat is for players & owners only
+    // Exclude Admin conversations - Contact Us is one-way; Chat is for players & field owners only
     const convs = mapped.filter(c => {
       const role = (c.otherUser && c.otherUser.role) ? String(c.otherUser.role).toUpperCase() : '';
       return role !== 'ADMIN';
@@ -136,18 +156,25 @@ async function loadConversations() {
     chatState.conversations = convs;
     renderMessageList();
 
+    // If we had a selected conversation, keep it
     if (chatState.currentConversationId) {
       const stillExists = convs.some(c => c.id === chatState.currentConversationId);
       if (!stillExists) {
         chatState.currentConversationId = null;
         chatState.currentConversation = null;
         chatState.messages = [];
+        chatState.currentFieldInfo = null;
+        chatState.currentPlayerSummary = null;
+        hideChatSidebars();
         showEmptyChatState();
         hideChatInput();
       }
     } else if (convs.length > 0) {
       selectConversation(convs[0].id);
     } else {
+      chatState.currentFieldInfo = null;
+      chatState.currentPlayerSummary = null;
+      hideChatSidebars();
       showEmptyChatState();
       hideChatInput();
     }
@@ -155,6 +182,9 @@ async function loadConversations() {
     console.error('Load conversations error:', err);
     showToast(err.message || 'Failed to load conversations', 'error');
     chatState.conversations = [];
+    chatState.currentFieldInfo = null;
+    chatState.currentPlayerSummary = null;
+    hideChatSidebars();
     renderMessageList();
     showEmptyChatState();
     hideChatInput();
@@ -187,24 +217,56 @@ async function loadMessages(conversationId) {
   }
 }
 
-// Select conversation
+// Select conversation (player chat: field sidebar for owners; owner chat: player sidebar for players, field for owners)
 async function selectConversation(conversationId) {
   const conv = chatState.conversations.find(c => c.id === conversationId);
   if (!conv) return;
 
   chatState.currentConversationId = conversationId;
   chatState.currentConversation = conv;
+  chatState.currentFieldInfo = null;
+  chatState.currentPlayerSummary = null;
 
+  // Update active state in list
   document.querySelectorAll('.message-item').forEach(item => {
     item.classList.toggle('active', item.dataset.chatId === conversationId);
   });
 
   updateChatHeader(conv);
+
+  hideChatSidebars();
+
   await loadMessages(conversationId);
 
-  // Hide info sidebar (playerInfoSidebar for owner)
-  const sidebar = document.getElementById('playerInfoSidebar') || document.getElementById('fieldInfoSidebar');
-  if (sidebar) sidebar.style.display = 'none';
+  const role = conv.otherUser ? String(conv.otherUser.role || '').toUpperCase() : '';
+  const chatHeader = document.getElementById('chatHeader');
+
+  if (role === 'PLAYER') {
+    chatState.currentPlayerSummary = conv;
+    updatePlayerInfoSidebar(conv);
+    const playerSidebar = document.getElementById('playerInfoSidebar');
+    if (playerSidebar) playerSidebar.classList.add('visible');
+    if (chatHeader) chatHeader.title = 'Click to show player info';
+  } else if (role === 'OWNER' && API && API.fields) {
+    try {
+      const res = await API.fields.getByOwner(conv.userId);
+      const fields = res.fields || [];
+      const field = fields.length > 0 ? fields[0] : null;
+      chatState.currentFieldInfo = { field, owner: conv };
+      updateFieldInfoSidebar(chatState.currentFieldInfo);
+      const fieldSidebar = document.getElementById('fieldInfoSidebar');
+      if (fieldSidebar) fieldSidebar.classList.add('visible');
+    } catch (err) {
+      console.error('Load owner fields error:', err);
+      chatState.currentFieldInfo = { field: null, owner: conv };
+      updateFieldInfoSidebar(chatState.currentFieldInfo);
+      const fieldSidebar = document.getElementById('fieldInfoSidebar');
+      if (fieldSidebar) fieldSidebar.classList.add('visible');
+    }
+    if (chatHeader) chatHeader.title = 'Click to show field info';
+  } else {
+    if (chatHeader) chatHeader.title = '';
+  }
 
   const inputContainer = document.getElementById('chatInputContainer');
   if (inputContainer) inputContainer.style.display = 'flex';
@@ -219,6 +281,74 @@ function updateChatHeader(conv) {
   if (nameEl) nameEl.textContent = conv.name;
   if (statusEl) statusEl.textContent = conv.status === 'online' ? 'Online' : 'Offline';
   if (avatarImg) avatarImg.src = conv.avatar;
+}
+
+// Update player sidebar (when the logged-in owner chats with a player — mirrors player chat field sidebar)
+function updatePlayerInfoSidebar(conv) {
+  if (!conv || !conv.otherUser) return;
+
+  const u = conv.otherUser;
+  const nameEl = document.getElementById('playerName');
+  const avatarEl = document.getElementById('playerAvatar');
+  const statusEl = document.getElementById('playerStatus');
+  const bookingsEl = document.getElementById('totalBookings');
+  const memberEl = document.getElementById('memberSince');
+  const ratingEl = document.getElementById('playerRating');
+
+  if (nameEl) nameEl.textContent = u.fullName || conv.name || 'Player';
+  if (avatarEl) avatarEl.src = getAvatarUrl(u);
+  if (statusEl) {
+    statusEl.textContent = conv.status === 'online' ? 'Online' : 'Offline';
+    statusEl.style.color = conv.status === 'online' ? '#10B981' : '#6B7280';
+  }
+  if (bookingsEl) bookingsEl.textContent = '—';
+  if (memberEl) memberEl.textContent = '—';
+  if (ratingEl) ratingEl.textContent = '—';
+}
+
+// Update field info sidebar (other field owner + field — same data as player chat)
+function updateFieldInfoSidebar(info) {
+  if (!info || !info.owner) return;
+
+  const field = info.field;
+  const owner = info.owner;
+  const ownerNameEl = document.getElementById('fieldOwnerName');
+  const ownerAvatarEl = document.getElementById('fieldOwnerAvatar');
+  const ownerStatusEl = document.getElementById('fieldOwnerStatus');
+  const typeEl = document.getElementById('fieldType');
+  const rateEl = document.getElementById('fieldRate');
+  const sizeEl = document.getElementById('fieldSize');
+  const surfaceEl = document.getElementById('fieldSurface');
+  const imgEl = document.getElementById('fieldImage');
+
+  if (ownerNameEl) ownerNameEl.textContent = owner.name;
+  if (ownerAvatarEl) ownerAvatarEl.src = owner.avatar;
+  if (ownerStatusEl) {
+    ownerStatusEl.textContent = owner.status === 'online' ? 'Online' : 'Offline';
+    ownerStatusEl.style.color = owner.status === 'online' ? '#10B981' : '#6B7280';
+  }
+
+  if (field) {
+    if (imgEl) imgEl.src = (field.images && field.images[0]) || 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format';
+    if (typeEl) typeEl.textContent = field.sport || 'Field';
+    if (rateEl) rateEl.textContent = field.pricePerHour != null ? `₺${field.pricePerHour}/h` : 'N/A';
+    if (sizeEl) sizeEl.textContent = field.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
+    if (surfaceEl) surfaceEl.textContent = (field.features && field.features[0]) || field.type || 'Standard';
+    const viewBtn = document.getElementById('viewFieldPageBtn');
+    const bookBtn = document.getElementById('bookNowBtn');
+    if (viewBtn) { viewBtn.disabled = false; viewBtn.style.opacity = '1'; }
+    if (bookBtn) { bookBtn.disabled = false; bookBtn.style.opacity = '1'; }
+  } else {
+    if (imgEl) imgEl.src = 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format';
+    if (typeEl) typeEl.textContent = '—';
+    if (rateEl) rateEl.textContent = '—';
+    if (sizeEl) sizeEl.textContent = '—';
+    if (surfaceEl) surfaceEl.textContent = '—';
+    const viewBtn = document.getElementById('viewFieldPageBtn');
+    const bookBtn = document.getElementById('bookNowBtn');
+    if (viewBtn) { viewBtn.disabled = true; viewBtn.style.opacity = '0.6'; }
+    if (bookBtn) { bookBtn.disabled = true; bookBtn.style.opacity = '0.6'; }
+  }
 }
 
 // Render message list
@@ -359,6 +489,7 @@ async function sendMessage() {
   const sendBtn = document.getElementById('sendBtn');
   if (sendBtn) sendBtn.disabled = true;
 
+  // Optimistic UI: add message immediately
   const tempMsg = {
     id: 'temp-' + Date.now(),
     content: text,
@@ -370,6 +501,7 @@ async function sendMessage() {
   scrollToBottom();
   input.value = '';
 
+  // Update conversation last message
   const conv = chatState.currentConversation;
   conv.lastMessage = text;
   conv.timeAgo = 'Just now';
@@ -419,7 +551,7 @@ function filterConversations(query) {
   });
 }
 
-// Open "Start Chat" modal
+// Open "Start Chat" modal - search users and start conversation
 function openStartChatModal() {
   const overlay = document.createElement('div');
   overlay.className = 'friend-modal-overlay';
@@ -464,6 +596,7 @@ function openStartChatModal() {
 
   function renderUserResults(users) {
     const currentUserId = getCurrentUserId();
+    const excludeIds = [currentUserId, ...chatState.conversations.map(c => c.userId)];
 
     if (!users || users.length === 0) {
       listEl.innerHTML = '';
@@ -501,6 +634,7 @@ function openStartChatModal() {
     listEl.querySelectorAll('.start-chat-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const userId = btn.dataset.userId;
+        const userName = btn.dataset.userName;
 
         try {
           const res = await API.messages.getConversation(userId);
@@ -590,14 +724,65 @@ function setupEventListeners() {
 
   const chatHeader = document.getElementById('chatHeader');
   if (chatHeader) {
+    chatHeader.style.cursor = 'pointer';
     chatHeader.addEventListener('click', () => {
-      const sidebar = document.getElementById('playerInfoSidebar') || document.getElementById('fieldInfoSidebar');
-      if (sidebar && sidebar.style.display === 'flex') {
-        sidebar.style.display = 'none';
+      const playerSb = document.getElementById('playerInfoSidebar');
+      const fieldSb = document.getElementById('fieldInfoSidebar');
+      if (chatState.currentPlayerSummary && playerSb) {
+        playerSb.classList.toggle('visible');
+        return;
+      }
+      if (chatState.currentFieldInfo && fieldSb) {
+        fieldSb.classList.toggle('visible');
+        return;
+      }
+      showToast('Select a conversation to see details in the side panel', 'info');
+    });
+  }
+
+  const viewFieldPageBtn = document.getElementById('viewFieldPageBtn');
+  if (viewFieldPageBtn) {
+    viewFieldPageBtn.addEventListener('click', () => {
+      if (chatState.currentFieldInfo && chatState.currentFieldInfo.field) {
+        window.location.href = fieldInfoPlayerUrl(chatState.currentFieldInfo.field.id);
+      } else {
+        showToast('No field information available', 'info');
+      }
+    });
+  }
+  const bookNowBtn = document.getElementById('bookNowBtn');
+  if (bookNowBtn) {
+    bookNowBtn.addEventListener('click', () => {
+      if (chatState.currentFieldInfo && chatState.currentFieldInfo.field) {
+        window.location.href = fieldInfoPlayerUrl(chatState.currentFieldInfo.field.id);
+      } else {
+        showToast('No field information available', 'info');
       }
     });
   }
 
+  const viewPlayerProfileBtn = document.getElementById('viewPlayerProfileBtn');
+  if (viewPlayerProfileBtn) {
+    viewPlayerProfileBtn.addEventListener('click', () => {
+      showToast('Use chat to coordinate bookings. Player profile details stay private here.', 'info');
+    });
+  }
+
+  const playerAddFriendBtn = document.getElementById('playerAddFriendBtn');
+  if (playerAddFriendBtn) {
+    playerAddFriendBtn.addEventListener('click', () => {
+      showToast('Friend list is not connected yet.', 'info');
+    });
+  }
+
+  const fieldAddFriendBtn = document.getElementById('fieldAddFriendBtn');
+  if (fieldAddFriendBtn) {
+    fieldAddFriendBtn.addEventListener('click', () => {
+      showToast('Friend list is not connected yet.', 'info');
+    });
+  }
+
+  // Profile/notification popups (if not in header-user/notifications)
   const profileBtn = document.getElementById('profileBtn');
   const profilePopup = document.getElementById('profilePopup');
   if (profileBtn && profilePopup) {
@@ -623,7 +808,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   setupEventListeners();
+
+  // Show placeholder until we have data
   showEmptyChatState();
   hideChatInput();
+
   loadConversations();
 });

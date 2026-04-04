@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { mongoGetOrCreateConversation } = require('../lib/mongoConversation');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -64,72 +65,25 @@ router.get('/conversations', authenticate, async (req, res) => {
   }
 });
 
-// Get or create conversation
+// Get or create conversation (native Mongo — Prisma create hits P2031 on standalone mongod)
 router.get('/conversation/:userId', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const otherId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
+    const meId = String(req.user.id);
 
-    if (userId === req.user.id) {
-      return res.status(400).json({ error: 'Cannot create conversation with yourself' });
+    let result;
+    try {
+      result = await mongoGetOrCreateConversation(meId, otherId);
+    } catch (err) {
+      console.error('Get conversation error:', err);
+      return res.status(500).json({ error: 'Failed to get conversation' });
     }
 
-    // Check if conversation exists
-    let conversation = await prisma.conversation.findFirst({
-      where: {
-        OR: [
-          { user1Id: req.user.id, user2Id: userId },
-          { user1Id: userId, user2Id: req.user.id }
-        ]
-      },
-      include: {
-        user1: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            role: true
-          }
-        },
-        user2: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            role: true
-          }
-        }
-      }
-    });
-
-    if (!conversation) {
-      // Create new conversation
-      conversation = await prisma.conversation.create({
-        data: {
-          user1Id: req.user.id,
-          user2Id: userId
-        },
-        include: {
-        user1: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            role: true
-          }
-        },
-        user2: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            role: true
-          }
-        }
-      }
-    });
+    if (!result.ok) {
+      return res.status(result.status || 500).json({ error: result.error || 'Failed to get conversation' });
     }
 
-    res.json({ conversation });
+    res.json({ conversation: result.conversation });
   } catch (error) {
     console.error('Get conversation error:', error);
     res.status(500).json({ error: 'Failed to get conversation' });

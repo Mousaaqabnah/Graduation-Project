@@ -182,7 +182,7 @@
                     </div>
                     
                     <div class="message-search">
-                        <input type="text" placeholder="Search Player or Field Owner..." id="messageSearch">
+                        <input type="text" placeholder="Search Player or Field..." id="messageSearch">
                         <i class="fi fi-rr-search search-icon"></i>
                     </div>
                     
@@ -201,7 +201,7 @@
                             </div>
                             <div class="chat-user-details">
                                 <h3 id="chatUserName">Select a conversation</h3>
-                                <p id="chatUserStatus">Start chatting with players</p>
+                                <p id="chatUserStatus">Start chatting with players or field owners</p>
                             </div>
                         </div>
                     </div>
@@ -230,7 +230,7 @@
                 </div>
 
                 <!-- Right Sidebar - Player Info -->
-                <aside class="player-info-sidebar" id="playerInfoSidebar" style="display: none;">
+                <aside class="player-info-sidebar" id="playerInfoSidebar">
                     <div class="player-avatar-container">
                         <div class="player-avatar-large">
                             <img src="https://ui-avatars.com/api/?name=Sarah+Johnson&background=EF4444&color=fff&size=128" alt="Player Avatar" id="playerAvatar">
@@ -248,11 +248,11 @@
                         </div>
                         
                         <div class="player-actions">
-                            <button class="player-action-btn" id="addToFriendBtn">
+                            <button type="button" class="player-action-btn" id="playerAddFriendBtn">
                                 <i class="fi fi-rr-user-add"></i>
                                 <span>+ Add To Friend</span>
                             </button>
-                            <button class="player-action-btn" id="viewPlayerProfileBtn">
+                            <button type="button" class="player-action-btn" id="viewPlayerProfileBtn">
                                 <i class="fi fi-rr-eye"></i>
                                 <span>View Profile</span>
                             </button>
@@ -273,6 +273,61 @@
                             <div class="player-stat-item">
                                 <span class="player-stat-label">Rating:</span>
                                 <span class="player-stat-value" id="playerRating">4.8 ⭐</span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Right Sidebar - Other field owner + field (same pattern as player chat) -->
+                <aside class="field-info-sidebar" id="fieldInfoSidebar">
+                    <div class="field-image-container">
+                        <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&amp;h=300&amp;fit=crop&amp;auto=format" alt="Field" id="fieldImage">
+                    </div>
+                    <div class="field-owner-section">
+                        <h3>Field Owner</h3>
+                        <div class="field-owner-card">
+                            <div class="field-owner-avatar">
+                                <img src="https://ui-avatars.com/api/?name=Owner&amp;background=007BFF&amp;color=fff&amp;size=128" alt="Owner" id="fieldOwnerAvatar">
+                                <span class="online-indicator"></span>
+                            </div>
+                            <div class="field-owner-info">
+                                <h4 id="fieldOwnerName">—</h4>
+                                <p class="field-owner-status" id="fieldOwnerStatus">Offline</p>
+                            </div>
+                        </div>
+                        <div class="field-owner-actions">
+                            <button type="button" class="field-action-btn" id="fieldAddFriendBtn">
+                                <i class="fi fi-rr-user-add"></i>
+                                <span>+ Add To Friend</span>
+                            </button>
+                            <button type="button" class="field-action-btn" id="viewFieldPageBtn">
+                                <i class="fi fi-rr-eye"></i>
+                                <span>View Field Page</span>
+                            </button>
+                            <button type="button" class="field-action-btn primary" id="bookNowBtn">
+                                <i class="fi fi-rr-calendar-day"></i>
+                                <span>Book Now</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="field-information-section">
+                        <h3>Field Information</h3>
+                        <div class="field-info-grid">
+                            <div class="field-info-item">
+                                <span class="field-info-label">Type:</span>
+                                <span class="field-info-value" id="fieldType">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Rate:</span>
+                                <span class="field-info-value" id="fieldRate">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Size:</span>
+                                <span class="field-info-value" id="fieldSize">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Surface:</span>
+                                <span class="field-info-value" id="fieldSurface">—</span>
                             </div>
                         </div>
                     </div>
