@@ -1,6 +1,8 @@
 // Settings Page JavaScript
 
-document.addEventListener('DOMContentLoaded', function() {
+var savePrefsTimer = null;
+
+document.addEventListener('DOMContentLoaded', async function() {
     // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
@@ -20,8 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Load saved settings
-    loadSettings();
+    await loadSettings();
     
     // Toggle switches event listeners
     const toggles = document.querySelectorAll('.toggle-switch input');
@@ -79,9 +80,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (changePasswordForm && typeof API !== 'undefined' && API.auth && API.auth.updatePassword) {
+    if (changePasswordForm) {
         changePasswordForm.addEventListener('submit', function(e) {
             e.preventDefault();
+            if (typeof API === 'undefined' || !API.auth || !API.auth.updatePassword) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'Password service is unavailable. Please refresh the page.';
+                }
+                return;
+            }
             var currentPwd = document.getElementById('currentPassword').value;
             var newPwd = document.getElementById('newPassword').value;
             var confirmPwd = document.getElementById('confirmPassword').value;
@@ -151,11 +158,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Load settings from localStorage
-function loadSettings() {
-    const settings = JSON.parse(localStorage.getItem('ownerSettings') || '{}');
-    
-    // Load toggle states
+async function loadSettings() {
+    const local = JSON.parse(localStorage.getItem('ownerSettings') || '{}');
+    var remote = {};
+    try {
+        if (typeof API !== 'undefined' && API.users && API.users.getMyPreferences) {
+            var data = await API.users.getMyPreferences();
+            if (data && data.owner && typeof data.owner === 'object') {
+                remote = data.owner;
+            }
+        }
+    } catch (err) {
+        console.warn('Owner settings: could not load from API', err);
+    }
+    const settings = { ...local, ...remote };
+    localStorage.setItem('ownerSettings', JSON.stringify(settings));
+
     if (settings.emailNotifications !== undefined) {
         document.getElementById('emailNotifications').checked = settings.emailNotifications;
     }
@@ -177,8 +195,6 @@ function loadSettings() {
     if (settings.dataSharing !== undefined) {
         document.getElementById('dataSharing').checked = settings.dataSharing;
     }
-    
-    // Load select values
     if (settings.profileVisibility) {
         document.getElementById('profileVisibility').value = settings.profileVisibility;
     }
@@ -193,7 +209,6 @@ function loadSettings() {
     }
 }
 
-// Save settings to localStorage
 function saveSettings() {
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
@@ -208,11 +223,18 @@ function saveSettings() {
         currency: document.getElementById('currency').value,
         timezone: document.getElementById('timezone').value
     };
-    
+
     localStorage.setItem('ownerSettings', JSON.stringify(settings));
-    
-    // TODO: Send to API
-    console.log('Settings saved:', settings);
+
+    if (savePrefsTimer) clearTimeout(savePrefsTimer);
+    savePrefsTimer = setTimeout(function () {
+        savePrefsTimer = null;
+        if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
+            API.users.patchMyPreferences(settings).catch(function (err) {
+                console.warn('Owner settings: API save failed', err);
+            });
+        }
+    }, 400);
 }
 
 

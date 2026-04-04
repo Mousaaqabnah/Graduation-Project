@@ -1,6 +1,8 @@
 // Settings Page JavaScript
 
-document.addEventListener('DOMContentLoaded', function() {
+var savePrefsTimer = null;
+
+document.addEventListener('DOMContentLoaded', async function() {
     // Get popup elements (notification handled by notifications.js)
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
@@ -22,8 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Load saved settings
-    loadSettings();
+    await loadSettings();
     
     // Toggle switches event listeners
     const toggles = document.querySelectorAll('.toggle-switch input');
@@ -56,9 +57,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (changePasswordModal) {
             changePasswordModal.classList.add('active');
-            changePasswordForm.reset();
+            if (changePasswordForm) changePasswordForm.reset();
             if (changePasswordError) changePasswordError.textContent = '';
-            document.getElementById('currentPassword').focus();
+            var cur = document.getElementById('currentPassword');
+            if (cur) cur.focus();
         }
     }
 
@@ -105,6 +107,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitBtn.textContent = 'Updating...';
             }
 
+            if (typeof API === 'undefined' || !API.auth || !API.auth.updatePassword) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'Password service is unavailable. Please refresh the page.';
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Update Password';
+                }
+                return;
+            }
+
             API.auth.updatePassword(currentPwd, newPwd)
                 .then(function() {
                     closeChangePasswordModal();
@@ -147,11 +160,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Load settings from localStorage
-function loadSettings() {
-    const settings = JSON.parse(localStorage.getItem('playerSettings') || '{}');
-    
-    // Load toggle states
+async function loadSettings() {
+    const local = JSON.parse(localStorage.getItem('playerSettings') || '{}');
+    var remote = {};
+    try {
+        if (typeof API !== 'undefined' && API.users && API.users.getMyPreferences) {
+            var data = await API.users.getMyPreferences();
+            if (data && data.player && typeof data.player === 'object') {
+                remote = data.player;
+            }
+        }
+    } catch (err) {
+        console.warn('Player settings: could not load from API', err);
+    }
+    const settings = { ...local, ...remote };
+    localStorage.setItem('playerSettings', JSON.stringify(settings));
+
     if (settings.emailNotifications !== undefined) {
         document.getElementById('emailNotifications').checked = settings.emailNotifications;
     }
@@ -173,8 +197,6 @@ function loadSettings() {
     if (settings.dataSharing !== undefined) {
         document.getElementById('dataSharing').checked = settings.dataSharing;
     }
-    
-    // Load select values
     if (settings.profileVisibility) {
         document.getElementById('profileVisibility').value = settings.profileVisibility;
     }
@@ -189,7 +211,6 @@ function loadSettings() {
     }
 }
 
-// Save settings to localStorage
 function saveSettings() {
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
@@ -204,11 +225,18 @@ function saveSettings() {
         currency: document.getElementById('currency').value,
         timezone: document.getElementById('timezone').value
     };
-    
+
     localStorage.setItem('playerSettings', JSON.stringify(settings));
-    
-    // TODO: Send to API
-    console.log('Settings saved:', settings);
+
+    if (savePrefsTimer) clearTimeout(savePrefsTimer);
+    savePrefsTimer = setTimeout(function () {
+        savePrefsTimer = null;
+        if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
+            API.users.patchMyPreferences(settings).catch(function (err) {
+                console.warn('Player settings: API save failed', err);
+            });
+        }
+    }, 400);
 }
 
 

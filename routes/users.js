@@ -155,6 +155,110 @@ router.post(
   }
 );
 
+const OWNER_PREF_KEYS = new Set([
+  'emailNotifications',
+  'twoFactorAuth',
+  'bookingNotifications',
+  'paymentNotifications',
+  'fieldUpdates',
+  'marketingEmails',
+  'dataSharing',
+  'profileVisibility',
+  'language',
+  'currency',
+  'timezone'
+]);
+
+const PLAYER_PREF_KEYS = new Set([
+  'emailNotifications',
+  'twoFactorAuth',
+  'bookingConfirmations',
+  'reminders',
+  'venueUpdates',
+  'marketingEmails',
+  'dataSharing',
+  'profileVisibility',
+  'language',
+  'currency',
+  'timezone'
+]);
+
+function sanitizePrefsSlice(body, allowedKeys) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const out = {};
+  for (const k of Object.keys(body)) {
+    if (!allowedKeys.has(k)) continue;
+    const v = body[k];
+    if (typeof v === 'boolean') {
+      out[k] = v;
+    } else if (k === 'profileVisibility' || k === 'language' || k === 'currency' || k === 'timezone') {
+      if (v != null && typeof v === 'string' && v.length < 200) out[k] = v;
+    }
+  }
+  return out;
+}
+
+// Get current user's saved UI preferences (owner + player slices)
+router.get('/me/preferences', authenticate, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { preferences: true }
+    });
+    const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
+    const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
+    const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
+    res.json({ owner, player });
+  } catch (error) {
+    console.error('Get preferences error:', error);
+    res.status(500).json({ error: 'Failed to load preferences' });
+  }
+});
+
+// Merge UI preferences for the current user's role (OWNER → owner slice, else player)
+router.patch('/me/preferences', authenticate, async (req, res) => {
+  try {
+    const roleKey = req.user.role === 'OWNER' ? 'owner' : 'player';
+    const allowed = roleKey === 'owner' ? OWNER_PREF_KEYS : PLAYER_PREF_KEYS;
+    const slice = sanitizePrefsSlice(req.body, allowed);
+    if (Object.keys(slice).length === 0) {
+      return res.status(400).json({ error: 'No valid preference fields to save' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { preferences: true }
+    });
+    const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
+    const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
+    const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
+    const next = {
+      ...raw,
+      [roleKey]: { ...(roleKey === 'owner' ? owner : player), ...slice }
+    };
+
+    const matched = await mongoUserSetFields(req.user.id, { preferences: next });
+    if (!matched) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updated = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { preferences: true }
+    });
+    const p = updated && updated.preferences && typeof updated.preferences === 'object' ? updated.preferences : {};
+    res.json({
+      preferences: {
+        owner: p.owner && typeof p.owner === 'object' ? p.owner : {},
+        player: p.player && typeof p.player === 'object' ? p.player : {}
+      }
+    });
+  } catch (error) {
+    console.error('Patch preferences error:', error);
+    res.status(500).json({ error: 'Failed to save preferences' });
+  }
+});
+
 // Get user by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {

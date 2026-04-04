@@ -284,6 +284,17 @@ const usersAPI = {
 
   search: async (query) => {
     return apiRequest(`/users/search/users?q=${encodeURIComponent(query)}`);
+  },
+
+  getMyPreferences: async () => {
+    return apiRequest('/users/me/preferences');
+  },
+
+  patchMyPreferences: async (prefsSlice) => {
+    return apiRequest('/users/me/preferences', {
+      method: 'PATCH',
+      body: prefsSlice
+    });
   }
 };
 

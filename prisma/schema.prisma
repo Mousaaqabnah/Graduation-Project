@@ -77,6 +77,9 @@ model User {
   idBackUrl          String?            @map("id_back_url")
   verifiedAt         DateTime?          @map("verified_at")
 
+  /// UI settings keyed by role: { "owner": { ... }, "player": { ... } }
+  preferences Json? @map("preferences")
+
   // Relations
   ownedFields         Field[]             @relation("FieldOwner")
   reviews             Review[]
