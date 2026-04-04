@@ -3,51 +3,8 @@ var fieldsData = [];
 var allFieldsData = [];
 var userLocation = null;
 
-// Istanbul area coordinates for locations without lat/lng
-var locationCoords = {
-  'altunizade': [41.0192, 29.0386],
-  'üsküdar': [41.0225, 29.0136],
-  'uskudar': [41.0225, 29.0136],
-  'kadıköy': [40.9927, 29.0234],
-  'kadikoy': [40.9927, 29.0234],
-  'beşiktaş': [41.0422, 29.0046],
-  'besiktas': [41.0422, 29.0046],
-  'taksim': [41.0370, 28.9850],
-  'beyoğlu': [41.0330, 28.9740],
-  'fatih': [41.0186, 28.9497],
-  'sultanahmet': [41.0054, 28.9768],
-  'istiklal': [41.0340, 28.9760],
-  'istanbul': [41.0082, 28.9784]
-};
-
-function getCoordsForField(field, index) {
-  if (field.latitude != null && field.longitude != null) {
-    return [parseFloat(field.latitude), parseFloat(field.longitude)];
-  }
-  var loc = (field.location || field.address || 'istanbul').toLowerCase();
-  for (var key in locationCoords) {
-    if (loc.indexOf(key) !== -1) return locationCoords[key];
-  }
-  // Fallback: Istanbul center with small offset per field
-  var base = [41.0082, 28.9784];
-  return [base[0] + (index % 5) * 0.01 - 0.02, base[1] + Math.floor(index / 5) * 0.015 - 0.015];
-}
-
 function mapApiFieldToView(field, index) {
-  var coords = getCoordsForField(field, index);
-  return {
-    id: field.id,
-    name: field.name,
-    location: field.location || '',
-    price: field.pricePerHour != null ? field.pricePerHour : 0,
-    rating: field.rating != null ? field.rating : 0,
-    reviews: field.reviewCount != null ? field.reviewCount : 0,
-    distance: 'N/A',
-    amenities: (field.features || []).slice(0, 3),
-    sport: (field.sport || 'football').toLowerCase(),
-    lat: coords[0],
-    lng: coords[1]
-  };
+  return window.FieldMapData.mapApiFieldToView(field, index);
 }
 
 function loadFieldsFromAPI() {
