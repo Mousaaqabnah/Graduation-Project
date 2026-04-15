@@ -1,163 +1,38 @@
-// All published fields data (combining popular and nearby)
-// In a real app, this would come from an API
-const allFields = [
-    {
-        id: 1,
-        name: "Fozi football court",
-        sport: "Football",
-        image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "outdoor",
-        price: 1500,
-        isFavorite: false
-    },
-    {
-        id: 2,
-        name: "Fozi football court",
-        sport: "Tennis",
-        image: "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: true
-    },
-    {
-        id: 3,
-        name: "Fozi football court",
-        sport: "Basketball",
-        image: "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: false
-    },
-    {
-        id: 4,
-        name: "Fozi football court",
-        sport: "Padel",
-        image: "https://images.unsplash.com/photo-1622163642992-6b7e3c4e3b3e?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: true
-    },
-    {
-        id: 5,
-        name: "Fozi football court",
-        sport: "Volleyball",
-        image: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: false
-    },
-    {
-        id: 6,
-        name: "Fozi football court",
-        sport: "Ice Hockey",
-        image: "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: true
-    },
-    {
-        id: 7,
-        name: "Fozi football court",
-        sport: "Football",
-        image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: false
-    },
-    {
-        id: 8,
-        name: "Fozi football court",
-        sport: "Tennis",
-        image: "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: true
-    },
-    {
-        id: 9,
-        name: "Fozi football court",
-        sport: "Basketball",
-        image: "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&h=300&fit=crop&auto=format",
-        rating: 4.8,
-        reviews: 98,
-        location: "Uskudar",
-        distance: "2.1 Km",
-        type: "indoor",
-        price: 1500,
-        isFavorite: false
-    },
-    {
-        id: 10,
-        name: "Elite Sports Center",
-        sport: "Futsal",
-        image: "https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=400&h=300&fit=crop&auto=format",
-        rating: 4.9,
-        reviews: 156,
-        location: "Kadikoy",
-        distance: "3.5 Km",
-        type: "indoor",
-        price: 1800,
-        isFavorite: false
-    },
-    {
-        id: 11,
-        name: "City Arena",
-        sport: "Volleyball",
-        image: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format",
-        rating: 4.7,
-        reviews: 87,
-        location: "Besiktas",
-        distance: "4.2 Km",
-        type: "indoor",
-        price: 1200,
-        isFavorite: true
-    },
-    {
-        id: 12,
-        name: "Stadium Pro",
-        sport: "Football",
-        image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format",
-        rating: 4.6,
-        reviews: 203,
-        location: "Sisli",
-        distance: "5.8 Km",
-        type: "outdoor",
-        price: 2000,
-        isFavorite: false
-    }
-];
+// Fields loaded from API
+var allFields = [];
+
+function mapFieldToVenue(field, favoriteIds) {
+  var id = field.id;
+  var images = field.images && field.images.length ? field.images : [];
+  var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
+  return {
+    id: id,
+    name: field.name,
+    sport: field.sport || 'Sport',
+    image: img,
+    rating: field.rating != null ? field.rating : 0,
+    reviews: field.reviewCount != null ? field.reviewCount : 0,
+    location: field.location || '',
+    distance: 'N/A',
+    type: (field.type || 'OUTDOOR').toLowerCase(),
+    price: field.pricePerHour != null ? field.pricePerHour : 0,
+    isFavorite: favoriteIds.indexOf(id) !== -1
+  };
+}
+
+function loadAllFieldsFromAPI() {
+  return Promise.all([
+    typeof API !== 'undefined' ? API.fields.getAll({ limit: 100 }) : Promise.resolve({ fields: [] }),
+    (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) ? API.favorites.getAll().catch(function() { return { favorites: [] }; }) : Promise.resolve({ favorites: [] })
+  ]).then(function(results) {
+    var fieldsRes = results[0];
+    var favRes = results[1];
+    var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
+    allFields = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
+    return allFields;
+  });
+}
 
 // Current filter state
 let currentFilter = {
@@ -171,19 +46,20 @@ let currentFilter = {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
-    try {
+    function initUI() {
         loadFavoritesFromStorage();
         initializeFilterOptions();
         renderAllFields();
         setupEventListeners();
         initializeBookingModal();
-        
-        // Check for invite link in URL
         handleInviteLink();
-    } catch (error) {
-        console.error('Error initializing page:', error);
-        alert('An error occurred while loading the page. Please check the console for details.');
     }
+    loadAllFieldsFromAPI()
+        .then(initUI)
+        .catch(function(err) {
+            console.error('Error loading fields:', err);
+            initUI();
+        });
 });
 
 // Initialize filter options - set "All" as active by default
@@ -402,21 +278,24 @@ function createVenueCard(venue) {
     return card;
 }
 
-// Toggle favorite status
+// Toggle favorite status (API + local)
 function toggleFavorite(venueId) {
-    const field = allFields.find(v => v.id === venueId);
-    if (field) {
+    if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+        alert('Please log in to add favorites.');
+        return;
+    }
+    var field = allFields.find(function(v) { return v.id === venueId; });
+    if (!field) return;
+    var isCurrentlyFavorite = field.isFavorite;
+    var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+    promise.then(function() {
         field.isFavorite = !field.isFavorite;
-    }
-    
-    // Update UI
-    const favoriteBtn = document.querySelector(`.favorite-btn[data-venue-id="${venueId}"]`);
-    if (favoriteBtn) {
-        favoriteBtn.classList.toggle('active');
-    }
-    
-    // Save to localStorage
-    saveFavoritesToStorage();
+        var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
+        if (favoriteBtn) favoriteBtn.classList.toggle('active');
+        saveFavoritesToStorage();
+    }).catch(function(err) {
+        alert(err.message || 'Failed to update favorite.');
+    });
 }
 
 // Handle book button click
@@ -599,28 +478,7 @@ function updateFilterButtonText() {
         }
     }
     
-    // Notification popup
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
+    // Notification popup handled by notifications.js
     
     // Profile popup
     const profileBtn = document.getElementById('profileBtn');
@@ -630,9 +488,8 @@ function updateFilterButtonText() {
         profileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
         
         document.addEventListener('click', (e) => {
@@ -732,20 +589,16 @@ function openBookingModal(venue) {
     }
 }
 
-// Get player data from localStorage
+// Get player data from API auth
 function getPlayerData() {
-    const stored = localStorage.getItem('playerData');
-    if (stored) {
-        return JSON.parse(stored);
-    }
-    
-    const defaultPlayer = {
-        id: 'player_' + Date.now(),
-        name: 'John Doe',
-        email: 'john.doe@example.com'
+    if (typeof API === 'undefined') return null;
+    var user = API.getCurrentUser && API.getCurrentUser();
+    if (!user) return null;
+    return {
+        id: user.id,
+        name: user.fullName || user.name || user.email,
+        email: user.email
     };
-    localStorage.setItem('playerData', JSON.stringify(defaultPlayer));
-    return defaultPlayer;
 }
 
 // Populate field details
@@ -920,7 +773,7 @@ function closeBookingModal() {
 }
 
 // Simplified implementations for booking modal steps
-function loadTimeSlots() {
+async function loadTimeSlots() {
     const container = document.getElementById('timeSlotsGrid');
     if (!container) return;
     
@@ -931,9 +784,40 @@ function loadTimeSlots() {
         slots.push({
             start: startTime,
             end: endTime,
-            available: Math.random() > 0.3
+            available: true // Default to available
         });
     }
+    
+    // Fetch real availability from API if a date is selected
+    let bookedSlots = [];
+    
+    if (bookingState.selectedDate && bookingState.field && typeof API !== 'undefined') {
+        try {
+            container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+            const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
+            
+            if (!availability.available && availability.lockedByOwner) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+                        <p>${availability.message || 'This field is not available on the selected date.'}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            bookedSlots = availability.bookedSlots || [];
+        } catch (error) {
+            console.error('Failed to fetch availability:', error);
+        }
+    }
+    
+    // Mark booked slots as unavailable
+    slots.forEach(slot => {
+        if (bookedSlots.includes(slot.start)) {
+            slot.available = false;
+        }
+    });
     
     container.innerHTML = slots.map(slot => `
         <button class="time-slot ${!slot.available ? 'unavailable' : ''} ${bookingState.selectedTimeSlots.includes(slot.start) ? 'selected' : ''}" 

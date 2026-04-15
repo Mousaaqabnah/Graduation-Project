@@ -700,6 +700,141 @@ body {
     margin-top: 2px;
 }
 
+/* Message list empty / loading states */
+.message-list-empty,
+.message-list-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: #9CA3AF;
+}
+
+.message-list-empty i,
+.message-list-loading i {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.message-list-empty p,
+.message-list-loading p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0 0 4px 0;
+}
+
+.message-list-empty-hint {
+    font-size: 12px !important;
+    color: #9CA3AF !important;
+    margin-top: 8px !important;
+}
+
+.message-list-loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Messages loading state */
+.messages-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #9CA3AF;
+}
+
+.messages-loading i {
+    font-size: 32px;
+    margin-bottom: 12px;
+    animation: spin 1s linear infinite;
+}
+
+.messages-loading p {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0;
+}
+
+.empty-chat-hint {
+    font-size: 13px !important;
+    color: #9CA3AF !important;
+    margin-top: 8px !important;
+}
+
+/* Chat toast notification */
+.chat-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    padding: 16px 20px;
+    z-index: 10000;
+    opacity: 0;
+    transform: translateX(100px);
+    transition: all 0.3s ease;
+    min-width: 280px;
+}
+
+.chat-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.chat-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.chat-toast-content i {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.chat-toast-success .chat-toast-content i {
+    color: #10B981;
+}
+
+.chat-toast-info .chat-toast-content i {
+    color: #007BFF;
+}
+
+.chat-toast-error .chat-toast-content i {
+    color: #DC2626;
+}
+
+.chat-toast-content span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #212529;
+}
+
+/* Friend modal loading */
+.friend-modal-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    color: #6B7280;
+    font-size: 14px;
+}
+
+.friend-modal-loading i {
+    font-size: 20px;
+    animation: spin 1s linear infinite;
+}
+
 /* Chat Conversation Container */
 .chat-conversation-container {
     flex: 1;
@@ -979,7 +1114,7 @@ body {
     flex-shrink: 0;
 }
 
-.player-info-sidebar[style*="flex"] {
+.player-info-sidebar.visible {
     display: flex !important;
 }
 
@@ -1116,9 +1251,196 @@ body {
     font-weight: 600;
 }
 
+/* Field Info Sidebar (same as player chat — when talking to another owner) */
+.field-info-sidebar {
+    width: 330px;
+    background: white;
+    border: 1px solid #E5E5E5;
+    border-radius: 20px;
+    max-height: calc(100vh - 94px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: none;
+    flex-direction: column;
+    box-sizing: border-box;
+    position: sticky;
+    top: 94px;
+    flex-shrink: 0;
+}
+
+.field-info-sidebar.visible {
+    display: flex !important;
+}
+
+.field-image-container {
+    width: 100%;
+    height: 200px;
+    overflow: hidden;
+    border-radius: 20px 20px 0 0;
+}
+
+.field-image-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.field-owner-section {
+    padding: 24px;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.field-owner-section h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 16px;
+}
+
+.field-owner-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.field-owner-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.field-owner-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.field-owner-info h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 4px 0;
+}
+
+.field-owner-status {
+    font-size: 13px;
+    color: #10B981;
+    margin: 0;
+    font-weight: 500;
+}
+
+.field-owner-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.field-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: white;
+    color: #212529;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.field-action-btn:hover {
+    background: #F9FAFB;
+    border-color: #007BFF;
+    color: #007BFF;
+}
+
+.field-action-btn.primary {
+    background: #007BFF;
+    color: white;
+    border-color: #007BFF;
+}
+
+.field-action-btn.primary:hover {
+    background: #0056B3;
+    border-color: #0056B3;
+}
+
+.field-action-btn i {
+    font-size: 16px;
+}
+
+.field-information-section {
+    padding: 24px;
+    flex: 1;
+    min-height: 0;
+}
+
+.field-information-section h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 16px;
+}
+
+.field-info-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.field-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #F9FAFB;
+    border-radius: 12px;
+}
+
+.field-info-label {
+    font-size: 14px;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.field-info-value {
+    font-size: 14px;
+    color: #212529;
+    font-weight: 600;
+}
+
+.field-info-sidebar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.field-info-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 8px 0;
+}
+
+.field-info-sidebar::-webkit-scrollbar-thumb {
+    background: #D1D5DB;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.field-info-sidebar::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+    background-clip: padding-box;
+}
+
 /* Responsive Design */
 @media (max-width: 1400px) {
-    .player-info-sidebar {
+    .player-info-sidebar,
+    .field-info-sidebar {
         display: none;
     }
     

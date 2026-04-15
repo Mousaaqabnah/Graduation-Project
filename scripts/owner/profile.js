@@ -1,287 +1,367 @@
-// Profile Page JavaScript
+// Owner profile — loads /users/:id + /owner/stats; saves via PUT /users/:id; photo as compressed data URL.
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Get popup elements
-    const profileBtn = document.getElementById('profileBtn');
-    const profilePopup = document.getElementById('profilePopup');
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    // Notification popup toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
+(function () {
+    var cachedUser = null;
+
+    function formatOwnerTry(amount) {
+        var n = Number(amount) || 0;
+        return '₺' + n.toLocaleString('tr-TR');
+    }
+
+    function defaultAvatarUrl(name, size) {
+        var n = (name || 'Owner').trim() || 'Owner';
+        return (
+            'https://ui-avatars.com/api/?name=' +
+            encodeURIComponent(n) +
+            '&background=007BFF&color=fff&size=' +
+            (size || 256)
+        );
+    }
+
+    function applyAvatarsAndHeader(user) {
+        var fullName = user.fullName || user.name || 'Owner';
+        var email = user.email || '';
+        var avatarSrc = user.avatar || defaultAvatarUrl(fullName, 128);
+
+        var profileAvatar = document.getElementById('profileAvatar');
+        if (profileAvatar) {
+            profileAvatar.src = avatarSrc;
+            profileAvatar.alt = fullName;
+        }
+
+        var headerImg = document.querySelector('#profileBtn img');
+        if (headerImg) {
+            headerImg.src = avatarSrc;
+            headerImg.alt = fullName;
+        }
+
+        var popupName = document.querySelector('#profilePopup .profile-name');
+        var popupEmail = document.querySelector('#profilePopup .profile-email');
+        var popupAvatar = document.querySelector('#profilePopup .profile-avatar-large img');
+        if (popupName) popupName.textContent = fullName;
+        if (popupEmail) popupEmail.textContent = email;
+        if (popupAvatar) {
+            popupAvatar.src = avatarSrc;
+            popupAvatar.alt = fullName;
+        }
+    }
+
+    function toDateInputValue(iso) {
+        if (!iso) return '';
+        var dt = new Date(iso);
+        if (isNaN(dt.getTime())) return '';
+        var y = dt.getUTCFullYear();
+        var m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+        var d = String(dt.getUTCDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    }
+
+    function formatMemberSince(iso) {
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        } catch (e) {
+            return '—';
+        }
+    }
+
+    function formatDobDisplay(iso) {
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        } catch (e) {
+            return '—';
+        }
+    }
+
+    function verificationLabel(status) {
+        if (status === 'APPROVED') return { text: 'Verified owner', ok: true };
+        if (status === 'PENDING') return { text: 'Verification pending', ok: false };
+        if (status === 'REJECTED') return { text: 'Verification rejected', ok: false };
+        return { text: 'Not verified', ok: false };
+    }
+
+    function renderProfile(user, stats) {
+        cachedUser = user;
+        if (typeof API !== 'undefined' && API.setCurrentUser && API.getCurrentUser) {
+            var prev = API.getCurrentUser() || {};
+            API.setCurrentUser(Object.assign({}, prev, user));
+        }
+
+        var fullName = user.fullName || '—';
+        var email = user.email || '—';
+
+        applyAvatarsAndHeader(user);
+
+        var profileNameMain = document.getElementById('profileNameMain');
+        var profileEmailMain = document.getElementById('profileEmailMain');
+        if (profileNameMain) profileNameMain.textContent = fullName;
+        if (profileEmailMain) profileEmailMain.textContent = email;
+
+        var businessName = document.getElementById('businessName');
+        if (businessName) businessName.textContent = fullName;
+
+        var genderEl = document.getElementById('profileGenderDisplay');
+        if (genderEl) genderEl.textContent = user.gender || '—';
+
+        var dobEl = document.getElementById('profileDobDisplay');
+        if (dobEl) dobEl.textContent = formatDobDisplay(user.dateOfBirth);
+
+        var memberSince = document.getElementById('memberSince');
+        if (memberSince) memberSince.textContent = formatMemberSince(user.createdAt);
+
+        var emailAddress = document.getElementById('emailAddress');
+        var phoneNumber = document.getElementById('phoneNumber');
+        if (emailAddress) emailAddress.textContent = email;
+        if (phoneNumber) phoneNumber.textContent = user.phone || '—';
+
+        var streetAddress = document.getElementById('streetAddress');
+        if (streetAddress) streetAddress.textContent = user.location || '—';
+
+        var v = verificationLabel(user.verificationStatus);
+        var badgeText = document.getElementById('verificationBadgeText');
+        var badge = document.getElementById('verificationBadge');
+        if (badgeText) badgeText.textContent = v.text;
+        if (badge) {
+            badge.style.opacity = v.ok ? '1' : '0.85';
+        }
+
+        if (stats != null) {
+            var s = stats || {};
+            function setStat(id, val) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = val != null ? String(val) : '—';
+            }
+
+            setStat('totalFields', s.totalFields);
+            setStat('totalBookings', s.totalBookings);
+            setStat('todayBookings', s.todayBookings);
+            setStat(
+                'averageRating',
+                s.averageFieldRating != null ? String(s.averageFieldRating) : '—'
+            );
+            var monthlyRev = document.getElementById('monthlyRevenue');
+            if (monthlyRev) monthlyRev.textContent = formatOwnerTry(s.revenueThisMonth);
+            setStat('memberMonths', s.monthsActive);
+        }
+    }
+
+    function populateEditForm() {
+        if (!cachedUser) return;
+        var u = cachedUser;
+        var nameInput = document.getElementById('editBusinessName');
+        var emailInput = document.getElementById('editEmail');
+        var phoneInput = document.getElementById('editPhone');
+        var locInput = document.getElementById('editLocation');
+        var genderInput = document.getElementById('editGender');
+        var dobInput = document.getElementById('editDob');
+
+        if (nameInput) nameInput.value = u.fullName || '';
+        if (emailInput) emailInput.value = u.email || '';
+        if (phoneInput) phoneInput.value = u.phone || '';
+        if (locInput) locInput.value = u.location || '';
+        if (genderInput) genderInput.value = u.gender || '';
+        if (dobInput) dobInput.value = toDateInputValue(u.dateOfBirth);
+    }
+
+    function compressImageToJpegDataUrl(file, maxEdge, quality) {
+        return new Promise(function (resolve, reject) {
+            if (!file || !file.type || !/^image\//i.test(file.type)) {
+                reject(new Error('Please choose an image file.'));
+                return;
+            }
+            if (file.size > 8 * 1024 * 1024) {
+                reject(new Error('Image is too large (max 8 MB).'));
+                return;
+            }
+            var reader = new FileReader();
+            reader.onload = function () {
+                var img = new Image();
+                img.onload = function () {
+                    var w = img.width;
+                    var h = img.height;
+                    var scale = Math.min(1, maxEdge / w, maxEdge / h);
+                    var tw = Math.max(1, Math.round(w * scale));
+                    var th = Math.max(1, Math.round(h * scale));
+                    var canvas = document.createElement('canvas');
+                    canvas.width = tw;
+                    canvas.height = th;
+                    var ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, tw, th);
+                    var dataUrl = canvas.toDataURL('image/jpeg', quality);
+                    if (dataUrl.length > 1800000 && quality > 0.5) {
+                        dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+                    }
+                    resolve(dataUrl);
+                };
+                img.onerror = function () {
+                    reject(new Error('Could not read this image.'));
+                };
+                img.src = reader.result;
+            };
+            reader.onerror = function () {
+                reject(new Error('Could not read file.'));
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function loadProfileFromApi() {
+        if (typeof API === 'undefined' || !API.users || !API.users.getById) {
+            return;
+        }
+        var local = API.getCurrentUser && API.getCurrentUser();
+        if (!local || !local.id) return;
+
+        try {
+            var userRes = await API.users.getById(local.id);
+            var user = userRes && userRes.user;
+            if (!user) return;
+
+            var stats = {};
+            try {
+                if (API.owner && API.owner.getStats) {
+                    var statsRes = await API.owner.getStats();
+                    stats = (statsRes && statsRes.stats) || {};
+                }
+            } catch (statsErr) {
+                console.warn('Owner stats failed', statsErr);
+            }
+
+            renderProfile(user, stats);
+        } catch (e) {
+            console.error('loadProfileFromApi', e);
+            var msg = (e && e.message) || 'Could not load profile';
+            alert(msg);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var profileBtn = document.getElementById('profileBtn');
+        var profilePopup = document.getElementById('profilePopup');
+        var notificationPopup = document.getElementById('notificationPopup');
+
+        if (profileBtn && profilePopup) {
+            profileBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                profilePopup.classList.toggle('active');
+                if (notificationPopup) notificationPopup.classList.remove('active');
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            if (
+                profilePopup &&
+                profileBtn &&
+                !profilePopup.contains(e.target) &&
+                !profileBtn.contains(e.target)
+            ) {
                 profilePopup.classList.remove('active');
             }
         });
-    }
-    
-    // Profile popup toggle
-    if (profileBtn && profilePopup) {
-        profileBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup) {
-                notificationPopup.classList.remove('active');
-            }
-        });
-    }
-    
-    // Close popups when clicking outside
-    document.addEventListener('click', function(e) {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
+
+        var editProfileBtn = document.getElementById('editProfileBtn');
+        var editProfileModal = document.getElementById('editProfileModal');
+        var closeEditModalBtn = document.getElementById('closeEditModalBtn');
+        var cancelEditBtn = document.getElementById('cancelEditBtn');
+        var saveProfileBtn = document.getElementById('saveProfileBtn');
+
+        function closeEditModal() {
+            if (editProfileModal) editProfileModal.classList.remove('active');
         }
-        if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
-            profilePopup.classList.remove('active');
+
+        if (editProfileBtn && editProfileModal) {
+            editProfileBtn.addEventListener('click', function () {
+                populateEditForm();
+                editProfileModal.classList.add('active');
+            });
         }
-    });
-    
-    // Edit profile modal
-    const editProfileBtn = document.getElementById('editProfileBtn');
-    const editProfileModal = document.getElementById('editProfileModal');
-    const closeEditModalBtn = document.getElementById('closeEditModalBtn');
-    const cancelEditBtn = document.getElementById('cancelEditBtn');
-    const saveProfileBtn = document.getElementById('saveProfileBtn');
-    
-    // Open edit modal
-    if (editProfileBtn && editProfileModal) {
-        editProfileBtn.addEventListener('click', function() {
-            populateEditForm();
-            editProfileModal.classList.add('active');
-        });
-    }
-    
-    // Close edit modal
-    function closeEditModal() {
+
+        if (closeEditModalBtn) closeEditModalBtn.addEventListener('click', closeEditModal);
+        if (cancelEditBtn) cancelEditBtn.addEventListener('click', closeEditModal);
+
         if (editProfileModal) {
-            editProfileModal.classList.remove('active');
+            editProfileModal.addEventListener('click', function (e) {
+                if (e.target === editProfileModal) closeEditModal();
+            });
         }
-    }
-    
-    if (closeEditModalBtn) {
-        closeEditModalBtn.addEventListener('click', closeEditModal);
-    }
-    
-    if (cancelEditBtn) {
-        cancelEditBtn.addEventListener('click', closeEditModal);
-    }
-    
-    // Close modal when clicking outside
-    if (editProfileModal) {
-        editProfileModal.addEventListener('click', function(e) {
-            if (e.target === editProfileModal) {
-                closeEditModal();
-            }
-        });
-    }
-    
-    // Populate edit form with current data
-    function populateEditForm() {
-        const profileData = getCurrentProfileData();
-        
-        document.getElementById('editBusinessName').value = profileData.businessName || '';
-        document.getElementById('editBusinessType').value = profileData.businessType || '';
-        document.getElementById('editTaxId').value = profileData.taxId || '';
-        document.getElementById('editEmail').value = profileData.email || '';
-        document.getElementById('editPhone').value = profileData.phone || '';
-        document.getElementById('editWebsite').value = profileData.website || '';
-        document.getElementById('editAltContact').value = profileData.alternativeContact || '';
-        document.getElementById('editStreetAddress').value = profileData.streetAddress || '';
-        document.getElementById('editCity').value = profileData.city || '';
-        document.getElementById('editState').value = profileData.state || '';
-        document.getElementById('editPostalCode').value = profileData.postalCode || '';
-        document.getElementById('editCountry').value = profileData.country || '';
-    }
-    
-    // Get current profile data from display
-    function getCurrentProfileData() {
-        return {
-            businessName: document.getElementById('businessName')?.textContent || '',
-            businessType: document.getElementById('businessType')?.textContent || '',
-            taxId: document.getElementById('taxId')?.textContent || '',
-            email: document.getElementById('emailAddress')?.textContent || '',
-            phone: document.getElementById('phoneNumber')?.textContent || '',
-            website: document.getElementById('website')?.textContent || '',
-            alternativeContact: document.getElementById('alternativeContact')?.textContent || '',
-            streetAddress: document.getElementById('streetAddress')?.textContent || '',
-            city: document.getElementById('city')?.textContent || '',
-            state: document.getElementById('state')?.textContent || '',
-            postalCode: document.getElementById('postalCode')?.textContent || '',
-            country: document.getElementById('country')?.textContent || ''
-        };
-    }
-    
-    // Save profile changes
-    if (saveProfileBtn) {
-        saveProfileBtn.addEventListener('click', function() {
-            const form = document.getElementById('editProfileForm');
-            if (form && form.checkValidity()) {
-                const formData = {
-                    businessName: document.getElementById('editBusinessName').value,
-                    businessType: document.getElementById('editBusinessType').value,
-                    taxId: document.getElementById('editTaxId').value,
-                    email: document.getElementById('editEmail').value,
-                    phone: document.getElementById('editPhone').value,
-                    website: document.getElementById('editWebsite').value,
-                    alternativeContact: document.getElementById('editAltContact').value,
-                    streetAddress: document.getElementById('editStreetAddress').value,
-                    city: document.getElementById('editCity').value,
-                    state: document.getElementById('editState').value,
-                    postalCode: document.getElementById('editPostalCode').value,
-                    country: document.getElementById('editCountry').value
-                };
-                
-                // Update profile display
-                updateProfileFromForm(formData);
-                
-                // TODO: Here you would typically send the data to your API
-                console.log('Profile updated:', formData);
-                
-                // Close modal
-                closeEditModal();
-                
-                // Show success message (optional)
-                alert('Profile updated successfully!');
-            } else {
-                form.reportValidity();
-            }
-        });
-    }
-    
-    // Update profile display from form data
-    function updateProfileFromForm(data) {
-        // Update main profile info
-        const profileNameMain = document.getElementById('profileNameMain');
-        const profileEmailMain = document.getElementById('profileEmailMain');
-        if (profileNameMain) profileNameMain.textContent = data.businessName;
-        if (profileEmailMain) profileEmailMain.textContent = data.email;
-        
-        // Update business information
-        document.getElementById('businessName').textContent = data.businessName;
-        document.getElementById('businessType').textContent = data.businessType;
-        document.getElementById('taxId').textContent = data.taxId;
-        
-        // Update contact information
-        document.getElementById('emailAddress').textContent = data.email;
-        document.getElementById('phoneNumber').textContent = data.phone;
-        document.getElementById('website').textContent = data.website;
-        document.getElementById('alternativeContact').textContent = data.alternativeContact;
-        
-        // Update address information
-        document.getElementById('streetAddress').textContent = data.streetAddress;
-        document.getElementById('city').textContent = data.city;
-        document.getElementById('state').textContent = data.state;
-        document.getElementById('postalCode').textContent = data.postalCode;
-        document.getElementById('country').textContent = data.country;
-        
-        // Update avatar (regenerate with new name)
-        const profileAvatar = document.getElementById('profileAvatar');
-        if (profileAvatar) {
-            const avatarName = data.businessName.replace(/\s+/g, '+');
-            profileAvatar.src = `https://ui-avatars.com/api/?name=${avatarName}&background=007BFF&color=fff&size=256`;
-        }
-        
-        // Update profile popup
-        const profilePopupName = document.querySelector('#profilePopup .profile-name');
-        const profilePopupEmail = document.querySelector('#profilePopup .profile-email');
-        const profilePopupAvatar = document.querySelector('#profilePopup .profile-avatar-large img');
-        const headerProfileAvatar = document.querySelector('#profileBtn img');
-        
-        if (profilePopupName) profilePopupName.textContent = data.businessName;
-        if (profilePopupEmail) profilePopupEmail.textContent = data.email;
-        if (profilePopupAvatar) {
-            const avatarName = data.businessName.replace(/\s+/g, '+');
-            profilePopupAvatar.src = `https://ui-avatars.com/api/?name=${avatarName}&background=007BFF&color=fff&size=128`;
-        }
-        if (headerProfileAvatar) {
-            const avatarName = data.businessName.replace(/\s+/g, '+');
-            headerProfileAvatar.src = `https://ui-avatars.com/api/?name=${avatarName}&background=007BFF&color=fff&size=128`;
-        }
-    }
-    
-    // Avatar edit button
-    const avatarEditBtn = document.getElementById('avatarEditBtn');
-    if (avatarEditBtn) {
-        avatarEditBtn.addEventListener('click', function() {
-            // TODO: Open image upload dialog
-            console.log('Avatar edit clicked');
-            alert('Avatar upload functionality will be implemented soon!');
-        });
-    }
-    
-    // Load profile data (this would typically come from an API)
-    loadProfileData();
-});
 
-// Function to load profile data
-function loadProfileData() {
-    // TODO: Replace with actual API call
-    // For now, using placeholder data
-    const profileData = {
-        businessName: 'Fozi Court',
-        businessType: 'Sports Facility',
-        taxId: 'TR1234567890',
-        memberSince: 'January 2022',
-        email: 'info@fozicourt.com',
-        phone: '+90 212 555 1234',
-        website: 'www.fozicourt.com',
-        alternativeContact: '+90 555 987 6543',
-        streetAddress: '456 Sports Avenue, Building A',
-        city: 'Istanbul',
-        state: 'Istanbul Province',
-        postalCode: '34100',
-        country: 'Turkey',
-        totalFields: 3,
-        totalBookings: 247,
-        todayBookings: 8,
-        averageRating: 4.9,
-        monthlyRevenue: '₺45,200',
-        memberMonths: 26
-    };
-    
-    // Update profile information
-    updateProfileDisplay(profileData);
-}
+        if (saveProfileBtn) {
+            saveProfileBtn.addEventListener('click', async function () {
+                var form = document.getElementById('editProfileForm');
+                if (!form || !cachedUser || !API || !API.users || !API.users.update) return;
+                if (!form.checkValidity()) {
+                    form.reportValidity();
+                    return;
+                }
 
-// Function to update profile display
-function updateProfileDisplay(data) {
-    // Update main profile info
-    const profileNameMain = document.getElementById('profileNameMain');
-    const profileEmailMain = document.getElementById('profileEmailMain');
-    
-    if (profileNameMain) profileNameMain.textContent = data.businessName;
-    if (profileEmailMain) profileEmailMain.textContent = data.email;
-    
-    // Update business information
-    document.getElementById('businessName').textContent = data.businessName;
-    document.getElementById('businessType').textContent = data.businessType;
-    document.getElementById('taxId').textContent = data.taxId;
-    document.getElementById('memberSince').textContent = data.memberSince;
-    
-    // Update contact information
-    document.getElementById('emailAddress').textContent = data.email;
-    document.getElementById('phoneNumber').textContent = data.phone;
-    document.getElementById('website').textContent = data.website;
-    document.getElementById('alternativeContact').textContent = data.alternativeContact;
-    
-    // Update address information
-    document.getElementById('streetAddress').textContent = data.streetAddress;
-    document.getElementById('city').textContent = data.city;
-    document.getElementById('state').textContent = data.state;
-    document.getElementById('postalCode').textContent = data.postalCode;
-    document.getElementById('country').textContent = data.country;
-    
-    // Update statistics
-    document.getElementById('totalFields').textContent = data.totalFields;
-    document.getElementById('totalBookings').textContent = data.totalBookings;
-    document.getElementById('todayBookings').textContent = data.todayBookings;
-    document.getElementById('averageRating').textContent = data.averageRating;
-    document.getElementById('monthlyRevenue').textContent = data.monthlyRevenue;
-    document.getElementById('memberMonths').textContent = data.memberMonths;
-}
+                var fullName = document.getElementById('editBusinessName').value.trim();
+                var phone = document.getElementById('editPhone').value.trim();
+                var location = document.getElementById('editLocation').value.trim();
+                var gender = document.getElementById('editGender').value;
+                var dobVal = document.getElementById('editDob').value;
 
+                try {
+                    var res = await API.users.update(cachedUser.id, {
+                        fullName: fullName,
+                        phone: phone || null,
+                        location: location || null,
+                        gender: gender || null,
+                        dateOfBirth: dobVal ? dobVal : null
+                    });
+                    var updated = res && res.user;
+                    if (updated) {
+                        var stats = {};
+                        try {
+                            if (API.owner && API.owner.getStats) {
+                                var statsRes = await API.owner.getStats();
+                                stats = (statsRes && statsRes.stats) || {};
+                            }
+                        } catch (e2) {
+                            console.warn('stats refresh', e2);
+                        }
+                        renderProfile(updated, stats);
+                    }
+                    closeEditModal();
+                    alert('Profile updated successfully.');
+                } catch (err) {
+                    alert((err && err.message) || 'Could not save profile');
+                }
+            });
+        }
+
+        var avatarEditBtn = document.getElementById('avatarEditBtn');
+        var avatarFileInput = document.getElementById('avatarFileInput');
+        if (avatarEditBtn && avatarFileInput) {
+            avatarEditBtn.addEventListener('click', function () {
+                avatarFileInput.click();
+            });
+        }
+
+        if (avatarFileInput) {
+            avatarFileInput.addEventListener('change', async function () {
+                var file = avatarFileInput.files && avatarFileInput.files[0];
+                avatarFileInput.value = '';
+                if (!file || !cachedUser || !API || !API.users || !API.users.updateAvatar) return;
+
+                try {
+                    var dataUrl = await compressImageToJpegDataUrl(file, 384, 0.72);
+                    var res = await API.users.updateAvatar(cachedUser.id, dataUrl);
+                    var updated = res && res.user;
+                    if (updated) {
+                        renderProfile(updated);
+                        alert('Profile photo updated.');
+                    }
+                } catch (err) {
+                    alert((err && err.message) || 'Could not upload photo');
+                }
+            });
+        }
+
+        loadProfileFromApi();
+    });
+})();

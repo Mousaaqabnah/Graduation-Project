@@ -598,3 +598,10 @@
     }
 }
 
+.input-readonly,
+.input-readonly:disabled {
+    background: #F3F4F6;
+    color: #6B7280;
+    cursor: not-allowed;
+}
+

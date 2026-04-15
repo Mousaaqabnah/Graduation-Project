@@ -276,6 +276,16 @@
     color: #2563EB;
 }
 
+.booking-status.paid {
+    background: #F0FDF4;
+    color: #16A34A;
+}
+
+.booking-status.pending {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
 .booking-status-dot {
     width: 8px;
     height: 8px;

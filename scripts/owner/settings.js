@@ -1,48 +1,28 @@
 // Settings Page JavaScript
 
-document.addEventListener('DOMContentLoaded', function() {
+var savePrefsTimer = null;
+
+document.addEventListener('DOMContentLoaded', async function() {
     // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
-    const notificationBtn = document.getElementById('notificationBtn');
     const notificationPopup = document.getElementById('notificationPopup');
-    
-    // Notification popup toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
-        });
-    }
-    
-    // Profile popup toggle
+
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup) {
-                notificationPopup.classList.remove('active');
-            }
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
     }
-    
-    // Close popups when clicking outside
+
     document.addEventListener('click', function(e) {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
-        }
-        if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
+        if (profilePopup && profileBtn && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
             profilePopup.classList.remove('active');
         }
     });
     
-    // Load saved settings
-    loadSettings();
+    await loadSettings();
     
     // Toggle switches event listeners
     const toggles = document.querySelectorAll('.toggle-switch input');
@@ -60,12 +40,98 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Change Password Button
     const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordModalClose = document.getElementById('changePasswordModalClose');
+    const changePasswordCancel = document.getElementById('changePasswordCancel');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const changePasswordError = document.getElementById('changePasswordError');
+
+    function openChangePasswordModal() {
+        if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+            alert('Please log in to change your password.');
+            return;
+        }
+        if (changePasswordModal) {
+            changePasswordModal.classList.add('active');
+            if (changePasswordForm) changePasswordForm.reset();
+            if (changePasswordError) changePasswordError.textContent = '';
+            var cur = document.getElementById('currentPassword');
+            if (cur) cur.focus();
+        }
+    }
+
+    function closeChangePasswordModal() {
+        if (changePasswordModal) changePasswordModal.classList.remove('active');
+    }
+
     if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', function() {
-            // TODO: Open change password modal
-            alert('Change password functionality will be implemented soon!');
+        changePasswordBtn.addEventListener('click', openChangePasswordModal);
+    }
+    if (changePasswordModalClose) {
+        changePasswordModalClose.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordCancel) {
+        changePasswordCancel.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordModal) {
+        changePasswordModal.addEventListener('click', function(e) {
+            if (e.target === changePasswordModal) closeChangePasswordModal();
+        });
+    }
+
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (typeof API === 'undefined' || !API.auth || !API.auth.updatePassword) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'Password service is unavailable. Please refresh the page.';
+                }
+                return;
+            }
+            var currentPwd = document.getElementById('currentPassword').value;
+            var newPwd = document.getElementById('newPassword').value;
+            var confirmPwd = document.getElementById('confirmPassword').value;
+
+            if (changePasswordError) changePasswordError.textContent = '';
+
+            if (newPwd.length < 8) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'New password must be at least 8 characters.';
+                }
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'New passwords do not match.';
+                }
+                return;
+            }
+
+            var submitBtn = document.getElementById('changePasswordSubmit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Updating...';
+            }
+
+            API.auth.updatePassword(currentPwd, newPwd)
+                .then(function() {
+                    closeChangePasswordModal();
+                    alert('Your password has been updated successfully.');
+                })
+                .catch(function(err) {
+                    if (changePasswordError) {
+                        changePasswordError.textContent =
+                            (err && err.message) ||
+                            'Failed to update password. Check your current password.';
+                    }
+                })
+                .finally(function() {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Update Password';
+                    }
+                });
         });
     }
     
@@ -92,11 +158,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Load settings from localStorage
-function loadSettings() {
-    const settings = JSON.parse(localStorage.getItem('ownerSettings') || '{}');
-    
-    // Load toggle states
+async function loadSettings() {
+    const local = JSON.parse(localStorage.getItem('ownerSettings') || '{}');
+    var remote = {};
+    try {
+        if (typeof API !== 'undefined' && API.users && API.users.getMyPreferences) {
+            var data = await API.users.getMyPreferences();
+            if (data && data.owner && typeof data.owner === 'object') {
+                remote = data.owner;
+            }
+        }
+    } catch (err) {
+        console.warn('Owner settings: could not load from API', err);
+    }
+    const settings = { ...local, ...remote };
+    localStorage.setItem('ownerSettings', JSON.stringify(settings));
+
     if (settings.emailNotifications !== undefined) {
         document.getElementById('emailNotifications').checked = settings.emailNotifications;
     }
@@ -118,8 +195,6 @@ function loadSettings() {
     if (settings.dataSharing !== undefined) {
         document.getElementById('dataSharing').checked = settings.dataSharing;
     }
-    
-    // Load select values
     if (settings.profileVisibility) {
         document.getElementById('profileVisibility').value = settings.profileVisibility;
     }
@@ -134,7 +209,6 @@ function loadSettings() {
     }
 }
 
-// Save settings to localStorage
 function saveSettings() {
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
@@ -149,11 +223,18 @@ function saveSettings() {
         currency: document.getElementById('currency').value,
         timezone: document.getElementById('timezone').value
     };
-    
+
     localStorage.setItem('ownerSettings', JSON.stringify(settings));
-    
-    // TODO: Send to API
-    console.log('Settings saved:', settings);
+
+    if (savePrefsTimer) clearTimeout(savePrefsTimer);
+    savePrefsTimer = setTimeout(function () {
+        savePrefsTimer = null;
+        if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
+            API.users.patchMyPreferences(settings).catch(function (err) {
+                console.warn('Owner settings: API save failed', err);
+            });
+        }
+    }, 400);
 }
 
 

@@ -9,10 +9,9 @@ function setupForm() {
     const contactForm = document.getElementById('contactForm');
     
     if (contactForm) {
-        contactForm.addEventListener('submit', function(e) {
+        contactForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // Get form data
             const formData = {
                 fullName: document.getElementById('fullName').value,
                 email: document.getElementById('email').value,
@@ -21,67 +20,46 @@ function setupForm() {
                 message: document.getElementById('message').value
             };
             
-            // Validate form
             if (!formData.fullName || !formData.email || !formData.message) {
                 alert('Please fill in all required fields.');
                 return;
             }
             
-            // Validate email format
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(formData.email)) {
                 alert('Please enter a valid email address.');
                 return;
             }
             
-            // Simulate form submission
-            console.log('Form submitted:', formData);
-            
-            // Show success message
-            alert('Thank you for your message! We will get back to you soon.');
-            
-            // Reset form (optional - you might want to keep the values)
-            // contactForm.reset();
-        });
-    }
-}
-
-// Setup popups (notifications and profile)
-function setupPopups() {
-    // Notification popup
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
+            const submitBtn = contactForm.querySelector('.btn-submit') || contactForm.querySelector('button[type=\"submit\"]');
+            const originalText = submitBtn ? submitBtn.textContent : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Sending...';
             }
-        });
-        
-        // Close notification button
-        if (closeNotificationBtn) {
-            closeNotificationBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                notificationPopup.classList.remove('active');
-            });
-        }
-        
-        // Close popup when clicking outside
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
+            
+            try {
+                if (window.API && window.API.support && window.API.support.contact) {
+                    await window.API.support.contact(formData);
+                } else {
+                    console.log('Contact form (no API.support):', formData);
+                }
+                alert('Thank you for your message! We will get back to you soon.');
+            } catch (err) {
+                console.error('Contact form error:', err);
+                alert(err.message || 'Failed to send your message. Please try again later.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText || 'Send message';
                 }
             }
         });
     }
-    
+}
+
+// Setup popups (notification handled by notifications.js for player)
+function setupPopups() {
     // Profile popup
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
@@ -90,10 +68,8 @@ function setupPopups() {
         profileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
         
         // Close popup when clicking outside

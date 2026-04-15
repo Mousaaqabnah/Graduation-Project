@@ -213,75 +213,12 @@
         </div>
     </div>
     
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
     <script>
-        // Sample messages data - inline for testing
-        const allMessages = [
-            {
-                id: 1,
-                fullName: 'Mousa Aqabnah',
-                email: 'mousa.aqabnah@example.com',
-                phone: '+90 555 123 4567',
-                topic: 'Question about field availability',
-                message: 'Hi, I would like to know if Field A is available for booking next weekend. We are planning a tournament and need to confirm the availability.',
-                date: new Date(Date.now() - 2 * 60 * 60 * 1000),
-                status: 'unread',
-                starred: false,
-                important: false,
-                blocked: false
-            },
-            {
-                id: 2,
-                fullName: 'Baraa Qasem',
-                email: 'Baraa.Qasem@example.com',
-                phone: '+90 555 234 5678',
-                topic: 'Reservation confirmation issue',
-                message: 'I made a reservation yesterday but haven\'t received a confirmation email yet. My booking reference is #12345. Can you please check?',
-                date: new Date(Date.now() - 3 * 60 * 60 * 1000),
-                status: 'pending',
-                starred: true,
-                important: true,
-                blocked: false
-            },
-            {
-                id: 3,
-                fullName: 'Alex Morgan',
-                email: 'alex.morgan@example.com',
-                phone: '+90 555 345 6789',
-                topic: 'Booking problem',
-                message: 'I booked a field for tomorrow but I need to cancel it. How can I do that?',
-                date: new Date(Date.now() - 5 * 60 * 60 * 1000),
-                status: 'read',
-                starred: false,
-                important: false,
-                blocked: false
-            },
-            {
-                id: 4,
-                fullName: 'Sarah Johnson',
-                email: 'sarah.johnson@example.com',
-                phone: '+90 555 456 7890',
-                topic: 'Payment issue',
-                message: 'I tried to pay for my booking but the payment failed. Can you help me resolve this?',
-                date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-                status: 'read',
-                starred: false,
-                important: false,
-                blocked: false
-            },
-            {
-                id: 5,
-                fullName: 'Michael Brown',
-                email: 'michael.brown@example.com',
-                phone: '+90 555 567 8901',
-                topic: 'Field availability',
-                message: 'I want to know if the football field is available this weekend for a tournament.',
-                date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-                status: 'replied',
-                starred: false,
-                important: false,
-                blocked: false
-            }
-        ];
+        // Messages loaded from backend conversations for the current admin (shared with admin/messages.js)
+        var allMessages = [];
 
         function getTimeAgo(date) {
             if (!(date instanceof Date)) {
@@ -352,6 +289,8 @@
                 const badges = [];
                 
                 if (msg.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
+                else badges.push({ text: 'Read', class: 'read' });
+                if (msg.starred) badges.push({ text: '(marked)', class: 'marked' });
                 if (msg.status === 'pending') badges.push({ text: 'Pending', class: 'pending' });
                 if (msg.important) badges.push({ text: 'Important', class: 'important' });
                 
@@ -364,7 +303,7 @@
                 ` : '';
                 
                 html += `
-                <div class="message-card ${isUnread ? 'unread' : ''}">
+                <div class="message-card ${isUnread ? 'unread' : 'read'}">
                     <div class="message-card-content">
                         <div class="message-sender-info">
                             <h3 class="message-sender-name">${escapeHtml(msg.fullName)}</h3>
@@ -379,8 +318,8 @@
                             <button class="message-icon-btn ${msg.starred ? 'starred' : ''}" onclick="toggleStar(${msg.id})" title="${msg.starred ? 'Unstar' : 'Star'}">
                                 <i class="fi ${msg.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
                             </button>
-                            <button class="message-icon-btn" onclick="blockMessage(${msg.id})" title="Block/Spam">
-                                <i class="fi fi-rr-circle-xmark"></i>
+                            <button class="message-icon-btn ${msg.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock(${msg.id})" title="${msg.blocked ? 'Unblock (move to normal)' : 'Block/Spam'}">
+                                <i class="fi ${msg.blocked ? 'fi-rr-check-circle' : 'fi-rr-circle-xmark'}"></i>
                             </button>
                         </div>
                         <p class="message-time">${timeAgo}</p>
@@ -430,116 +369,232 @@
             renderMessages(filtered);
         }
 
-        // Toggle star function
-        function toggleStar(messageId) {
-            const message = allMessages.find(m => m.id === messageId);
-            if (!message) return;
+        // Load messages from API (admin's conversations with users)
+        async function loadMessagesFromAPI() {
+            const messagesList = document.getElementById('messagesList');
+            const loadingIndicator = document.getElementById('loadingIndicator');
             
-            message.starred = !message.starred;
-            filterMessages(); // Re-render to show updated star state
-            console.log(`Message ${messageId} ${message.starred ? 'starred' : 'unstarred'}`);
-        }
+            if (!window.API || !API.messages || !API.messages.getConversations) {
+                console.warn('API.messages.getConversations not available, using sample data (if any).');
+                renderMessages();
+                return;
+            }
 
-        // Block/Spam message function
-        function blockMessage(messageId) {
-            const message = allMessages.find(m => m.id === messageId);
-            if (!message) return;
-            
-            if (confirm(`Block/Spam message from ${message.fullName}?`)) {
-                message.blocked = true;
-                filterMessages(); // Re-render to remove blocked message
-                console.log(`Message from ${message.fullName} blocked`);
+            if (loadingIndicator) {
+                loadingIndicator.textContent = 'Loading messages from server...';
+            }
+
+            try {
+                // Get current user (admin) so we can find the other side of conversations
+                let currentUser = API.getCurrentUser && API.getCurrentUser();
+                if (!currentUser && API.auth && API.auth.getCurrentUser) {
+                    try {
+                        const resMe = await API.auth.getCurrentUser();
+                        if (resMe && resMe.user) {
+                            currentUser = resMe.user;
+                            if (API.setCurrentUser) API.setCurrentUser(currentUser);
+                        }
+                    } catch (_) {}
+                }
+
+                const res = await API.messages.getConversations();
+                const conversations = res.conversations || [];
+
+                allMessages = [];
+                let idCounter = 1;
+
+                conversations.forEach(conv => {
+                    const otherUser =
+                        currentUser && conv.user1 && conv.user1.id === currentUser.id
+                            ? conv.user2
+                            : conv.user1;
+
+                    const latest = (conv.messages && conv.messages[0]) || null;
+                    const isFromPlayer = latest && currentUser && latest.sender && latest.sender.id !== currentUser.id;
+                    const isUnread = isFromPlayer && latest && !latest.readAt;
+                    const blocked = !!(conv.blockedAt);
+                    const starred = !!(conv.starredAt);
+
+                    allMessages.push({
+                        id: idCounter++,
+                        conversationId: conv.id,
+                        latestMessageId: latest ? latest.id : null,
+                        fullName: otherUser ? (otherUser.fullName || 'User') : 'User',
+                        email: otherUser ? (otherUser.email || '') : '',
+                        phone: '',
+                        topic: latest ? (latest.content.slice(0, 60) + (latest.content.length > 60 ? '...' : '')) : 'Conversation',
+                        message: latest ? latest.content : 'No messages yet.',
+                        date: latest ? latest.createdAt : conv.updatedAt,
+                        status: isUnread ? 'unread' : 'read',
+                        starred,
+                        important: false,
+                        blocked
+                    });
+                });
+
+                // Show newest first, consistent with getTimeAgo usage
+                allMessages.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                filterMessages();
+            } catch (error) {
+                console.error('Failed to load messages from API:', error);
+                if (messagesList && loadingIndicator) {
+                    loadingIndicator.textContent = 'Failed to load messages.';
+                }
+                // Fallback: render (possibly empty) local list
+                renderMessages();
             }
         }
 
-        // Show message detail modal
-        function showMessageDetail(messageId) {
+        // Toggle star function
+        async function toggleStar(messageId) {
             const message = allMessages.find(m => m.id === messageId);
             if (!message) return;
             
-            // Mark as read when viewing
-            if (message.status === 'unread') {
+            const newStarred = !message.starred;
+            try {
+                if (API && API.messages && API.messages.setStarred) {
+                    await API.messages.setStarred(message.conversationId, newStarred);
+                }
+                message.starred = newStarred;
+                filterMessages();
+            } catch (e) {
+                console.warn('Could not update star:', e);
+            }
+        }
+
+        // Toggle Block: block normal message, or unblock to move back to normal
+        async function toggleBlock(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            if (message.blocked) {
+                if (!confirm(`Do you want to unblock this message from ${message.fullName}?`)) return;
+                try {
+                    if (API && API.messages && API.messages.setBlocked) {
+                        await API.messages.setBlocked(message.conversationId, false);
+                    }
+                    message.blocked = false;
+                    filterMessages();
+                } catch (e) {
+                    console.warn('Could not unblock:', e);
+                    alert('Failed to unblock. Please try again.');
+                }
+            } else {
+                if (!confirm(`Block/Spam message from ${message.fullName}?`)) return;
+                try {
+                    if (API && API.messages && API.messages.setBlocked) {
+                        await API.messages.setBlocked(message.conversationId, true);
+                    }
+                    message.blocked = true;
+                    filterMessages();
+                } catch (e) {
+                    console.warn('Could not block:', e);
+                    alert('Failed to block. Please try again.');
+                }
+            }
+        }
+
+        // Show message detail modal - fetches and displays full conversation history
+        async function showMessageDetail(messageId) {
+            const message = allMessages.find(m => m.id === messageId);
+            if (!message) return;
+            
+            // Mark as read when admin views (persist to backend)
+            if (message.status === 'unread' && message.latestMessageId && message.conversationId) {
                 message.status = 'read';
                 filterMessages(); // Re-render to update status
+                try {
+                    if (window.API && API.messages && API.messages.markAsRead) {
+                        await API.messages.markAsRead(message.conversationId, message.latestMessageId);
+                    }
+                } catch (e) {
+                    console.warn('Could not mark message as read:', e);
+                }
             }
             
             const messageContent = document.getElementById('messageContent');
             const messageModal = document.getElementById('messageModal');
             
-            if (messageContent) {
-                const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
-                const timeAgo = getTimeAgo(message.date);
+            if (!messageContent || !messageModal) return;
+            
+            const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
+            const currentUser = API.getCurrentUser ? API.getCurrentUser() : null;
+            
+            // Render header and loading state first
+            messageContent.innerHTML = `
+                <div class="message-detail-header">
+                    <div class="message-detail-avatar">${initials}</div>
+                    <div class="message-detail-info">
+                        <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
+                        <p class="message-detail-email">${escapeHtml(message.email)}</p>
+                        ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> Loading full conversation...</div>
+                <div class="message-detail-thread" id="messageDetailThread" style="display:none;"></div>
+            `;
+            messageModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            // Fetch full conversation and render all messages
+            try {
+                const res = await API.messages.getMessages(message.conversationId, { page: 1, limit: 200 });
+                const messages = res.messages || [];
+                const threadEl = document.getElementById('messageDetailThread');
+                const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
                 
-                messageContent.innerHTML = `
-                    <div class="message-detail-header">
-                        <div class="message-detail-avatar">
-                            ${initials}
-                        </div>
-                        <div class="message-detail-info">
-                            <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
-                            <p class="message-detail-email">${escapeHtml(message.email)}</p>
-                            ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
-                        </div>
-                    </div>
-                    
-                    <div class="message-detail-content">
-                        <div class="message-detail-topic">
-                            ${escapeHtml(message.topic || 'No topic')}
-                        </div>
-                        <div class="message-detail-text">
-                            ${escapeHtml(message.message)}
-                        </div>
-                        <div class="message-detail-meta">
-                            <span>Received: ${timeAgo}</span>
-                            <span class="status-badge ${message.status}">${message.status.charAt(0).toUpperCase() + message.status.slice(1)}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Reply Section -->
-                    <div class="reply-section">
-                        <h4 class="reply-section-title">Reply to ${escapeHtml(message.fullName)}</h4>
-                        <form class="reply-form" id="replyForm${message.id}" onsubmit="handleReplySubmit(event, ${message.id})">
-                            <div class="reply-form-group">
-                                <label for="replyMessage${message.id}" class="reply-label">Your Reply</label>
-                                <textarea 
-                                    id="replyMessage${message.id}" 
-                                    class="reply-textarea" 
-                                    rows="6" 
-                                    placeholder="Type your reply here..."
-                                    required
-                                ></textarea>
+                if (loadingEl) loadingEl.remove();
+                
+                if (messages.length === 0) {
+                    threadEl.innerHTML = '<div class="message-detail-empty">No messages in this conversation.</div>';
+                } else {
+                    const threadHtml = messages.map(m => {
+                        const isFromAdmin = currentUser && m.sender && m.sender.id === currentUser.id;
+                        const senderName = m.sender ? m.sender.fullName : 'Unknown';
+                        const timeStr = m.createdAt ? getTimeAgo(m.createdAt) : '';
+                        return `
+                            <div class="message-detail-item ${isFromAdmin ? 'from-admin' : 'from-user'}">
+                                <div class="message-detail-item-header">${escapeHtml(senderName)} · ${escapeHtml(timeStr)}</div>
+                                <div class="message-detail-item-text">${escapeHtml(m.content)}</div>
                             </div>
-                            <div class="reply-form-actions">
-                                <button type="button" class="btn-cancel-reply" onclick="cancelReply(${message.id})">
-                                    Cancel
-                                </button>
-                                <button type="submit" class="btn-send-reply">
-                                    <i class="fi fi-rr-paper-plane"></i> Send Reply
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div class="message-detail-actions">
-                        ${message.status === 'unread' ? `
-                            <button class="btn-mark-read" onclick="markAsRead(${message.id}); closeMessageModal();">
-                                <i class="fi fi-rr-check"></i> Mark as Read
-                            </button>
-                        ` : ''}
-                        <button class="btn-reply-toggle" onclick="toggleReplySection(${message.id})">
-                            <i class="fi fi-rr-envelope"></i> Reply
-                        </button>
-                        <button class="btn-delete" onclick="deleteMessage(${message.id}); closeMessageModal();">
-                            <i class="fi fi-rr-trash"></i> Delete
-                        </button>
-                    </div>
-                `;
+                        `;
+                    }).join('');
+                    threadEl.innerHTML = '<div class="message-detail-thread-label">Full conversation history</div>' + threadHtml;
+                }
+                threadEl.style.display = 'block';
+            } catch (e) {
+                console.warn('Could not load full conversation:', e);
+                const threadEl = document.getElementById('messageDetailThread');
+                const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
+                if (loadingEl) loadingEl.remove();
+                if (threadEl) {
+                    threadEl.innerHTML = '<div class="message-detail-empty">Could not load full conversation. Showing latest only.</div><div class="message-detail-item from-user"><div class="message-detail-item-text">' + escapeHtml(message.message) + '</div></div>';
+                    threadEl.style.display = 'block';
+                }
             }
             
-            if (messageModal) {
-                messageModal.classList.add('active');
-                document.body.style.overflow = 'hidden';
-            }
+            // Add reply section and actions
+            const replyDiv = document.createElement('div');
+            replyDiv.innerHTML = `
+                <div class="reply-section">
+                    <h4 class="reply-section-title">Reply to ${escapeHtml(message.fullName)}</h4>
+                    <form class="reply-form" id="replyForm${message.id}" onsubmit="handleReplySubmit(event, ${message.id})">
+                        <div class="reply-form-group">
+                            <label for="replyMessage${message.id}" class="reply-label">Your Reply</label>
+                            <textarea id="replyMessage${message.id}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
+                        </div>
+                        <div class="reply-form-actions">
+                            <button type="button" class="btn-cancel-reply" onclick="cancelReply(${message.id})">Cancel</button>
+                            <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="message-detail-actions">
+                    <button class="btn-reply-toggle" onclick="toggleReplySection(${message.id})"><i class="fi fi-rr-envelope"></i> Reply</button>
+                </div>
+            `;
+            while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
         }
 
         // Mark message as read
@@ -576,8 +631,8 @@
             }
         }
 
-        // Handle reply form submission
-        function handleReplySubmit(event, messageId) {
+        // Handle reply form submission - sends in-app and notifies user
+        async function handleReplySubmit(event, messageId) {
             event.preventDefault();
             const message = allMessages.find(m => m.id === messageId);
             if (!message) return;
@@ -590,28 +645,31 @@
                 return;
             }
             
-            // Format the reply body
-            const replyBody = `${replyText}\n\n--- Original Message ---\nFrom: ${message.fullName} (${message.email})\nDate: ${getTimeAgo(message.date)}\nTopic: ${message.topic || 'No topic'}\n\n${message.message}`;
+            const submitBtn = document.querySelector(`#replyForm${messageId} .btn-send-reply`);
+            const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Sending...';
+            }
             
-            // Open email client
-            const subject = encodeURIComponent(`Re: ${message.topic || 'Your message'}`);
-            const body = encodeURIComponent(replyBody);
-            const mailtoLink = `mailto:${message.email}?subject=${subject}&body=${body}`;
-            
-            // Try to open email client
             try {
-                window.location.href = mailtoLink;
-                
-                // Mark as replied after a short delay
-                setTimeout(() => {
-                    message.status = 'replied';
-                    filterMessages();
-                    closeMessageModal();
-                    console.log(`Reply sent to ${message.fullName}`);
-                }, 500);
+                if (window.API && window.API.messages && window.API.messages.sendMessage && message.conversationId) {
+                    await API.messages.sendMessage(message.conversationId, replyText);
+                } else {
+                    throw new Error('Cannot send reply. API or conversation ID not available.');
+                }
+                message.status = 'replied';
+                filterMessages();
+                closeMessageModal();
+                alert('Reply sent. The user will see it in their notifications.');
             } catch (error) {
-                console.error('Error opening email client:', error);
-                alert('Please configure your email client to send replies.');
+                console.error('Reply send error:', error);
+                alert(error.message || 'Failed to send reply. Please try again.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHtml || '<i class="fi fi-rr-paper-plane"></i> Send Reply';
+                }
             }
         }
 
@@ -697,7 +755,7 @@
 
         // Make functions globally available
         window.toggleStar = toggleStar;
-        window.blockMessage = blockMessage;
+        window.toggleBlock = toggleBlock;
         window.showMessageDetail = showMessageDetail;
         window.markAsRead = markAsRead;
         window.deleteMessage = deleteMessage;
@@ -750,16 +808,16 @@
         // Initialize when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
-                renderMessages();
                 setupModalHandlers();
                 setupSearchAndFilter();
                 setupNotificationAndProfile();
+                loadMessagesFromAPI();
             });
         } else {
-            renderMessages();
             setupModalHandlers();
             setupSearchAndFilter();
             setupNotificationAndProfile();
+            loadMessagesFromAPI();
         }
     </script>
     <script src="../../scripts/admin/messages.js"></script>

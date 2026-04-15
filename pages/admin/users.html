@@ -168,16 +168,16 @@
                     
                     <div class="filter-group">
                         <select id="roleFilter" class="filter-dropdown">
-                            <option value="all">All Roles</option>
-                            <option value="player">Player</option>
-                            <option value="field-owner">Field owner</option>
-                            <option value="admin">Admin</option>
+                            <option value="">All Roles</option>
+                            <option value="PLAYER">Player</option>
+                            <option value="OWNER">Field owner</option>
+                            <option value="ADMIN">Admin</option>
                         </select>
                         
                         <select id="statusFilter" class="filter-dropdown">
-                            <option value="all">All Status</option>
-                            <option value="active">Active</option>
-                            <option value="suspended">Suspended</option>
+                            <option value="">All Status</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="SUSPENDED">Suspended</option>
                         </select>
                         
                         <select id="dateFilter" class="filter-dropdown">
@@ -238,7 +238,9 @@
         </div>
     </div>
 
-    
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/admin/users.js"></script>
 </body>
 </html>

@@ -1,7 +1,71 @@
-// Fields page functionality
+// Fields page — API.fields.getMine / create / delete / unavailable-dates (same auth + fetch pattern as player).
+// ownerFieldEsc, formatOwnerFieldPrice, view-field modal: scripts/owner/view-field-modal.js (must load before this file)
+
+function renderOwnerFieldsList(fields) {
+    const list = document.getElementById('fieldsList');
+    if (!list) return;
+    if (!fields || !fields.length) {
+        list.innerHTML = '<p style="padding:24px;color:#6B7280;">No fields yet. Click <strong>Add new field</strong> to create one (requires verified owner account).</p>';
+        return;
+    }
+    list.innerHTML = fields.map(function(f) {
+        const id = String(f.id != null ? f.id : f._id || '');
+        const img = (f.images && f.images[0]) || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop';
+        const typeTag = f.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
+        const rating = f.rating != null ? f.rating : '—';
+        const rc = f.reviewCount != null ? f.reviewCount : 0;
+        return (
+            '<div class="field-list-card" data-field-name="' + ownerFieldEsc(f.name) + '" data-field-id="' + ownerFieldEsc(id) + '">' +
+            '<div class="field-list-image"><img src="' + ownerFieldEsc(img) + '" alt=""></div>' +
+            '<div class="field-list-content"><div class="field-list-info">' +
+            '<h3 class="field-list-name">' + ownerFieldEsc(f.name) + '</h3>' +
+            '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + ownerFieldEsc(f.location || '') + '</p>' +
+            '<div class="field-list-rating"><span class="field-star-yellow">★</span> ' +
+            '<span class="field-rating-value">' + ownerFieldEsc(rating) + '</span> <span class="field-reviews-count">(' + rc + ')</span></div>' +
+            '<div class="field-list-tags">' +
+            '<span class="field-tag">' + typeTag + '</span>' +
+            '<span class="field-tag">' + ownerFieldEsc(f.sport || '') + '</span>' +
+            '</div></div>' +
+            '<div class="field-list-actions">' +
+            '<div class="field-list-price-container">' +
+            '<span class="field-list-price-label">Price</span>' +
+            '<span class="field-list-price">' + formatOwnerFieldPrice(f.pricePerHour) + '/h</span>' +
+            '</div>' +
+            '<div class="field-list-buttons">' +
+            '<button type="button" class="manage-btn" onclick="openModal(\'' + id + '\')">Manage</button>' +
+            '<button type="button" class="action-btn" onclick="viewFieldDetails(this)" title="View"><i class="fi fi-rr-eye"></i></button>' +
+            '<button type="button" class="action-btn delete" onclick="deleteField(this)" title="Delete"><i class="fi fi-rr-trash"></i></button>' +
+            '</div></div></div></div>'
+        );
+    }).join('');
+}
+
+async function loadOwnerFieldsFromApi() {
+    const list = document.getElementById('fieldsList');
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getMine) {
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load fields: API is not available. Start the server (<code>npm run dev</code>) and open this page from <code>http://localhost:3000</code>.</p>';
+        }
+        return;
+    }
+    try {
+        const res = await API.fields.getMine();
+        const fields = (res && res.fields) ? res.fields : [];
+        renderOwnerFieldsList(fields);
+    } catch (e) {
+        console.error('loadOwnerFieldsFromApi', e);
+        const msg = (e && e.message) ? String(e.message) : 'Request failed';
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load your fields: ' +
+                ownerFieldEsc(msg) +
+                '. Log in as an <strong>OWNER</strong> (e.g. <code>owner@matchfield.com</code> after <code>npm run db:seed</code>), or check the browser Network tab for <code>/api/fields/me</code>.</p>';
+        }
+    }
+}
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
 const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
@@ -9,22 +73,12 @@ const fieldSearchInput = document.getElementById('fieldSearchInput');
 const addFieldBtn = document.getElementById('addFieldBtn');
 const fieldsList = document.getElementById('fieldsList');
 const editFieldModal = document.getElementById('editFieldModal');
-const viewFieldModal = document.getElementById('viewFieldModal');
 
 // Current selected date for calendar
 let currentModalDate = new Date();
 let selectedDate = new Date();
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Notification bell: scripts/player/notifications.js (API). No duplicate toggle here.
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
@@ -37,12 +91,8 @@ if (profileBtn && profilePopup) {
     });
 }
 
-// Close popups when clicking outside
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
-    if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+    if (profilePopup && profileBtn && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
 });
@@ -477,13 +527,73 @@ function submitFieldForm() {
         visibility: document.getElementById('fieldVisibilityToggle').classList.contains('active')
     };
     
-    console.log('Submitting field form:', formData);
-    
-    // Here you would typically send the data to your backend API
-    // For now, we'll show a success message
-    alert('Field submitted successfully! It will be reviewed and approved by the admin.');
-    
-    closeAddFieldModal();
+    if (typeof API === 'undefined' || !API.fields || !API.fields.create) {
+        alert('Unable to submit: API not loaded.');
+        return;
+    }
+
+    const sportSelect = document.getElementById('fieldType');
+    const sportVal = sportSelect ? sportSelect.value : 'other';
+    const sportLabel = sportVal ? sportVal.charAt(0).toUpperCase() + sportVal.slice(1) : 'Football';
+    const indoorCb = document.querySelector('input[name="features"][value="indoor"]');
+    const outdoorCb = document.querySelector('input[name="features"][value="outdoor"]');
+    const isIndoor = indoorCb && indoorCb.checked && !(outdoorCb && outdoorCb.checked);
+    const cityEl = document.getElementById('fieldCity');
+    const distEl = document.getElementById('fieldDistrict');
+    const addrEl = document.getElementById('fieldAddress');
+    const locationLine = [cityEl && cityEl.value, distEl && distEl.value].filter(Boolean).join(', ') || (addrEl && addrEl.value) || '—';
+    const latEl = document.getElementById('latitude');
+    const lngEl = document.getElementById('longitude');
+    const latStr = latEl ? latEl.textContent.trim() : '';
+    const lngStr = lngEl ? lngEl.textContent.trim() : '';
+    const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
+    const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
+    const features = highlights.concat(amenities).concat(feat).filter(Boolean);
+
+    const payload = {
+        name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
+        sport: sportLabel,
+        description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
+        type: isIndoor ? 'INDOOR' : 'OUTDOOR',
+        location: locationLine,
+        address: (addrEl && addrEl.value) || undefined,
+        pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour') && document.getElementById('pricePerHour').value) || 0),
+        features: features,
+        images: [],
+        latitude: latStr && latStr !== '-' ? parseFloat(latStr) : undefined,
+        longitude: lngStr && lngStr !== '-' ? parseFloat(lngStr) : undefined,
+        isActive: document.getElementById('fieldVisibilityToggle') ? document.getElementById('fieldVisibilityToggle').classList.contains('active') : true
+    };
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    API.fields.create(payload).then(async function(res) {
+        const field = res && res.field;
+        const fieldId = field && field.id;
+        if (fieldId && unavailableDates && unavailableDates.length && API.fields.addUnavailableDate) {
+            for (let i = 0; i < unavailableDates.length; i++) {
+                try {
+                    await API.fields.addUnavailableDate(fieldId, unavailableDates[i]);
+                } catch (err) {
+                    console.warn('unavailable date', err);
+                }
+            }
+        }
+        alert('Field created successfully.');
+        closeAddFieldModal();
+        loadOwnerFieldsFromApi();
+    }).catch(function(err) {
+        alert(err.message || 'Could not create field. Owner verification may be required.');
+    }).finally(function() {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit for Approval';
+        }
+    });
 }
 
 // Close modal when clicking outside
@@ -554,6 +664,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Modal Functions
 let currentManageSection = null;
+/** Set when opening Manage for a field — used for PUT /fields/:id */
+let ownerManagingFieldId = null;
+
+function collectManageFeatureStrings() {
+    const out = [];
+    document.querySelectorAll('input[name="manageAmenities"]:checked').forEach(function(cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('input[name="manageFeatures"]:checked').forEach(function(cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('#manageHighlightsList .highlight-item span').forEach(function(span) {
+        const t = span.textContent.trim();
+        if (t) out.push(t);
+    });
+    return out;
+}
+
+function applyManageFeaturesFromField(features) {
+    const arr = Array.isArray(features) ? features : [];
+    const lower = arr.map(function(s) {
+        return String(s).trim().toLowerCase();
+    });
+    document.querySelectorAll('input[name="manageAmenities"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        const l = label.trim().toLowerCase();
+        cb.checked = lower.indexOf(l) !== -1;
+    });
+    document.querySelectorAll('input[name="manageFeatures"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        const l = label.trim().toLowerCase();
+        cb.checked = lower.indexOf(l) !== -1;
+    });
+    const known = new Set();
+    document.querySelectorAll('input[name="manageAmenities"], input[name="manageFeatures"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        if (label.trim()) known.add(label.trim().toLowerCase());
+    });
+    const hl = document.getElementById('manageHighlightsList');
+    if (hl) {
+        hl.innerHTML = '';
+        arr.forEach(function(f) {
+            const ft = String(f).trim();
+            if (!ft) return;
+            if (known.has(ft.toLowerCase())) return;
+            const highlightItem = document.createElement('div');
+            highlightItem.className = 'highlight-item';
+            highlightItem.innerHTML =
+                '<span>' +
+                ownerFieldEsc(ft) +
+                '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
+            hl.appendChild(highlightItem);
+        });
+    }
+}
+
+function selectManageSportByName(sportName) {
+    const sel = document.getElementById('manageSportCategory');
+    if (!sel) return;
+    const want = String(sportName || 'Football').trim().toLowerCase();
+    for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].text.trim().toLowerCase() === want) {
+            sel.selectedIndex = i;
+            return;
+        }
+    }
+}
+
+function unavailableYmdFromApi(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return (
+        x.getUTCFullYear() +
+        '-' +
+        String(x.getUTCMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(x.getUTCDate()).padStart(2, '0')
+    );
+}
 
 function openModal(fieldId) {
     if (editFieldModal) {
@@ -563,9 +754,11 @@ function openModal(fieldId) {
         // Show menu, hide sections
         showManageMenu();
         
-        // If fieldId is provided, load field data
         if (fieldId) {
+            ownerManagingFieldId = String(fieldId);
             loadFieldData(fieldId);
+        } else {
+            ownerManagingFieldId = null;
         }
     }
 }
@@ -574,8 +767,8 @@ function closeModal() {
     if (editFieldModal) {
         editFieldModal.classList.remove('active');
         document.body.style.overflow = '';
-        // Reset to menu view
         showManageMenu();
+        ownerManagingFieldId = null;
     }
 }
 
@@ -681,245 +874,90 @@ function switchTab(tabName) {
     }
 }
 
-// Load field data into modal (placeholder)
-function loadFieldData(fieldId) {
-    // This would typically fetch data from an API
-    // For now, it's just a placeholder
-    console.log(`Loading data for field ${fieldId}`);
-}
-
-// View Field Details
-function viewFieldDetails(button) {
+async function loadFieldData(fieldId) {
+    if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.getById) {
+        return;
+    }
     try {
-        const fieldCard = button.closest('.field-list-card');
-        if (!fieldCard) return;
-        
-        const fieldImage = fieldCard.querySelector('.field-list-image img')?.src;
-        const fieldName = fieldCard.querySelector('.field-list-name')?.textContent;
-        const fieldLocation = fieldCard.querySelector('.field-list-location')?.textContent.trim();
-        const fieldPrice = fieldCard.querySelector('.field-list-price')?.textContent;
-        const fieldTags = Array.from(fieldCard.querySelectorAll('.field-tag')).map(tag => tag.textContent);
-        
-        if (!fieldImage || !fieldName) return;
-        
-        // Populate view modal
-        if (viewFieldModal) {
-            // Set main image
-            const imageEl = document.getElementById('viewFieldImage');
-            if (imageEl) imageEl.src = fieldImage;
-        
-            // Set title
-            const titleEl = document.getElementById('viewFieldName');
-            if (titleEl) titleEl.textContent = fieldName;
-            
-            // Set meta line with rating and reviews
-            const metaLine = document.getElementById('viewFieldMeta');
-            const headerRating = '4.8';
-            const headerReviewsCount = '98';
-            if (metaLine) {
-                metaLine.innerHTML = `
-                    <i class="fi fi-rr-marker field-meta-icon"></i>
-                    <span id="viewFieldLocation">${fieldLocation}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldCategory">${fieldTags[1] || 'Sport'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldType">${fieldTags[0] || 'Type'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span class="field-star-yellow">★</span>
-                    <span id="viewFieldHeaderRating">${headerRating}</span>
-                    <span> (<span id="viewFieldHeaderReviewsCount">${headerReviewsCount}</span>)</span>
-                `;
-            }
-            
-            // Set price
-            const priceElement = document.getElementById('viewFieldPrice');
-            if (priceElement) {
-                priceElement.innerHTML = fieldPrice.replace('/h', '<span class="view-field-price-unit">/h</span>');
-            }
-            
-            // Set feature tags
-            const tagsContainer = document.getElementById('viewFieldTags');
-            if (tagsContainer && fieldTags.length > 0) {
-                tagsContainer.innerHTML = fieldTags.map(tag => 
-                    `<span class="view-field-feature-tag">${tag}</span>`
-                ).join('');
-            }
-            
-            // Set field details
-            const locationFullEl = document.getElementById('viewFieldLocationFull');
-            const categoryFullEl = document.getElementById('viewFieldCategoryFull');
-            const typeFullEl = document.getElementById('viewFieldTypeFull');
-            const capacityEl = document.getElementById('viewFieldCapacity');
-            const descriptionEl = document.getElementById('viewFieldDescription');
-            
-            if (locationFullEl) locationFullEl.textContent = fieldLocation;
-            if (categoryFullEl) categoryFullEl.textContent = fieldTags[1] || '-';
-            if (typeFullEl) typeFullEl.textContent = fieldTags[0] || '-';
-            if (capacityEl) capacityEl.textContent = '22 players';
-            
-            // Set description
-            if (descriptionEl) {
-                descriptionEl.textContent = 'Professional sports field with high-quality facilities. Perfect for both casual matches and professional training sessions. The field features high-quality artificial turf, excellent lighting, and modern facilities.';
-            }
-            
-            // Set highlights
-            const highlightsList = document.getElementById('viewFieldHighlights');
-            if (highlightsList) {
-                highlightsList.innerHTML = `
-                    <li>Easy access by car and public transport</li>
-                    <li>High-quality lighting for night games</li>
-                    <li>Clean changing rooms and showers</li>
-                    <li>Snacks and drinks available on site</li>
-                `;
-            }
-            
-            // Set amenities
-            const amenitiesGrid = document.getElementById('viewFieldAmenities');
-            if (amenitiesGrid) {
-                const amenities = ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi'];
-                amenitiesGrid.innerHTML = amenities.map(amenity => `
-                    <div class="view-amenity-item">
-                        <i class="fi fi-rr-check view-amenity-icon"></i>
-                        <span>${amenity}</span>
-                    </div>
-                `).join('');
-            }
-            
-            // Set reviews summary (also update header if needed)
-            const reviewsRating = '4.8';
-            const reviewsCount = '98';
-            const ratingElement = document.getElementById('viewFieldRating');
-            const reviewsCountElement = document.getElementById('viewFieldReviewsCount');
-            if (ratingElement) ratingElement.textContent = reviewsRating;
-            if (reviewsCountElement) reviewsCountElement.textContent = reviewsCount;
-            
-            // Populate reviews list
-            const reviewsList = document.getElementById('viewReviewsList');
-            if (reviewsList) {
-            const reviews = [
-                {
-                    name: 'Ahmed',
-                    initial: 'A',
-                    rating: 5,
-                    text: 'Great field quality, lights are strong and the staff were friendly. Booking was smooth and easy.',
-                    context: 'Played 5v5 last week',
-                    date: '2 days ago'
-                },
-                {
-                    name: 'Sara',
-                    initial: 'S',
-                    rating: 5,
-                    text: 'Perfect location and easy to reach. Parking area helps a lot during busy hours. Highly recommend!',
-                    context: 'Weekend booking',
-                    date: '1 week ago'
-                },
-                {
-                    name: 'Mohamed',
-                    initial: 'M',
-                    rating: 4,
-                    text: 'Good facilities overall. The field is well-maintained. Only minor issue was the changing room could be cleaner.',
-                    context: 'Regular player',
-                    date: '2 weeks ago'
-                },
-                {
-                    name: 'Layla',
-                    initial: 'L',
-                    rating: 5,
-                    text: 'Excellent experience! The booking system is user-friendly and the field exceeded our expectations. Will definitely book again.',
-                    context: 'First time booking',
-                    date: '3 weeks ago'
-                }
-            ];
-                
-                reviewsList.innerHTML = reviews.map(review => {
-                    const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
-                    return `
-                        <div class="view-review-card">
-                            <div class="view-review-header">
-                                <div class="view-reviewer-info">
-                                    <div class="view-reviewer-avatar">${review.initial}</div>
-                                    <div class="view-reviewer-details">
-                                        <div class="view-reviewer-name">${review.name}</div>
-                                        <div class="view-review-context">${review.context}</div>
-                                    </div>
-                                </div>
-                                <div class="view-review-rating-display">
-                                    <span class="view-star-filled">${stars}</span>
-                                </div>
-                            </div>
-                            <p class="view-review-text">${review.text}</p>
-                            <div class="view-review-date">${review.date}</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            
-            viewFieldModal.classList.add('active');
-            document.body.style.overflow = 'hidden';
-        }
-    } catch (error) {
-        console.error('Error opening view field modal:', error);
-    }
-}
+        const res = await API.fields.getById(fieldId);
+        const f = res && res.field;
+        if (!f) return;
 
-function closeViewModal() {
-    if (viewFieldModal) {
-        viewFieldModal.classList.remove('active');
-        document.body.style.overflow = '';
-        // Reset reviews list to hidden
-        const reviewsList = document.getElementById('viewReviewsList');
-        const toggleBtn = document.getElementById('viewToggleReviewsBtn');
-        if (reviewsList) reviewsList.style.display = 'none';
-        if (toggleBtn) {
-            toggleBtn.classList.remove('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'View reviews';
-        }
-    }
-}
+        const nameEl = document.getElementById('manageFieldName');
+        if (nameEl) nameEl.value = f.name || '';
 
-function toggleViewReviews() {
-    const reviewsList = document.getElementById('viewReviewsList');
-    const toggleBtn = document.getElementById('viewToggleReviewsBtn');
-    
-    if (reviewsList && toggleBtn) {
-        const isHidden = reviewsList.style.display === 'none' || !reviewsList.style.display;
-        
-        if (isHidden) {
-            reviewsList.style.display = 'flex';
-            toggleBtn.classList.add('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'Hide reviews';
-        } else {
-            reviewsList.style.display = 'none';
-            toggleBtn.classList.remove('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'View reviews';
-        }
-    }
-}
+        selectManageSportByName(f.sport || 'Football');
 
-// Close view modal when clicking outside
-if (viewFieldModal) {
-    viewFieldModal.addEventListener('click', (e) => {
-        if (e.target === viewFieldModal) {
-            closeViewModal();
+        const typeSel = document.getElementById('manageFieldType');
+        if (typeSel) {
+            const indoor = String(f.type || '').toUpperCase() === 'INDOOR';
+            typeSel.value = indoor ? 'Indoor' : 'Outdoor';
         }
-    });
+
+        const pphEl = document.getElementById('managePricePerHour');
+        if (pphEl) pphEl.value = f.pricePerHour != null ? String(f.pricePerHour) : '';
+
+        const addrEl = document.getElementById('manageFieldAddress');
+        if (addrEl) addrEl.value = f.address || f.location || '';
+
+        const descEl = document.getElementById('manageDescription');
+        if (descEl) descEl.value = f.description || '';
+
+        applyManageFeaturesFromField(f.features);
+
+        const latEl = document.getElementById('manageLatitude');
+        const lngEl = document.getElementById('manageLongitude');
+        if (latEl && f.latitude != null) latEl.textContent = String(f.latitude);
+        if (lngEl && f.longitude != null) lngEl.textContent = String(f.longitude);
+
+        const visToggle = document.getElementById('manageVisibilityToggle');
+        if (visToggle) {
+            visToggle.classList.toggle('active', f.isActive !== false);
+        }
+
+        const datesList = document.getElementById('manageUnavailableDatesList');
+        if (datesList && API.fields.listUnavailableDates) {
+            datesList.innerHTML = '';
+            try {
+                const ud = await API.fields.listUnavailableDates(fieldId);
+                const rows = (ud && ud.unavailableDates) || [];
+                rows.forEach(function(row) {
+                    const ymd = unavailableYmdFromApi(row.date);
+                    if (!ymd) return;
+                    const dateItem = document.createElement('div');
+                    dateItem.className = 'date-item';
+                    dateItem.dataset.ymd = ymd;
+                    dateItem.dataset.fromServer = '1';
+                    dateItem.innerHTML =
+                        '<span>' +
+                        ownerFieldEsc(new Date(ymd + 'T12:00:00').toLocaleDateString()) +
+                        '</span><button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>';
+                    datesList.appendChild(dateItem);
+                });
+            } catch (e) {
+                console.warn('listUnavailableDates', e);
+            }
+        }
+    } catch (e) {
+        console.error('loadFieldData', e);
+        alert((e && e.message) || 'Could not load field for editing.');
+    }
 }
 
 // Delete Field
 function deleteField(button) {
-    if (confirm('Are you sure you want to delete this field? This action cannot be undone.')) {
-        const fieldCard = button.closest('.field-list-card');
-        fieldCard.style.transition = 'opacity 0.3s, transform 0.3s';
-        fieldCard.style.opacity = '0';
-        fieldCard.style.transform = 'translateX(-20px)';
-        
-        setTimeout(() => {
-            fieldCard.remove();
-        }, 300);
+    if (!confirm('Are you sure you want to delete this field? This action cannot be undone.')) return;
+    const fieldCard = button.closest('.field-list-card');
+    const fieldId = fieldCard && fieldCard.getAttribute('data-field-id');
+    if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.delete) {
+        if (fieldCard) fieldCard.remove();
+        return;
     }
+    API.fields.delete(fieldId).then(function() {
+        loadOwnerFieldsFromApi();
+    }).catch(function(err) {
+        alert(err.message || 'Could not delete field');
+    });
 }
 
 // Calendar Functions
@@ -1185,8 +1223,9 @@ function addManageUnavailableDate() {
     if (date) {
         const dateItem = document.createElement('div');
         dateItem.className = 'date-item';
+        dateItem.dataset.ymd = date;
         dateItem.innerHTML = `
-            <span>${new Date(date).toLocaleDateString()}</span>
+            <span>${new Date(date + 'T12:00:00').toLocaleDateString()}</span>
             <button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>
         `;
         datesList.appendChild(dateItem);
@@ -1194,8 +1233,23 @@ function addManageUnavailableDate() {
     }
 }
 
-function removeManageUnavailableDate(button) {
-    button.parentElement.remove();
+async function removeManageUnavailableDate(button) {
+    const row = button.closest('.date-item');
+    if (!row) return;
+
+    const ymd = row.getAttribute('data-ymd');
+    const fromServer = row.getAttribute('data-from-server') === '1';
+
+    if (fromServer && ymd && ownerManagingFieldId && typeof API !== 'undefined' && API.fields && API.fields.removeUnavailableDate) {
+        try {
+            await API.fields.removeUnavailableDate(ownerManagingFieldId, ymd);
+        } catch (e) {
+            alert((e && e.message) || 'Could not remove blocked date on server.');
+            return;
+        }
+    }
+
+    row.remove();
 }
 
 function handleManageImageUpload(event) {
@@ -1321,31 +1375,102 @@ function removeManageDocumentPreview(previewId) {
     }
 }
 
-function submitManageChanges() {
-    const data = {};
-    
-    console.log('Submitting changes for approval:', data);
-    alert('Changes submitted for approval!');
-    closeModal();
+async function submitManageChanges() {
+    if (!ownerManagingFieldId) {
+        alert('No field selected. Open Manage from a field card.');
+        return;
+    }
+    if (typeof API === 'undefined' || !API.fields || !API.fields.update) {
+        alert('API not available.');
+        return;
+    }
+
+    const typeSel = document.getElementById('manageFieldType');
+    const typeLabel = (typeSel && typeSel.value) || 'Outdoor';
+    const typeEnum = String(typeLabel).toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
+
+    const city = document.getElementById('manageFieldCity')?.value?.trim() || '';
+    const dist = document.getElementById('manageFieldDistrict')?.value?.trim() || '';
+    const addr = document.getElementById('manageFieldAddress')?.value?.trim() || '';
+    const locationLine = [city, dist].filter(Boolean).join(', ') || addr || '—';
+
+    const sportSel = document.getElementById('manageSportCategory');
+    const sport =
+        sportSel && sportSel.options[sportSel.selectedIndex]
+            ? sportSel.options[sportSel.selectedIndex].text.trim()
+            : 'Football';
+
+    const latTxt = document.getElementById('manageLatitude')?.textContent?.trim();
+    const lngTxt = document.getElementById('manageLongitude')?.textContent?.trim();
+
+    const visOn = document.getElementById('manageVisibilityToggle')?.classList.contains('active');
+    const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
+
+    const payload = {
+        name: (document.getElementById('manageFieldName')?.value || '').trim() || 'Field',
+        sport,
+        description: document.getElementById('manageDescription')?.value || '',
+        type: typeEnum,
+        location: locationLine,
+        address: addr || undefined,
+        pricePerHour: Math.round(parseFloat(document.getElementById('managePricePerHour')?.value) || 0),
+        features: collectManageFeatureStrings(),
+        isActive: !!visOn && !maintOn
+    };
+
+    if (latTxt && !isNaN(parseFloat(latTxt))) payload.latitude = parseFloat(latTxt);
+    if (lngTxt && !isNaN(parseFloat(lngTxt))) payload.longitude = parseFloat(lngTxt);
+
+    const btn = document.getElementById('manageSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+    }
+
+    try {
+        await API.fields.update(ownerManagingFieldId, payload);
+
+        if (API.fields.addUnavailableDate && API.fields.listUnavailableDates) {
+            try {
+                const existing = await API.fields.listUnavailableDates(ownerManagingFieldId);
+                const have = new Set(
+                    ((existing && existing.unavailableDates) || []).map(function(r) {
+                        return unavailableYmdFromApi(r.date);
+                    })
+                );
+                const domDates = Array.from(
+                    document.querySelectorAll('#manageUnavailableDatesList .date-item[data-ymd]')
+                )
+                    .map(function(el) {
+                        return el.getAttribute('data-ymd');
+                    })
+                    .filter(Boolean);
+                for (let i = 0; i < domDates.length; i++) {
+                    const ymd = domDates[i];
+                    if (!have.has(ymd)) {
+                        try {
+                            await API.fields.addUnavailableDate(ownerManagingFieldId, ymd);
+                        } catch (err) {
+                            console.warn('addUnavailableDate', ymd, err);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('sync unavailable', e);
+            }
+        }
+
+        alert('Field updated successfully.');
+        closeModal();
+        loadOwnerFieldsFromApi();
+    } catch (e) {
+        alert((e && e.message) || 'Could not update field.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function saveChanges() {
-    // Collect form data
-    const fieldData = {
-        name: document.getElementById('fieldName')?.value || document.getElementById('manageFieldName')?.value,
-        price: document.getElementById('pricePerHour')?.value || document.getElementById('managePricePerHour')?.value,
-        location: document.getElementById('location')?.value || document.getElementById('manageFieldAddress')?.value,
-        description: document.getElementById('description')?.value || document.getElementById('manageDescription')?.value,
-        category: document.getElementById('sportCategory')?.value || document.getElementById('manageSportCategory')?.value,
-        type: document.getElementById('fieldType')?.value || document.getElementById('manageFieldType')?.value,
-        capacity: document.getElementById('capacity')?.value || document.getElementById('manageCapacity')?.value
-    };
-    
-    console.log('Saving field data:', fieldData);
-    
-    // Here you would typically send data to an API
-    alert('Field details saved successfully!');
-    closeModal();
+    submitManageChanges();
 }
 
 // Update radio label styling on change
@@ -1380,11 +1505,25 @@ function updateRadioLabels() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Set initial selected date
+    loadOwnerFieldsFromApi();
     selectedDate = new Date();
-    // Initialize day schedules
     initializeDaySchedules();
-    // Update radio labels styling
     updateRadioLabels();
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const manageId = params.get('manage');
+        const viewId = params.get('view');
+        if (manageId && /^[a-fA-F0-9]{24}$/.test(String(manageId).trim())) {
+            openModal(String(manageId).trim());
+        } else if (viewId && /^[a-fA-F0-9]{24}$/.test(String(viewId).trim())) {
+            openViewFieldModalForFieldId(String(viewId).trim()).catch(function (err) {
+                console.error('open view from URL', err);
+                alert((err && err.message) || 'Could not load field details.');
+                closeViewModal();
+            });
+        }
+    } catch (e) {
+        /* ignore */
+    }
 });
 

@@ -163,22 +163,22 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-card-title">Total users</div>
-                        <div class="stat-card-value">1,248</div>
-                        <div class="stat-card-subtext">+32 this week</div>
+                        <div class="stat-card-value" id="statTotalUsers">-</div>
+                        <div class="stat-card-subtext" id="statUsersSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Active field owners</div>
-                        <div class="stat-card-value">46</div>
-                        <div class="stat-card-subtext">3 pending approval</div>
+                        <div class="stat-card-value" id="statActiveOwners">-</div>
+                        <div class="stat-card-subtext" id="statOwnersSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Bookings (7 days)</div>
-                        <div class="stat-card-value">187</div>
-                        <div class="stat-card-subtext">+14% vs last week</div>
+                        <div class="stat-card-value" id="statBookings">-</div>
+                        <div class="stat-card-subtext" id="statBookingsSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Revenue (7 days)</div>
-                        <div class="stat-card-value">₺72,350</div>
+                        <div class="stat-card-value" id="statRevenue">-</div>
                         <div class="stat-card-subtext">Estimated payout</div>
                     </div>
                 </div>
@@ -283,53 +283,7 @@
                     </div>
 
                     <div class="notifications-list" id="recentNotifications">
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
-                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
-                                <p class="notification-list-time">5 min ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Players</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Payouts processed</h3>
-                                <p class="notification-list-message">Weekly payouts have been processed for eligible field owners.</p>
-                                <p class="notification-list-time">1 hour ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Field owners</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">New feature: Map filters</h3>
-                                <p class="notification-list-message">You can now filter sports fields by price, rating and surface.</p>
-                                <p class="notification-list-time">5 min ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Email</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
-                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
-                                <p class="notification-list-time">Yesterday</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Players</span>
-                            </div>
-                        </div>
+                        <!-- Loaded from API -->
                     </div>
                 </div>
                 </div>
@@ -461,6 +415,9 @@
         </div>
     </div>
     
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/admin/dashboard.js"></script>
 </body>
 </html>

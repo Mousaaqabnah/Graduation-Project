@@ -117,7 +117,7 @@ function checkPasswordStrength(password) {
 
 
 // Form submission handler
-document.getElementById('signupForm').addEventListener('submit', function(e) {
+document.getElementById('signupForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const password = passwordInput.value;
@@ -135,31 +135,51 @@ document.getElementById('signupForm').addEventListener('submit', function(e) {
         return;
     }
     
+    const userType = playerTab.classList.contains('active') ? 'PLAYER' : 'OWNER';
     const formData = {
-        userType: playerTab.classList.contains('active') ? 'player' : 'owner',
+        role: userType,
         fullName: document.getElementById('fullName').value,
         phone: document.getElementById('phone').value,
         email: document.getElementById('email').value,
         dateOfBirth: document.getElementById('dateOfBirth').value,
         gender: document.getElementById('gender').value,
         location: document.getElementById('location').value,
-        password: '***',
+        password: password
     };
     
-    // Here you would typically send this data to your backend
-    console.log('Signup attempt:', formData);
-    
-    // Simulate signup process
     const signupButton = document.querySelector('.btn-primary');
     const originalText = signupButton.textContent;
     signupButton.textContent = 'Creating account...';
     signupButton.disabled = true;
     
-    setTimeout(() => {
-        alert('Signup functionality would connect to your backend API here.');
+    try {
+        const response = await API.auth.register(formData);
+        
+        // Show success message
+        alert('Account created successfully! Redirecting to login...');
+        
+        // Store token and user if login is automatic
+        if (response.token && response.user) {
+            API.setAuthToken(response.token);
+            API.setCurrentUser(response.user);
+            
+            // Redirect based on role
+            if (response.user.role === 'ADMIN') {
+                window.location.href = '/pages/admin/dashboard.html';
+            } else if (response.user.role === 'OWNER') {
+                window.location.href = '/pages/owner/dashboard.html';
+            } else {
+                window.location.href = '/pages/player/home.html';
+            }
+        } else {
+            // Redirect to login page
+            window.location.href = '/pages/auth/login.html';
+        }
+    } catch (error) {
+        alert(error.message || 'Signup failed. Please try again.');
         signupButton.textContent = originalText;
         signupButton.disabled = false;
-    }, 1500);
+    }
 });
 
 // Add smooth focus transitions
