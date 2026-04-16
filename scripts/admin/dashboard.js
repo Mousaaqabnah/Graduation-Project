@@ -694,29 +694,49 @@ function formatTimeAgo(date) {
     }
 }
 
-// Initialize greeting with time-based message
-function updateGreeting() {
-    const greetingHeader = document.querySelector('.greeting-header h1');
-    if (greetingHeader) {
-        const hour = new Date().getHours();
-        let greeting;
-        let emoji = '👋';
-        
-        if (hour < 12) {
-            greeting = 'Good morning';
-        } else if (hour < 18) {
-            greeting = 'Good afternoon';
-        } else {
-            greeting = 'Good evening';
-        }
-        
-        // You can get the user's name from your authentication system
-        const userName = 'Mousa'; // This should come from your user data
-        greetingHeader.textContent = `${greeting}, ${userName} ${emoji}`;
-    }
+function getGreetingForHour(hour) {
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
 }
 
-// Update greeting on load
+function getDisplayNameFromUser(user) {
+    const full = (user && (user.fullName || user.name)) ? String(user.fullName || user.name).trim() : '';
+    if (!full) return 'Admin';
+    // Use first name for compact header greeting
+    return full.split(/\s+/)[0] || full;
+}
+
+// Initialize greeting with time-based message + logged-in user's name (no hardcoded name)
+async function updateGreeting() {
+    const greetingHeader = document.querySelector('.greeting-header h1');
+    if (!greetingHeader) return;
+
+    const hour = new Date().getHours();
+    const greeting = getGreetingForHour(hour);
+    const emoji = '👋';
+
+    try {
+        const localUser = API && API.getCurrentUser ? API.getCurrentUser() : null;
+        if (localUser) {
+            greetingHeader.textContent = `${greeting}, ${getDisplayNameFromUser(localUser)} ${emoji}`;
+            return;
+        }
+
+        if (API && API.auth && API.auth.getCurrentUser) {
+            const res = await API.auth.getCurrentUser();
+            const u = res && res.user ? res.user : null;
+            if (u && API.setCurrentUser) API.setCurrentUser(u);
+            greetingHeader.textContent = `${greeting}, ${getDisplayNameFromUser(u)} ${emoji}`;
+            return;
+        }
+    } catch (_) {
+        // ignore, fall back
+    }
+
+    greetingHeader.textContent = `${greeting} ${emoji}`;
+}
+
 updateGreeting();
 
 // Store all notifications (will be populated from existing notifications)

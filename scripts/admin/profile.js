@@ -1,36 +1,149 @@
-// Admin Profile Page JavaScript
+// Admin Profile Page JavaScript (API-backed)
 
-document.addEventListener('DOMContentLoaded', function() {
+function escapeHtml(text) {
+    if (text == null) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
+}
+
+function formatDateLong(d) {
+    if (!d) return '—';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value == null || value === '' ? '—' : String(value);
+}
+
+function setImg(id, src) {
+    const el = document.getElementById(id);
+    if (el && src) el.src = src;
+}
+
+function getUiAvatarUrl(name) {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Admin')}&background=007BFF&color=fff&size=256`;
+}
+
+let currentUser = null;
+
+function compressImageToJpegDataUrl(file, maxEdge, quality) {
+    return new Promise(function (resolve, reject) {
+        if (!file || !file.type || !/^image\//i.test(file.type)) {
+            reject(new Error('Please choose an image file.'));
+            return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            reject(new Error('Image is too large (max 8 MB).'));
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function () {
+            const img = new Image();
+            img.onload = function () {
+                const w = img.width;
+                const h = img.height;
+                const scale = Math.min(1, maxEdge / w, maxEdge / h);
+                const tw = Math.max(1, Math.round(w * scale));
+                const th = Math.max(1, Math.round(h * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = tw;
+                canvas.height = th;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, tw, th);
+                let dataUrl = canvas.toDataURL('image/jpeg', quality);
+                // If still too big, reduce quality once more.
+                if (dataUrl.length > 3_600_000 && quality > 0.55) {
+                    dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+                }
+                resolve(dataUrl);
+            };
+            img.onerror = function () {
+                reject(new Error('Could not read this image.'));
+            };
+            img.src = reader.result;
+        };
+        reader.onerror = function () {
+            reject(new Error('Could not read file.'));
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function loadMe() {
+    if (!window.API?.auth?.getCurrentUser) return null;
+    const res = await API.auth.getCurrentUser();
+    return res && res.user ? res.user : null;
+}
+
+function renderUser(user) {
+    const name = user.fullName || 'Admin';
+    const email = user.email || '';
+    const phone = user.phone || '—';
+    const avatar = user.avatar || getUiAvatarUrl(name);
+
+    setImg('profileAvatar', avatar);
+    setText('profileNameMain', name);
+    setText('profileEmailMain', email);
+
+    setText('fullName', name);
+    setText('emailAddress', email);
+    setText('phoneNumber', phone);
+    setText('adminId', user.id || '—');
+    setText('role', user.role === 'ADMIN' ? 'Administrator' : (user.role || '—'));
+    setText('memberSince', formatDateLong(user.createdAt));
+
+    // Also update top-right profile picture + popup avatar if present
+    const topAvatar = document.querySelector('#profileBtn img');
+    if (topAvatar) topAvatar.src = avatar;
+    const popupAvatars = document.querySelectorAll('.profile-avatar-large img');
+    popupAvatars.forEach((img) => (img.src = avatar));
+    const popupName = document.querySelector('.profile-details .profile-name');
+    const popupEmail = document.querySelector('.profile-details .profile-email');
+    if (popupName) popupName.textContent = name;
+    if (popupEmail) popupEmail.textContent = email;
+}
+
+async function loadProfileStats() {
+    // best effort: reuse admin stats
+    if (!window.API?.admin?.getStats) return;
+    try {
+        const res = await API.admin.getStats();
+        const s = res && res.stats ? res.stats : {};
+        if (document.getElementById('totalUsers')) setText('totalUsers', (s.totalUsers ?? 0).toLocaleString());
+        // verifiedFields / totalMessages / months etc. are not tracked precisely yet; leave as-is
+    } catch (_) {
+        // ignore
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
     // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
     const notificationBtn = document.getElementById('notificationBtn');
     const notificationPopup = document.getElementById('notificationPopup');
-    
+
     // Notification popup toggle
     if (notificationBtn && notificationPopup) {
         notificationBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
+            if (profilePopup) profilePopup.classList.remove('active');
         });
     }
-    
+
     // Profile popup toggle
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup) {
-                notificationPopup.classList.remove('active');
-            }
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
     }
-    
+
     // Close popups when clicking outside
     document.addEventListener('click', function(e) {
         if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
@@ -40,147 +153,142 @@ document.addEventListener('DOMContentLoaded', function() {
             profilePopup.classList.remove('active');
         }
     });
-    
+
+    // Load user
+    try {
+        currentUser = await loadMe();
+        if (currentUser) {
+            if (window.API?.setCurrentUser) API.setCurrentUser(currentUser);
+            renderUser(currentUser);
+        }
+    } catch (e) {
+        console.warn('Failed to load profile:', e);
+    }
+    loadProfileStats();
+
     // Edit profile modal
     const editProfileBtn = document.getElementById('editProfileBtn');
     const editProfileModal = document.getElementById('editProfileModal');
     const closeEditModalBtn = document.getElementById('closeEditModalBtn');
     const cancelEditBtn = document.getElementById('cancelEditBtn');
     const saveProfileBtn = document.getElementById('saveProfileBtn');
-    
-    // Open edit modal
+
+    const editFullName = document.getElementById('editFullName');
+    const editEmail = document.getElementById('editEmail');
+    const editPhone = document.getElementById('editPhone');
+
+    function populateEditForm() {
+        const u = currentUser || API.getCurrentUser?.() || {};
+        if (editFullName) editFullName.value = u.fullName || '';
+        if (editEmail) editEmail.value = u.email || '';
+        if (editPhone) editPhone.value = u.phone || '';
+    }
+
+    function closeEditModal() {
+        if (editProfileModal) editProfileModal.classList.remove('active');
+    }
+
     if (editProfileBtn && editProfileModal) {
         editProfileBtn.addEventListener('click', function() {
             populateEditForm();
             editProfileModal.classList.add('active');
         });
     }
-    
-    // Close edit modal
-    function closeEditModal() {
-        if (editProfileModal) {
-            editProfileModal.classList.remove('active');
-        }
-    }
-    
-    if (closeEditModalBtn) {
-        closeEditModalBtn.addEventListener('click', closeEditModal);
-    }
-    
-    if (cancelEditBtn) {
-        cancelEditBtn.addEventListener('click', closeEditModal);
-    }
-    
-    // Close modal when clicking outside
+    if (closeEditModalBtn) closeEditModalBtn.addEventListener('click', closeEditModal);
+    if (cancelEditBtn) cancelEditBtn.addEventListener('click', closeEditModal);
     if (editProfileModal) {
         editProfileModal.addEventListener('click', function(e) {
-            if (e.target === editProfileModal) {
-                closeEditModal();
-            }
+            if (e.target === editProfileModal) closeEditModal();
         });
     }
-    
-    // Populate edit form with current data
-    function populateEditForm() {
-        const profileData = getCurrentProfileData();
-        
-        const editFullName = document.getElementById('editFullName');
-        const editEmail = document.getElementById('editEmail');
-        const editPhone = document.getElementById('editPhone');
-        
-        if (editFullName) editFullName.value = profileData.fullName || '';
-        if (editEmail) editEmail.value = profileData.email || '';
-        if (editPhone) editPhone.value = profileData.phone || '';
-    }
-    
-    // Get current profile data from the page
-    function getCurrentProfileData() {
-        return {
-            fullName: document.getElementById('fullName')?.textContent.trim() || '',
-            email: document.getElementById('emailAddress')?.textContent.trim() || '',
-            phone: document.getElementById('phoneNumber')?.textContent.trim() || ''
-        };
-    }
-    
-    // Save profile changes
+
     if (saveProfileBtn) {
-        saveProfileBtn.addEventListener('click', function() {
-            const editForm = document.getElementById('editProfileForm');
-            if (!editForm) return;
-            
-            const formData = new FormData(editForm);
-            const fullName = document.getElementById('editFullName')?.value || '';
-            const email = document.getElementById('editEmail')?.value || '';
-            const phone = document.getElementById('editPhone')?.value || '';
-            
-            // Validate
-            if (!fullName || !email || !phone) {
-                alert('Please fill in all required fields.');
+        saveProfileBtn.addEventListener('click', async function() {
+            if (!currentUser || !currentUser.id) return;
+            const fullName = editFullName ? String(editFullName.value || '').trim() : '';
+            const phone = editPhone ? String(editPhone.value || '').trim() : '';
+            if (!fullName) {
+                alert('Full name is required.');
                 return;
             }
-            
-            // Update the profile display
-            const profileNameMain = document.getElementById('profileNameMain');
-            const profileEmailMain = document.getElementById('profileEmailMain');
-            const fullNameEl = document.getElementById('fullName');
-            const emailAddressEl = document.getElementById('emailAddress');
-            const phoneNumberEl = document.getElementById('phoneNumber');
-            
-            if (profileNameMain) profileNameMain.textContent = fullName;
-            if (profileEmailMain) profileEmailMain.textContent = email;
-            if (fullNameEl) fullNameEl.textContent = fullName;
-            if (emailAddressEl) emailAddressEl.textContent = email;
-            if (phoneNumberEl) phoneNumberEl.textContent = phone;
-            
-            // Update avatar
-            const profileAvatar = document.getElementById('profileAvatar');
-            if (profileAvatar) {
-                profileAvatar.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=007BFF&color=fff&size=256`;
-            }
-            
-            // Save to localStorage (in a real app, this would be an API call)
-            const adminProfile = {
-                fullName: fullName,
-                email: email,
-                phone: phone,
-                lastUpdated: new Date().toISOString()
-            };
-            localStorage.setItem('adminProfile', JSON.stringify(adminProfile));
-            
-            // Close modal
-            closeEditModal();
-            
-            // Show success message
-            alert('Profile updated successfully!');
-        });
-    }
-    
-    // Avatar edit button
-    const avatarEditBtn = document.getElementById('avatarEditBtn');
-    if (avatarEditBtn) {
-        avatarEditBtn.addEventListener('click', function() {
-            // TODO: Implement avatar upload
-            alert('Avatar upload functionality will be implemented soon!');
-        });
-    }
-    
-    // Load saved profile data
-    loadProfileData();
-});
 
-// Load profile data from localStorage
-function loadProfileData() {
-    const savedProfile = localStorage.getItem('adminProfile');
-    if (savedProfile) {
-        try {
-            const profile = JSON.parse(savedProfile);
-            // Update display if data exists
-            // This would typically be done on page load from server
-        } catch (e) {
-            console.error('Error loading profile data:', e);
-        }
+            const oldText = saveProfileBtn.textContent;
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.textContent = 'Saving...';
+            try {
+                if (!window.API?.users?.update) throw new Error('API not available');
+                const res = await API.users.update(currentUser.id, {
+                    fullName,
+                    phone: phone || null
+                });
+                const updated = res && res.user ? res.user : null;
+                if (updated) {
+                    currentUser = { ...currentUser, ...updated };
+                    if (window.API?.setCurrentUser) API.setCurrentUser(currentUser);
+                    renderUser(currentUser);
+                } else {
+                    // fallback: update local view
+                    currentUser.fullName = fullName;
+                    currentUser.phone = phone || null;
+                    renderUser(currentUser);
+                }
+                closeEditModal();
+            } catch (e) {
+                alert((e && e.message) ? e.message : 'Failed to save profile.');
+            } finally {
+                saveProfileBtn.disabled = false;
+                saveProfileBtn.textContent = oldText;
+            }
+        });
     }
-}
+
+    // Avatar upload
+    const avatarEditBtn = document.getElementById('avatarEditBtn');
+    const avatarFileInput = document.getElementById('avatarFileInput');
+
+    if (avatarEditBtn && avatarFileInput) {
+        avatarEditBtn.addEventListener('click', () => avatarFileInput.click());
+        avatarFileInput.addEventListener('change', async () => {
+            if (!currentUser || !currentUser.id) return;
+            const file = avatarFileInput.files && avatarFileInput.files[0];
+            if (!file) return;
+            if (!file.type || file.type.indexOf('image/') !== 0) {
+                alert('Please select an image file.');
+                avatarFileInput.value = '';
+                return;
+            }
+            const oldIcon = avatarEditBtn.innerHTML;
+            avatarEditBtn.disabled = true;
+            avatarEditBtn.innerHTML = '<i class="fi fi-rr-hourglass"></i>';
+            try {
+                const dataUrl = await compressImageToJpegDataUrl(file, 384, 0.72);
+                if (!dataUrl.startsWith('data:image/')) throw new Error('Invalid image.');
+                const res = await API.users.updateAvatar(currentUser.id, dataUrl);
+                const updated = res && res.user ? res.user : null;
+                if (updated && updated.avatar) {
+                    currentUser = { ...currentUser, ...updated };
+                    if (window.API?.setCurrentUser) API.setCurrentUser(currentUser);
+                    try {
+                        localStorage.setItem('userAvatar_' + currentUser.id, String(currentUser.avatar || ''));
+                    } catch (_) {}
+                    renderUser(currentUser);
+                } else {
+                    currentUser.avatar = dataUrl;
+                    try {
+                        localStorage.setItem('userAvatar_' + currentUser.id, String(dataUrl || ''));
+                    } catch (_) {}
+                    renderUser(currentUser);
+                }
+            } catch (e) {
+                alert((e && e.message) ? e.message : 'Failed to upload avatar.');
+            } finally {
+                avatarEditBtn.disabled = false;
+                avatarEditBtn.innerHTML = oldIcon;
+                avatarFileInput.value = '';
+            }
+        });
+    }
+});
 
 
 

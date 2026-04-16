@@ -348,11 +348,11 @@
                             </div>
                             <div class="form-group">
                                 <label for="editEmail">Email Address</label>
-                                <input type="email" id="editEmail" name="email" required>
+                                <input type="email" id="editEmail" name="email" readonly>
                             </div>
                             <div class="form-group">
                                 <label for="editPhone">Phone Number</label>
-                                <input type="tel" id="editPhone" name="phone" required>
+                                <input type="tel" id="editPhone" name="phone" placeholder="+90 5xx xxx xxxx">
                             </div>
                         </div>
                     </div>
@@ -365,6 +365,13 @@
         </div>
     </div>
 
+    <!-- Avatar file picker (triggered by camera button) -->
+    <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/admin-guard.js"></script>
     <script src="../../scripts/admin/profile.js"></script>
 </body>
 </html>
