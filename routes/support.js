@@ -88,9 +88,20 @@ router.post(
           conversation = await prisma.conversation.create({
             data: {
               user1Id: authUser.id,
-              user2Id: admin.id
+              user2Id: admin.id,
+              isSupportThread: true
             }
           });
+        } else if (!conversation.isSupportThread) {
+          // Ensure it shows up in the shared admin inbox
+          try {
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { isSupportThread: true }
+            });
+          } catch (_) {
+            // best effort
+          }
         }
 
         const contentParts = [];

@@ -14,46 +14,8 @@ const verificationModal = document.getElementById('verificationModal');
 const closeVerificationModal = document.getElementById('closeVerificationModal');
 const verificationContent = document.getElementById('verificationContent');
 
-// Sample users data - only field owners with pending/not-submitted verification
-let allVerificationRequests = [
-    {
-        id: 2,
-        name: 'Michael Johnson',
-        email: 'michael.johnson@example.com',
-        role: 'field-owner',
-        location: 'Beirut, Lebanon',
-        joined: 'Nov 24, 2025',
-        status: 'active',
-        avatar: 'https://ui-avatars.com/api/?name=Michael+Johnson&background=7C3AED&color=fff',
-        verificationStatus: 'pending',
-        idFront: 'https://via.placeholder.com/400x250?text=ID+Front',
-        idBack: 'https://via.placeholder.com/400x250?text=ID+Back'
-    },
-    {
-        id: 9,
-        name: 'John Smith',
-        email: 'john.smith@example.com',
-        role: 'field-owner',
-        location: 'Istanbul, Turkey',
-        joined: 'Nov 25, 2025',
-        status: 'active',
-        avatar: 'https://ui-avatars.com/api/?name=John+Smith&background=7C3AED&color=fff',
-        verificationStatus: 'pending',
-        idFront: 'https://via.placeholder.com/400x250?text=ID+Front',
-        idBack: 'https://via.placeholder.com/400x250?text=ID+Back'
-    },
-    {
-        id: 10,
-        name: 'Emma Wilson',
-        email: 'emma.wilson@example.com',
-        role: 'field-owner',
-        location: 'Beirut, Lebanon',
-        joined: 'Nov 26, 2025',
-        status: 'active',
-        avatar: 'https://ui-avatars.com/api/?name=Emma+Wilson&background=7C3AED&color=fff',
-        verificationStatus: 'not-submitted'
-    }
-];
+let allVerificationRequests = [];
+let isLoading = false;
 
 // Notification Popup Toggle
 if (notificationBtn && notificationPopup) {
@@ -87,6 +49,88 @@ document.addEventListener('click', (e) => {
     }
 });
 
+function escapeHtml(text) {
+    if (text == null) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+function formatStatus(status) {
+    const s = String(status || '').toUpperCase();
+    if (s === 'ACTIVE') return 'Active';
+    if (s === 'SUSPENDED') return 'Suspended';
+    return status ? String(status) : '—';
+}
+
+function formatVerificationStatus(status) {
+    const s = String(status || '').toUpperCase();
+    if (s === 'PENDING') return 'Pending';
+    if (s === 'APPROVED') return 'Verified';
+    if (s === 'REJECTED') return 'Rejected';
+    if (s === 'NOT_SUBMITTED' || !s) return 'Not Submitted';
+    return String(status);
+}
+
+function formatDate(d) {
+    if (!d) return '—';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function mapVerificationUser(u) {
+    const name = u.fullName || u.email || 'User';
+    return {
+        id: u.id,
+        name,
+        email: u.email || '',
+        role: 'OWNER',
+        location: u.location || '—',
+        joined: formatDate(u.createdAt),
+        status: u.status || 'ACTIVE',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff`,
+        verificationStatus: u.verificationStatus || 'PENDING',
+        idFrontUrl: u.idFrontUrl || '',
+        idBackUrl: u.idBackUrl || ''
+    };
+}
+
+async function loadVerificationRequestsFromAPI() {
+    if (isLoading) return;
+    isLoading = true;
+    try {
+        if (!window.API || !API.admin || !API.admin.getVerifications) {
+            throw new Error('API not available. Make sure the backend is running and you opened this page from the server.');
+        }
+        const res = await API.admin.getVerifications({ limit: 200, page: 1 });
+        const users = (res && res.users) ? res.users : [];
+        allVerificationRequests = users.map(mapVerificationUser);
+    } catch (e) {
+        console.warn('Failed to load verifications:', e);
+        allVerificationRequests = [];
+        if (verificationTableBody) {
+            verificationTableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: #DC2626;">
+                        ${escapeHtml(e && e.message ? e.message : 'Failed to load verification requests')}
+                    </td>
+                </tr>
+            `;
+        }
+        if (verificationCountBadge) verificationCountBadge.textContent = '0';
+        return;
+    } finally {
+        isLoading = false;
+    }
+    filterVerificationRequests();
+}
+
 // Render verification requests table
 function renderVerificationRequests(requests = allVerificationRequests) {
     if (!verificationTableBody) return;
@@ -100,7 +144,7 @@ function renderVerificationRequests(requests = allVerificationRequests) {
         verificationTableBody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; padding: 40px; color: #6B7280;">
-                    No verification requests found.
+                    ${isLoading ? 'Loading verification requests...' : 'No verification requests found.'}
                 </td>
             </tr>
         `;
@@ -121,15 +165,15 @@ function renderVerificationRequests(requests = allVerificationRequests) {
             <td>${escapeHtml(user.location)}</td>
             <td>${escapeHtml(user.joined)}</td>
             <td>
-                <span class="status-badge ${user.status}">${formatStatus(user.status)}</span>
+                <span class="status-badge ${(String(user.status || '').toLowerCase())}">${formatStatus(user.status)}</span>
             </td>
             <td>
-                <span class="verification-badge ${user.verificationStatus || 'not-submitted'}">${formatVerificationStatus(user.verificationStatus)}</span>
+                <span class="verification-badge ${(String(user.verificationStatus || '').toLowerCase())}">${formatVerificationStatus(user.verificationStatus)}</span>
             </td>
             <td>
                 <div class="actions-cell">
                     <div class="action-buttons">
-                        <button class="action-icon-btn verify" onclick="showVerificationModal(${user.id})" title="Verify field owner">
+                        <button class="action-icon-btn verify" onclick="showVerificationModal('${escapeHtml(user.id)}')" title="Review verification">
                             <i class="fi fi-rr-badge-check"></i>
                         </button>
                     </div>
@@ -137,34 +181,6 @@ function renderVerificationRequests(requests = allVerificationRequests) {
             </td>
         </tr>
     `).join('');
-}
-
-// Format status for display
-function formatStatus(status) {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-// Format verification status for display
-function formatVerificationStatus(status) {
-    if (!status || status === 'not-submitted') return 'Not Submitted';
-    const statusMap = {
-        'pending': 'Pending',
-        'verified': 'Verified',
-        'rejected': 'Rejected'
-    };
-    return statusMap[status] || status;
-}
-
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
 }
 
 // Filter verification requests
@@ -181,9 +197,11 @@ function filterVerificationRequests() {
             user.location.toLowerCase().includes(searchTerm);
         
         // Status filter
-        const matchesStatus = selectedStatus === 'all' || 
-            (selectedStatus === 'pending' && (user.verificationStatus === 'pending' || !user.verificationStatus)) ||
-            (selectedStatus === 'not-submitted' && (user.verificationStatus === 'not-submitted' || (!user.verificationStatus && !user.idFront)));
+        const vs = String(user.verificationStatus || '').toUpperCase();
+        const matchesStatus =
+            selectedStatus === 'all' ||
+            (selectedStatus === 'pending' && vs === 'PENDING') ||
+            (selectedStatus === 'not-submitted' && vs === 'NOT_SUBMITTED');
         
         // Date filter (simplified - in real app, you'd parse dates)
         const matchesDate = selectedDate === 'all'; // For now, always true
@@ -210,11 +228,11 @@ if (dateFilter) {
 
 // Show verification modal
 function showVerificationModal(userId) {
-    const user = allVerificationRequests.find(u => u.id === userId);
-    if (!user || user.role !== 'field-owner') return;
+    const user = allVerificationRequests.find(u => String(u.id) === String(userId));
+    if (!user) return;
     
     if (verificationContent) {
-        const hasIdImages = user.idFront && user.idBack;
+        const hasIdImages = !!(user.idFrontUrl && user.idBackUrl);
         
         verificationContent.innerHTML = `
             <div class="verification-user-info">
@@ -231,13 +249,13 @@ function showVerificationModal(userId) {
                     <div class="verification-image-section">
                         <label class="verification-image-label">ID Front</label>
                         <div class="verification-image-container">
-                            <img src="${user.idFront}" alt="ID Front" class="verification-image" onclick="openImageModal('${user.idFront}')">
+                            <img src="${user.idFrontUrl}" alt="ID Front" class="verification-image" onclick="openImageModal('${escapeHtml(user.idFrontUrl)}')">
                         </div>
                     </div>
                     <div class="verification-image-section">
                         <label class="verification-image-label">ID Back</label>
                         <div class="verification-image-container">
-                            <img src="${user.idBack}" alt="ID Back" class="verification-image" onclick="openImageModal('${user.idBack}')">
+                            <img src="${user.idBackUrl}" alt="ID Back" class="verification-image" onclick="openImageModal('${escapeHtml(user.idBackUrl)}')">
                         </div>
                     </div>
                 </div>
@@ -249,11 +267,11 @@ function showVerificationModal(userId) {
             `}
             
             <div class="verification-actions">
-                <button class="btn btn-verify" onclick="approveVerification(${user.id})" ${!hasIdImages ? 'disabled' : ''}>
-                    <i class="fi fi-rr-check"></i> Approve Field
+                <button class="btn btn-verify" onclick="approveVerification('${escapeHtml(user.id)}')" ${!hasIdImages ? 'disabled' : ''}>
+                    <i class="fi fi-rr-check"></i> Approve Owner
                 </button>
-                <button class="btn btn-reject" onclick="rejectVerification(${user.id})" ${!hasIdImages ? 'disabled' : ''}>
-                    <i class="fi fi-rr-cross"></i> Reject Field
+                <button class="btn btn-reject" onclick="rejectVerification('${escapeHtml(user.id)}')" ${!hasIdImages ? 'disabled' : ''}>
+                    <i class="fi fi-rr-cross"></i> Reject Owner
                 </button>
             </div>
         `;
@@ -266,39 +284,43 @@ function showVerificationModal(userId) {
 }
 
 // Approve verification
-function approveVerification(userId) {
-    const user = allVerificationRequests.find(u => u.id === userId);
+async function approveVerification(userId) {
+    const user = allVerificationRequests.find(u => String(u.id) === String(userId));
     if (!user) return;
     
     if (confirm(`Verify ${user.name} as a field owner?`)) {
-        user.verificationStatus = 'verified';
-        // Remove from verification requests list
-        allVerificationRequests = allVerificationRequests.filter(u => u.id !== userId);
-        filterVerificationRequests(); // Re-render table
-        if (verificationModal) {
-            verificationModal.classList.remove('active');
-            document.body.style.overflow = '';
+        try {
+            await API.admin.verifyOwner(String(userId), 'APPROVED', '');
+            allVerificationRequests = allVerificationRequests.filter(u => String(u.id) !== String(userId));
+            filterVerificationRequests();
+            if (verificationModal) {
+                verificationModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        } catch (e) {
+            alert((e && e.message) ? e.message : 'Failed to approve verification.');
         }
-        console.log(`Field owner ${user.name} has been verified`);
     }
 }
 
 // Reject verification
-function rejectVerification(userId) {
-    const user = allVerificationRequests.find(u => u.id === userId);
+async function rejectVerification(userId) {
+    const user = allVerificationRequests.find(u => String(u.id) === String(userId));
     if (!user) return;
     
     const reason = prompt('Please provide a reason for rejection (optional):');
     if (confirm(`Reject verification for ${user.name}?`)) {
-        user.verificationStatus = 'rejected';
-        // Remove from verification requests list
-        allVerificationRequests = allVerificationRequests.filter(u => u.id !== userId);
-        filterVerificationRequests(); // Re-render table
-        if (verificationModal) {
-            verificationModal.classList.remove('active');
-            document.body.style.overflow = '';
+        try {
+            await API.admin.verifyOwner(String(userId), 'REJECTED', reason || '');
+            allVerificationRequests = allVerificationRequests.filter(u => String(u.id) !== String(userId));
+            filterVerificationRequests();
+            if (verificationModal) {
+                verificationModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        } catch (e) {
+            alert((e && e.message) ? e.message : 'Failed to reject verification.');
         }
-        console.log(`Field owner ${user.name} verification has been rejected${reason ? ': ' + reason : ''}`);
     }
 }
 
@@ -358,7 +380,8 @@ window.openImageModal = openImageModal;
 
 // Initialize: Render verification requests on page load
 document.addEventListener('DOMContentLoaded', () => {
-    renderVerificationRequests();
+    renderVerificationRequests([]);
+    loadVerificationRequestsFromAPI();
 });
 
 

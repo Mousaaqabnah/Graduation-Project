@@ -14,152 +14,8 @@ const fieldInfoModal = document.getElementById('fieldInfoModal');
 const closeFieldInfoModal = document.getElementById('closeFieldInfoModal');
 const fieldInfoContent = document.getElementById('fieldInfoContent');
 
-// Sample fields data
-let allFields = [
-    {
-        id: 1,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-123456789',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-123456789.pdf', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'pending',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' },
-            { name: 'Property Deed.pdf', url: '#' },
-            { name: 'Insurance Certificate.pdf', url: '#' }
-        ]
-    },
-    {
-        id: 2,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-123456789',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-123456789.pdf', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'pending',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' },
-            { name: 'Property Deed.pdf', url: '#' }
-        ]
-    },
-    {
-        id: 3,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-987654321',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-987654321.jpg', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'pending',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' },
-            { name: 'Insurance Certificate.pdf', url: '#' }
-        ]
-    },
-    {
-        id: 4,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-123456789',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-123456789.pdf', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'pending',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' },
-            { name: 'Property Deed.pdf', url: '#' },
-            { name: 'Insurance Certificate.pdf', url: '#' }
-        ]
-    },
-    {
-        id: 5,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-123456789',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-123456789.pdf', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'pending',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' }
-        ]
-    },
-    {
-        id: 6,
-        fieldName: 'Sunset Football Field',
-        location: 'Central Park',
-        owner: 'Maria Garcia',
-        ownerVerificationId: 'ID-123456789',
-        ownerVerificationDocument: { name: 'Owner ID Verification - ID-123456789.pdf', url: '#' },
-        sport: 'football',
-        price: '₺1,500',
-        status: 'approved',
-        description: 'A beautiful football field located in Central Park with excellent facilities.',
-        amenities: ['Parking', 'Changing Rooms', 'Lighting'],
-        size: 'Full Size',
-        surface: 'Artificial Grass',
-        images: [
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&h=600&fit=crop',
-            'https://images.unsplash.com/photo-1575361204480-05e6dab6e0c0?w=800&h=600&fit=crop'
-        ],
-        documents: [
-            { name: 'Field License.pdf', url: '#' },
-            { name: 'Property Deed.pdf', url: '#' },
-            { name: 'Insurance Certificate.pdf', url: '#' }
-        ]
-    }
-];
+let allFields = [];
+let isLoading = false;
 
 // Notification Popup Toggle
 if (notificationBtn && notificationPopup) {
@@ -193,6 +49,98 @@ document.addEventListener('click', (e) => {
     }
 });
 
+function escapeHtml(text) {
+    if (text == null) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+function formatSport(sport) {
+    const s = String(sport || '').toLowerCase();
+    const sportMap = {
+        'football': 'Football',
+        'basketball': 'Basketball',
+        'tennis': 'Tennis',
+        'volleyball': 'Volleyball'
+    };
+    return sportMap[s] || (sport ? String(sport) : '—');
+}
+
+function displayStatus(field) {
+    const ms = field.moderationStatus ? String(field.moderationStatus).toUpperCase() : '';
+    if (ms === 'PENDING') return 'pending';
+    if (ms === 'APPROVED') return 'approved';
+    if (ms === 'REJECTED') return 'rejected';
+    // Back-compat: old fields w/out moderationStatus
+    return field.isActive ? 'approved' : 'pending';
+}
+
+function formatStatus(status) {
+    if (!status) return 'Pending';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatPriceTry(pricePerHour) {
+    const n = Number(pricePerHour || 0);
+    const tryAmount = Math.round(n / 100);
+    return '\u20BA' + tryAmount.toLocaleString();
+}
+
+function mapField(f) {
+    return {
+        id: f.id,
+        fieldName: f.name || 'Field',
+        location: f.location || '—',
+        owner: (f.owner && (f.owner.fullName || f.owner.email)) ? (f.owner.fullName || f.owner.email) : '—',
+        ownerEmail: (f.owner && f.owner.email) ? f.owner.email : '',
+        sport: String(f.sport || '').toLowerCase(),
+        pricePerHour: f.pricePerHour || 0,
+        price: formatPriceTry(f.pricePerHour),
+        status: displayStatus(f),
+        isActive: !!f.isActive,
+        moderationStatus: f.moderationStatus || null,
+        moderationReason: f.moderationReason || '',
+        description: f.description || '',
+        amenities: Array.isArray(f.features) ? f.features : [],
+        images: Array.isArray(f.images) ? f.images : [],
+        address: f.address || '',
+        phone: f.phone || '',
+        type: f.type || '',
+        createdAt: f.createdAt || null
+    };
+}
+
+async function loadFieldsFromAPI() {
+    if (isLoading) return;
+    isLoading = true;
+    if (fieldsTableBody) {
+        fieldsTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#6B7280">Loading fields...</td></tr>';
+    }
+    try {
+        if (!window.API || !API.admin || !API.admin.getFields) {
+            throw new Error('API not available.');
+        }
+        const params = { limit: 200, page: 1 };
+        const sport = fieldFilter && fieldFilter.value && fieldFilter.value !== 'all' ? fieldFilter.value : '';
+        const status = statusFilter && statusFilter.value && statusFilter.value !== 'all' ? statusFilter.value : '';
+        const search = fieldSearch && fieldSearch.value ? fieldSearch.value.trim() : '';
+        if (sport) params.sport = sport;
+        if (status) params.status = status;
+        if (search) params.search = search;
+        const res = await API.admin.getFields(params);
+        allFields = (res.fields || []).map(mapField);
+        renderFields(allFields);
+    } catch (e) {
+        console.warn('Load fields failed:', e);
+        allFields = [];
+        if (fieldsTableBody) {
+            fieldsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#DC2626">${escapeHtml(e && e.message ? e.message : 'Failed to load fields')}</td></tr>`;
+        }
+    } finally {
+        isLoading = false;
+    }
+}
+
 // Render fields table
 function renderFields(fields = allFields) {
     if (!fieldsTableBody) return;
@@ -201,7 +149,7 @@ function renderFields(fields = allFields) {
         fieldsTableBody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; padding: 40px; color: #6B7280;">
-                    No fields found matching your criteria.
+                    ${isLoading ? 'Loading fields...' : 'No fields found matching your criteria.'}
                 </td>
             </tr>
         `;
@@ -231,23 +179,23 @@ function renderFields(fields = allFields) {
             <td>
                 <div class="actions-cell">
                     <div class="action-buttons">
-                        <button class="action-icon-btn info" onclick="showFieldInfo(${field.id})" title="View field info">
+                        <button class="action-icon-btn info" onclick="showFieldInfo('${escapeHtml(field.id)}')" title="View field info">
                             <i class="fi fi-rr-info"></i>
                         </button>
                         ${field.status === 'pending' 
-                            ? `<button class="action-icon-btn approve" onclick="approveField(${field.id})" title="Approve field">
+                            ? `<button class="action-icon-btn approve" onclick="approveField('${escapeHtml(field.id)}')" title="Approve field">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="20 6 9 17 4 12"></polyline>
                                 </svg>
                             </button>
-                            <button class="action-icon-btn reject" onclick="rejectField(${field.id})" title="Reject field">
+                            <button class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="Reject field">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
                                 </svg>
                             </button>`
                             : field.status === 'approved'
-                            ? `<button class="action-icon-btn reject" onclick="rejectField(${field.id})" title="Reject field">
+                            ? `<button class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="Reject field">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -262,159 +210,100 @@ function renderFields(fields = allFields) {
     `).join('');
 }
 
-// Format sport for display
-function formatSport(sport) {
-    const sportMap = {
-        'football': 'Football',
-        'basketball': 'Basketball',
-        'tennis': 'Tennis',
-        'volleyball': 'Volleyball'
-    };
-    return sportMap[sport] || sport;
-}
-
-// Format status for display
-function formatStatus(status) {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-// Get document icon based on file extension
-function getDocumentIcon(fileName) {
-    const extension = fileName.split('.').pop().toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
-        return 'fi fi-rr-picture';
-    } else if (extension === 'pdf') {
-        return 'fi fi-rr-file-pdf';
-    }
-    return 'fi fi-rr-file';
-}
-
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
-}
-
-// Filter fields
-function filterFields() {
-    const searchTerm = fieldSearch ? fieldSearch.value.toLowerCase().trim() : '';
-    const selectedSport = fieldFilter ? fieldFilter.value : 'all';
-    const selectedStatus = statusFilter ? statusFilter.value : 'all';
-    const selectedDate = dateFilter ? dateFilter.value : 'all';
-    
-    let filtered = allFields.filter(field => {
-        // Search filter
-        const matchesSearch = !searchTerm || 
-            field.fieldName.toLowerCase().includes(searchTerm) ||
-            field.location.toLowerCase().includes(searchTerm) ||
-            field.owner.toLowerCase().includes(searchTerm);
-        
-        // Sport filter
-        const matchesSport = selectedSport === 'all' || field.sport === selectedSport;
-        
-        // Status filter
-        const matchesStatus = selectedStatus === 'all' || field.status === selectedStatus;
-        
-        // Date filter (simplified - in real app, you'd parse dates)
-        const matchesDate = selectedDate === 'all'; // For now, always true
-        
-        return matchesSearch && matchesSport && matchesStatus && matchesDate;
-    });
-    
-    renderFields(filtered);
-}
-
 // Search functionality
 if (fieldSearch) {
-    fieldSearch.addEventListener('input', filterFields);
+    fieldSearch.addEventListener('input', () => {
+        clearTimeout(fieldSearch._t);
+        fieldSearch._t = setTimeout(loadFieldsFromAPI, 300);
+    });
 }
 
 // Filter functionality
 if (fieldFilter) {
-    fieldFilter.addEventListener('change', filterFields);
+    fieldFilter.addEventListener('change', loadFieldsFromAPI);
 }
 
 if (statusFilter) {
-    statusFilter.addEventListener('change', filterFields);
+    statusFilter.addEventListener('change', loadFieldsFromAPI);
 }
 
 if (dateFilter) {
-    dateFilter.addEventListener('change', filterFields);
+    dateFilter.addEventListener('change', loadFieldsFromAPI);
 }
 
 // Approve field
-function approveField(fieldId) {
-    const field = allFields.find(f => f.id === fieldId);
+async function approveField(fieldId) {
+    const field = allFields.find(f => String(f.id) === String(fieldId));
     if (!field) return;
     
     if (confirm(`Are you sure you want to approve "${field.fieldName}"?`)) {
-        field.status = 'approved';
-        filterFields(); // Re-render to show updated status
-        
-        console.log(`Field "${field.fieldName}" has been approved`);
+        try {
+            await API.admin.moderateField(String(fieldId), 'APPROVED', '');
+            await loadFieldsFromAPI();
+        } catch (e) {
+            alert(e && e.message ? e.message : 'Failed to approve field.');
+        }
     }
 }
 
 // Reject field
-function rejectField(fieldId) {
-    const field = allFields.find(f => f.id === fieldId);
+async function rejectField(fieldId) {
+    const field = allFields.find(f => String(f.id) === String(fieldId));
     if (!field) return;
     
     if (confirm(`Are you sure you want to reject "${field.fieldName}"?`)) {
-        field.status = 'rejected';
-        filterFields(); // Re-render to show updated status
-        
-        console.log(`Field "${field.fieldName}" has been rejected`);
+        const reason = prompt('Reason for rejection (optional):') || '';
+        try {
+            await API.admin.moderateField(String(fieldId), 'REJECTED', reason);
+            await loadFieldsFromAPI();
+        } catch (e) {
+            alert(e && e.message ? e.message : 'Failed to reject field.');
+        }
     }
 }
 
 // Approve field from modal
-function approveFieldFromModal(fieldId) {
-    const field = allFields.find(f => f.id === fieldId);
+async function approveFieldFromModal(fieldId) {
+    const field = allFields.find(f => String(f.id) === String(fieldId));
     if (!field) return;
     
     if (confirm(`Are you sure you want to approve "${field.fieldName}"?`)) {
-        field.status = 'approved';
-        filterFields(); // Re-render to show updated status
-        
-        // Close modal
-        if (fieldInfoModal) {
-            fieldInfoModal.classList.remove('active');
-            document.body.style.overflow = '';
+        try {
+            await API.admin.moderateField(String(fieldId), 'APPROVED', '');
+            await loadFieldsFromAPI();
+            if (fieldInfoModal) {
+                fieldInfoModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        } catch (e) {
+            alert(e && e.message ? e.message : 'Failed to approve field.');
         }
-        
-        console.log(`Field "${field.fieldName}" has been approved`);
     }
 }
 
 // Reject field from modal
-function rejectFieldFromModal(fieldId) {
-    const field = allFields.find(f => f.id === fieldId);
+async function rejectFieldFromModal(fieldId) {
+    const field = allFields.find(f => String(f.id) === String(fieldId));
     if (!field) return;
     
     if (confirm(`Are you sure you want to reject "${field.fieldName}"?`)) {
-        field.status = 'rejected';
-        filterFields(); // Re-render to show updated status
-        
-        // Close modal
-        if (fieldInfoModal) {
-            fieldInfoModal.classList.remove('active');
-            document.body.style.overflow = '';
+        const reason = prompt('Reason for rejection (optional):') || '';
+        try {
+            await API.admin.moderateField(String(fieldId), 'REJECTED', reason);
+            await loadFieldsFromAPI();
+            if (fieldInfoModal) {
+                fieldInfoModal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        } catch (e) {
+            alert(e && e.message ? e.message : 'Failed to reject field.');
         }
-        
-        console.log(`Field "${field.fieldName}" has been rejected`);
     }
 }
 
 // Show field info modal
 function showFieldInfo(fieldId) {
-    const field = allFields.find(f => f.id === fieldId);
+    const field = allFields.find(f => String(f.id) === String(fieldId));
     if (!field) return;
     
     if (fieldInfoContent) {
@@ -459,6 +348,12 @@ function showFieldInfo(fieldId) {
                 <div class="field-info-label">Owner</div>
                 <div class="field-info-value">${escapeHtml(field.owner)}</div>
             </div>
+            ${field.ownerEmail ? `
+            <div class="field-info-item">
+                <div class="field-info-label">Owner Email</div>
+                <div class="field-info-value">${escapeHtml(field.ownerEmail)}</div>
+            </div>
+            ` : ''}
             <div class="field-info-item">
                 <div class="field-info-label">Sport</div>
                 <div class="field-info-value">
@@ -481,56 +376,21 @@ function showFieldInfo(fieldId) {
                 <div class="field-info-value">${escapeHtml(field.description)}</div>
             </div>
             ` : ''}
-            ${field.size ? `
-            <div class="field-info-item">
-                <div class="field-info-label">Size</div>
-                <div class="field-info-value">${escapeHtml(field.size)}</div>
-            </div>
-            ` : ''}
-            ${field.surface ? `
-            <div class="field-info-item">
-                <div class="field-info-label">Surface</div>
-                <div class="field-info-value">${escapeHtml(field.surface)}</div>
-            </div>
-            ` : ''}
             ${field.amenities && field.amenities.length > 0 ? `
             <div class="field-info-item">
                 <div class="field-info-label">Amenities</div>
                 <div class="field-info-value">${field.amenities.map(a => escapeHtml(a)).join(', ')}</div>
             </div>
             ` : ''}
-            ${(field.ownerVerificationDocument || (field.documents && field.documents.length > 0)) ? `
-            <div class="field-info-item">
-                <div class="field-info-label">Documents & Verification ID</div>
-                <div class="field-info-value">
-                    <div class="documents-list">
-                        ${field.ownerVerificationDocument ? `
-                            <a href="${field.ownerVerificationDocument.url}" class="document-link verification-document" target="_blank" rel="noopener noreferrer">
-                                <i class="${getDocumentIcon(field.ownerVerificationDocument.name)}"></i>
-                                <span>${escapeHtml(field.ownerVerificationDocument.name)}</span>
-                                <i class="fi fi-rr-external-link"></i>
-                            </a>
-                        ` : ''}
-                        ${field.documents && field.documents.length > 0 ? field.documents.map(doc => `
-                            <a href="${doc.url}" class="document-link" target="_blank" rel="noopener noreferrer">
-                                <i class="${getDocumentIcon(doc.name)}"></i>
-                                <span>${escapeHtml(doc.name)}</span>
-                                <i class="fi fi-rr-external-link"></i>
-                            </a>
-                        `).join('') : ''}
-                    </div>
-                </div>
-            </div>
-            ` : ''}
             <div class="field-info-actions">
                 ${field.status === 'pending' ? `
-                    <button class="btn-approve" onclick="approveFieldFromModal(${field.id})">
+                    <button class="btn-approve" onclick="approveFieldFromModal('${escapeHtml(field.id)}')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                         Approve Field
                     </button>
-                    <button class="btn-reject" onclick="rejectFieldFromModal(${field.id})">
+                    <button class="btn-reject" onclick="rejectFieldFromModal('${escapeHtml(field.id)}')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -538,7 +398,7 @@ function showFieldInfo(fieldId) {
                         Reject Field
                     </button>
                 ` : field.status === 'approved' ? `
-                    <button class="btn-reject" onclick="rejectFieldFromModal(${field.id})">
+                    <button class="btn-reject" onclick="rejectFieldFromModal('${escapeHtml(field.id)}')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -546,7 +406,7 @@ function showFieldInfo(fieldId) {
                         Reject Field
                     </button>
                 ` : field.status === 'rejected' ? `
-                    <button class="btn-approve" onclick="approveFieldFromModal(${field.id})">
+                    <button class="btn-approve" onclick="approveFieldFromModal('${escapeHtml(field.id)}')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
@@ -731,6 +591,6 @@ window.goToImage = goToImage;
 
 // Initialize: Render fields on page load
 document.addEventListener('DOMContentLoaded', () => {
-    renderFields();
+    loadFieldsFromAPI();
 });
 

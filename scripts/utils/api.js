@@ -553,6 +553,64 @@ const adminAPI = {
       method: 'PUT',
       body: { verificationStatus, reason }
     });
+  },
+
+  inviteAdmin: async (email, fullName) => {
+    return apiRequest('/admin/invite-admin', {
+      method: 'POST',
+      body: { email, fullName }
+    });
+  },
+
+  // Fields moderation
+  getFields: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/fields${queryString ? '?' + queryString : ''}`);
+  },
+
+  moderateField: async (fieldId, status, reason) => {
+    return apiRequest(`/admin/fields/${encodeURIComponent(fieldId)}/moderation`, {
+      method: 'PUT',
+      body: { status, reason }
+    });
+  },
+
+  // Shared Support Inbox
+  supportGetConversations: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/support/conversations${queryString ? '?' + queryString : ''}`);
+  },
+
+  supportGetMessages: async (conversationId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/messages?${queryString}`);
+  },
+
+  supportSendMessage: async (conversationId, content) => {
+    return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/messages`, {
+      method: 'POST',
+      body: { content }
+    });
+  },
+
+  supportMarkAsRead: async (conversationId, messageId) => {
+    return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read`, {
+      method: 'PUT'
+    });
+  },
+
+  supportSetBlocked: async (conversationId, blocked) => {
+    return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/block`, {
+      method: 'PATCH',
+      body: { blocked }
+    });
+  },
+
+  supportSetStarred: async (conversationId, starred) => {
+    return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/star`, {
+      method: 'PATCH',
+      body: { starred }
+    });
   }
 };
 

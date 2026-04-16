@@ -521,14 +521,43 @@ function showNotificationSuccess() {
 
 // Invite Admin functionality
 if (inviteAdminBtn) {
-    inviteAdminBtn.addEventListener('click', () => {
-        // You can implement invite admin modal or redirect here
+    inviteAdminBtn.addEventListener('click', async () => {
         const email = prompt('Enter email address to invite as admin:');
-        if (email && email.includes('@')) {
-            // Here you would typically send an API request to invite the admin
-            alert(`Invitation will be sent to ${email}`);
-        } else if (email) {
+        if (!email) return;
+        if (!email.includes('@')) {
             alert('Please enter a valid email address.');
+            return;
+        }
+        const fullName = prompt('Admin full name (optional):') || '';
+        if (!API?.admin?.inviteAdmin) {
+            alert('API not available. Make sure you opened this page from the backend server.');
+            return;
+        }
+
+        inviteAdminBtn.disabled = true;
+        const old = inviteAdminBtn.textContent;
+        inviteAdminBtn.textContent = 'Inviting...';
+        try {
+            const res = await API.admin.inviteAdmin(String(email).trim(), String(fullName).trim());
+            const pwd = res && res.tempPassword ? String(res.tempPassword) : '';
+            const createdEmail = res && res.user && res.user.email ? res.user.email : String(email).trim();
+            const msg = pwd
+                ? `Admin created: ${createdEmail}\n\nTemporary password:\n${pwd}\n\nShare this password securely. The admin can change it in Settings.`
+                : `Admin created: ${createdEmail}`;
+            alert(msg);
+
+            if (pwd && navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(pwd);
+                } catch (_) {
+                    // ignore
+                }
+            }
+        } catch (e) {
+            alert((e && e.message) ? e.message : 'Failed to invite admin.');
+        } finally {
+            inviteAdminBtn.disabled = false;
+            inviteAdminBtn.textContent = old;
         }
     });
 }

@@ -35,6 +35,12 @@ enum FieldType {
   OUTDOOR
 }
 
+enum FieldModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum BookingStatus {
   PENDING
   UPCOMING
@@ -113,6 +119,12 @@ model Field {
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Admin moderation / approval workflow (optional for backward-compat with existing data)
+  moderationStatus FieldModerationStatus? @default(PENDING) @map("moderation_status")
+  moderationReason String?                @map("moderation_reason")
+  moderatedAt      DateTime?              @map("moderated_at")
+  moderatedById    String?                @map("moderated_by_id") @db.ObjectId
 
   ownerId     String    @map("owner_id") @db.ObjectId
   owner       User      @relation("FieldOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -212,6 +224,7 @@ model Conversation {
   updatedAt DateTime @updatedAt @map("updated_at")
   blockedAt DateTime? @map("blocked_at")
   starredAt DateTime? @map("starred_at")
+  isSupportThread Boolean? @default(false) @map("is_support_thread")
 
   user1Id String @map("user1_id") @db.ObjectId
   user1   User   @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)

@@ -484,6 +484,10 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
       }
     }
 
+    const isAdmin = req.user.role === 'ADMIN';
+    const moderationStatus = isAdmin ? 'APPROVED' : 'PENDING';
+    const isActive = isAdmin; // owner-created fields must be approved by admin first
+
     const field = await prisma.field.create({
       data: {
         name,
@@ -498,7 +502,12 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
         images: images || [],
         latitude: latitude != null ? parseFloat(latitude) : null,
         longitude: longitude != null ? parseFloat(longitude) : null,
-        ownerId: req.user.id
+        ownerId: req.user.id,
+        moderationStatus,
+        moderationReason: null,
+        moderatedAt: isAdmin ? new Date() : null,
+        moderatedById: isAdmin ? req.user.id : null,
+        isActive
       },
       include: {
         owner: {
@@ -511,7 +520,10 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
       }
     });
 
-    res.status(201).json({ message: 'Field created successfully', field });
+    const msg = isAdmin
+      ? 'Field created successfully'
+      : 'Field submitted for approval';
+    res.status(201).json({ message: msg, field });
   } catch (error) {
     console.error('Create field error:', error);
     res.status(500).json({ error: 'Failed to create field' });
