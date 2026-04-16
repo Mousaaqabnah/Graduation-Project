@@ -414,6 +414,60 @@
             </div>
         </div>
     </div>
+
+    <!-- Invite Admin Modal -->
+    <div class="modal-overlay" id="inviteAdminModal" aria-hidden="true">
+        <div class="modal-box invite-admin-modal" role="dialog" aria-modal="true" aria-labelledby="inviteAdminTitle">
+            <button class="modal-close" id="closeInviteAdminModal" aria-label="Close invite admin modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+
+            <div class="modal-title" id="inviteAdminTitle">Invite admin</div>
+
+            <div class="invite-admin-modal-content">
+                <form id="inviteAdminForm" class="invite-admin-form">
+                    <div class="invite-admin-inline-error" id="inviteAdminError" style="display:none;"></div>
+                    <div class="form-group">
+                        <label for="inviteAdminEmail">Admin email</label>
+                        <input type="email" id="inviteAdminEmail" placeholder="admin@example.com" required autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="inviteAdminName">Full name (optional)</label>
+                        <input type="text" id="inviteAdminName" placeholder="Admin User" maxlength="200" autocomplete="off">
+                    </div>
+
+                    <div class="invite-admin-actions">
+                        <button type="button" class="btn invite-admin-cancel" id="cancelInviteAdminBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="submitInviteAdminBtn">Create admin</button>
+                    </div>
+                </form>
+
+                <div class="invite-admin-result" id="inviteAdminResult" style="display:none;">
+                    <div class="invite-admin-result-title">Admin created</div>
+                    <div class="invite-admin-result-row">
+                        <div class="invite-admin-result-label">Email</div>
+                        <div class="invite-admin-result-value" id="inviteAdminCreatedEmail">—</div>
+                    </div>
+                    <div class="invite-admin-result-row">
+                        <div class="invite-admin-result-label">Temporary password</div>
+                        <div class="invite-admin-password-wrap">
+                            <input id="inviteAdminTempPassword" class="invite-admin-password" type="password" value="" readonly>
+                            <button type="button" class="btn invite-admin-copy invite-admin-toggle" id="toggleInviteAdminPasswordBtn" aria-label="Show password">Show</button>
+                            <button type="button" class="btn invite-admin-copy" id="copyInviteAdminPasswordBtn">Copy</button>
+                        </div>
+                        <div class="invite-admin-hint">Share this password securely. The admin can change it in Settings.</div>
+                    </div>
+                    <div class="invite-admin-actions">
+                        <button type="button" class="btn btn-primary" id="doneInviteAdminBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>

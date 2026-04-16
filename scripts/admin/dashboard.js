@@ -18,6 +18,22 @@ const selectedUserId = document.getElementById('selectedUserId');
 const selectedUserDisplay = document.getElementById('selectedUserDisplay');
 const removeUserBtn = document.getElementById('removeUserBtn');
 
+// Invite Admin Modal elements
+const inviteAdminModal = document.getElementById('inviteAdminModal');
+const closeInviteAdminModal = document.getElementById('closeInviteAdminModal');
+const cancelInviteAdminBtn = document.getElementById('cancelInviteAdminBtn');
+const inviteAdminForm = document.getElementById('inviteAdminForm');
+const inviteAdminEmail = document.getElementById('inviteAdminEmail');
+const inviteAdminName = document.getElementById('inviteAdminName');
+const submitInviteAdminBtn = document.getElementById('submitInviteAdminBtn');
+const inviteAdminError = document.getElementById('inviteAdminError');
+const inviteAdminResult = document.getElementById('inviteAdminResult');
+const inviteAdminCreatedEmail = document.getElementById('inviteAdminCreatedEmail');
+const inviteAdminTempPassword = document.getElementById('inviteAdminTempPassword');
+const toggleInviteAdminPasswordBtn = document.getElementById('toggleInviteAdminPasswordBtn');
+const copyInviteAdminPasswordBtn = document.getElementById('copyInviteAdminPasswordBtn');
+const doneInviteAdminBtn = document.getElementById('doneInviteAdminBtn');
+
 // Notification Popup Toggle
 if (notificationBtn && notificationPopup) {
     notificationBtn.addEventListener('click', (e) => {
@@ -521,43 +537,139 @@ function showNotificationSuccess() {
 
 // Invite Admin functionality
 if (inviteAdminBtn) {
-    inviteAdminBtn.addEventListener('click', async () => {
-        const email = prompt('Enter email address to invite as admin:');
-        if (!email) return;
-        if (!email.includes('@')) {
-            alert('Please enter a valid email address.');
-            return;
+    inviteAdminBtn.addEventListener('click', () => {
+        if (!inviteAdminModal) return;
+        if (inviteAdminForm) inviteAdminForm.style.display = 'block';
+        if (inviteAdminResult) inviteAdminResult.style.display = 'none';
+        if (inviteAdminError) {
+            inviteAdminError.style.display = 'none';
+            inviteAdminError.textContent = '';
         }
-        const fullName = prompt('Admin full name (optional):') || '';
-        if (!API?.admin?.inviteAdmin) {
-            alert('API not available. Make sure you opened this page from the backend server.');
-            return;
-        }
+        if (inviteAdminEmail) inviteAdminEmail.value = '';
+        if (inviteAdminName) inviteAdminName.value = '';
+        if (inviteAdminTempPassword) inviteAdminTempPassword.value = '';
+        if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = '—';
+        if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
+        if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+        inviteAdminModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => {
+            if (inviteAdminEmail) inviteAdminEmail.focus();
+        }, 50);
+    });
+}
 
-        inviteAdminBtn.disabled = true;
-        const old = inviteAdminBtn.textContent;
-        inviteAdminBtn.textContent = 'Inviting...';
+function closeInviteModal() {
+    if (!inviteAdminModal) return;
+    inviteAdminModal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+if (closeInviteAdminModal) closeInviteAdminModal.addEventListener('click', closeInviteModal);
+if (cancelInviteAdminBtn) cancelInviteAdminBtn.addEventListener('click', closeInviteModal);
+if (doneInviteAdminBtn) doneInviteAdminBtn.addEventListener('click', closeInviteModal);
+
+if (inviteAdminModal) {
+    inviteAdminModal.addEventListener('click', (e) => {
+        if (e.target === inviteAdminModal) closeInviteModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && inviteAdminModal.classList.contains('active')) closeInviteModal();
+    });
+}
+
+if (copyInviteAdminPasswordBtn) {
+    copyInviteAdminPasswordBtn.addEventListener('click', async () => {
+        const pwd = inviteAdminTempPassword ? String(inviteAdminTempPassword.value || '') : '';
+        if (!pwd) return;
         try {
-            const res = await API.admin.inviteAdmin(String(email).trim(), String(fullName).trim());
-            const pwd = res && res.tempPassword ? String(res.tempPassword) : '';
-            const createdEmail = res && res.user && res.user.email ? res.user.email : String(email).trim();
-            const msg = pwd
-                ? `Admin created: ${createdEmail}\n\nTemporary password:\n${pwd}\n\nShare this password securely. The admin can change it in Settings.`
-                : `Admin created: ${createdEmail}`;
-            alert(msg);
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(pwd);
+                copyInviteAdminPasswordBtn.textContent = 'Copied';
+                setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+            }
+        } catch (_) {
+            // fallback: select text for manual copy
+            try {
+                inviteAdminTempPassword.focus();
+                inviteAdminTempPassword.select();
+            } catch (_) {}
+        }
+    });
+}
 
+if (toggleInviteAdminPasswordBtn && inviteAdminTempPassword) {
+    toggleInviteAdminPasswordBtn.addEventListener('click', () => {
+        const isHidden = inviteAdminTempPassword.type === 'password';
+        inviteAdminTempPassword.type = isHidden ? 'text' : 'password';
+        toggleInviteAdminPasswordBtn.textContent = isHidden ? 'Hide' : 'Show';
+        toggleInviteAdminPasswordBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+    });
+}
+
+if (inviteAdminForm) {
+    inviteAdminForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (inviteAdminError) {
+            inviteAdminError.style.display = 'none';
+            inviteAdminError.textContent = '';
+        }
+        const email = inviteAdminEmail ? String(inviteAdminEmail.value || '').trim() : '';
+        const fullName = inviteAdminName ? String(inviteAdminName.value || '').trim() : '';
+
+        if (!email || !email.includes('@')) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = 'Please enter a valid email address.';
+                inviteAdminError.style.display = 'block';
+            }
+            return;
+        }
+        if (!API?.admin?.inviteAdmin) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = 'API not available. Make sure you opened this page from the backend server.';
+                inviteAdminError.style.display = 'block';
+            }
+            return;
+        }
+
+        if (submitInviteAdminBtn) {
+            submitInviteAdminBtn.disabled = true;
+            submitInviteAdminBtn.textContent = 'Creating...';
+        }
+
+        try {
+            const res = await API.admin.inviteAdmin(email, fullName);
+            const createdEmail = res && res.user && res.user.email ? String(res.user.email) : email;
+            const pwd = res && res.tempPassword ? String(res.tempPassword) : '';
+
+            if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = createdEmail;
+            if (inviteAdminTempPassword) inviteAdminTempPassword.value = pwd;
+            if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
+            if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+
+            if (inviteAdminForm) inviteAdminForm.style.display = 'none';
+            if (inviteAdminResult) inviteAdminResult.style.display = 'block';
+
+            // auto-copy best effort
             if (pwd && navigator && navigator.clipboard && navigator.clipboard.writeText) {
                 try {
                     await navigator.clipboard.writeText(pwd);
-                } catch (_) {
-                    // ignore
-                }
+                    if (copyInviteAdminPasswordBtn) {
+                        copyInviteAdminPasswordBtn.textContent = 'Copied';
+                        setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+                    }
+                } catch (_) {}
             }
-        } catch (e) {
-            alert((e && e.message) ? e.message : 'Failed to invite admin.');
+        } catch (err) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = (err && err.message) ? err.message : 'Failed to create admin.';
+                inviteAdminError.style.display = 'block';
+            }
         } finally {
-            inviteAdminBtn.disabled = false;
-            inviteAdminBtn.textContent = old;
+            if (submitInviteAdminBtn) {
+                submitInviteAdminBtn.disabled = false;
+                submitInviteAdminBtn.textContent = 'Create admin';
+            }
         }
     });
 }
