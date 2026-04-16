@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
 
@@ -315,8 +316,15 @@ router.post('/invite-admin', [
     const email = String(req.body.email).trim().toLowerCase();
     const fullName = (req.body.fullName && String(req.body.fullName).trim()) || 'Admin';
 
-    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    // Use native Mongo driver for create to avoid Prisma Mongo transaction/replica-set limitations
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    const db = mongo.db();
+    const usersCol = db.collection('users');
+
+    const existing = await usersCol.findOne({ email });
     if (existing) {
+      await mongo.close();
       return res.status(400).json({ error: 'Email already registered' });
     }
 
@@ -328,24 +336,43 @@ router.post('/invite-admin', [
 
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        fullName,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-        verificationStatus: null
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        status: true,
-        createdAt: true
-      }
+    const now = new Date();
+    const insertResult = await usersCol.insertOne({
+      email,
+      password_hash: passwordHash,
+      full_name: fullName,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      verification_status: null,
+      created_at: now,
+      updated_at: now
     });
+
+    const insertedId = insertResult.insertedId;
+    const createdDoc = await usersCol.findOne(
+      { _id: insertedId },
+      {
+        projection: {
+          _id: 1,
+          email: 1,
+          full_name: 1,
+          role: 1,
+          status: 1,
+          created_at: 1
+        }
+      }
+    );
+
+    await mongo.close();
+
+    const user = {
+      id: String(createdDoc._id),
+      email: createdDoc.email,
+      fullName: createdDoc.full_name || fullName,
+      role: createdDoc.role || 'ADMIN',
+      status: createdDoc.status || 'ACTIVE',
+      createdAt: createdDoc.created_at || now
+    };
 
     res.status(201).json({
       message: 'Admin account created',
