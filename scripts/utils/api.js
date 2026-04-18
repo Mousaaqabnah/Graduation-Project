@@ -472,6 +472,7 @@ const supportAPI = {
 // User Notifications API (admin replies, etc.)
 const notificationsAPI = {
   getMine: async () => apiRequest('/notifications/me'),
+  markAllRead: async () => apiRequest('/notifications/me/mark-read', { method: 'POST' }),
   clearAll: async () => apiRequest('/notifications/me', { method: 'DELETE' })
 };
 

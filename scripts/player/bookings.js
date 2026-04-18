@@ -687,7 +687,8 @@ function leaveBooking(bookingId) {
     var notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
     notifications.push(notification);
     localStorage.setItem('playerNotifications', JSON.stringify(notifications));
-    
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
+
     function onLeftSuccess() {
         // Remove from display
         var displayIndex = bookingsData.upcoming.findIndex(function(b) { return b.id === bookingId; });

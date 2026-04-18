@@ -9,6 +9,134 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (!notificationBtn || !notificationPopup) return;
 
+  (function injectNotificationBadgeStyles() {
+    if (document.getElementById('matchfield-notification-badge-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'matchfield-notification-badge-styles';
+    style.textContent = `
+      .notification-wrapper{position:relative;}
+      button.icon-btn.notification-btn{position:relative;}
+      /*
+        Anchor to the button's top-right corner, then nudge outward (translate).
+        The bell glyph sits inside a small box; without translate the dot sits over the bell body.
+      */
+      button.icon-btn.notification-btn > .notification-unread-badge{
+        position:absolute;
+        top:0;
+        right:0;
+        left:auto;
+        bottom:auto;
+        transform:translate(15%,-42%);
+        width:8px;
+        height:8px;
+        border-radius:50%;
+        background:#ef4444;
+        border:2px solid #fff;
+        box-sizing:content-box;
+        display:none;
+        pointer-events:none;
+        z-index:3;
+        margin:0;
+        padding:0;
+      }
+      button.icon-btn.notification-btn > .notification-unread-badge.notification-unread-badge--on{display:block;}
+    `;
+    document.head.appendChild(style);
+  })();
+
+  const notificationWrap = notificationBtn.closest('.notification-wrapper');
+  let badgeEl = notificationBtn.querySelector('.notification-unread-badge');
+  if (!badgeEl && notificationWrap) {
+    badgeEl = notificationWrap.querySelector('.notification-unread-badge');
+  }
+  if (!badgeEl) {
+    badgeEl = document.createElement('span');
+    badgeEl.className = 'notification-unread-badge';
+    badgeEl.setAttribute('aria-hidden', 'true');
+  }
+  if (badgeEl.parentElement !== notificationBtn) {
+    notificationBtn.appendChild(badgeEl);
+  }
+  if (getComputedStyle(notificationBtn).position === 'static') {
+    notificationBtn.style.position = 'relative';
+  }
+
+  function setNotificationDotVisible(show) {
+    badgeEl.classList.toggle('notification-unread-badge--on', !!show);
+    const base = 'Notifications';
+    if (show) notificationBtn.setAttribute('aria-label', base + ', unread');
+    else notificationBtn.setAttribute('aria-label', base);
+  }
+
+  function notificationsLastViewedKey(userId) {
+    return 'matchfield_notif_last_viewed_' + String(userId || '');
+  }
+
+  function getNotificationsLastViewedMs(userId) {
+    if (!userId) return 0;
+    try {
+      const raw = localStorage.getItem(notificationsLastViewedKey(userId));
+      if (!raw) return 0;
+      const t = new Date(raw).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function setNotificationsLastViewedNow(userId) {
+    if (!userId) return;
+    try {
+      localStorage.setItem(notificationsLastViewedKey(userId), new Date().toISOString());
+    } catch (_) {}
+  }
+
+  function markLocalPlayerNotificationsRead(userId) {
+    if (!userId) return;
+    try {
+      const raw = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+      const next = raw.map((n) => (n.playerId === userId ? Object.assign({}, n, { read: true }) : n));
+      localStorage.setItem('playerNotifications', JSON.stringify(next));
+    } catch (_) {}
+  }
+
+  function getLocalUnreadCount(currentUser) {
+    if (!currentUser || !currentUser.id) return 0;
+    const role = String(currentUser.role || '').toUpperCase();
+    if (role !== 'PLAYER') return 0;
+    const uid = currentUser.id;
+    try {
+      const arr = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+      return arr.filter((n) => String(n.playerId) === String(uid) && !n.read).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  async function refreshUnreadDot() {
+    const u = getCurrentUser();
+    if (!u || !(window.API && API.getAuthToken && API.getAuthToken())) {
+      setNotificationDotVisible(false);
+      return;
+    }
+    const uid = u.id;
+    const lastViewedMs = getNotificationsLastViewedMs(uid);
+    let apiUnread = 0;
+    if (API.notifications && API.notifications.getMine) {
+      try {
+        const res = await API.notifications.getMine();
+        const list = res.notifications || [];
+        apiUnread = list.filter((n) => {
+          if (n.readAt) return false;
+          const created = new Date(n.createdAt).getTime();
+          return created > lastViewedMs;
+        }).length;
+      } catch (_) {}
+    }
+    const localUnread = getLocalUnreadCount(u);
+    setNotificationDotVisible(apiUnread + localUnread > 0);
+  }
+
   const header = notificationPopup.querySelector('.notification-popup-header');
   if (header && !header.querySelector('.clear-all-notifications-btn')) {
     header.style.display = 'flex';
@@ -113,6 +241,7 @@ document.addEventListener('DOMContentLoaded', function () {
           title: n.title,
           message: n.message,
           createdAt: n.createdAt,
+          readAt: n.readAt,
           source: 'api'
         }));
       } catch (e) {
@@ -191,19 +320,34 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.API && API.notifications && API.notifications.clearAll && API.getAuthToken && API.getAuthToken()) {
       try { await API.notifications.clearAll(); } catch (e) { console.warn('clear API notifications', e); }
     }
-    loadNotifications();
+    if (currentUserId) setNotificationsLastViewedNow(currentUserId);
+    await loadNotifications();
+    await refreshUnreadDot();
   }
 
   const clearBtn = notificationPopup.querySelector('.clear-all-notifications-btn');
   if (clearBtn) clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearAllNotifications(); });
 
-  notificationBtn.addEventListener('click', function (e) {
+  notificationBtn.addEventListener('click', async function (e) {
     e.stopPropagation();
     const profilePopup = document.getElementById('profilePopup');
     if (profilePopup && profilePopup.classList.contains('active')) profilePopup.classList.remove('active');
     const isActive = notificationPopup.classList.contains('active');
     if (!isActive) {
-      loadNotifications();
+      const u = getCurrentUser();
+      const uid = u && u.id;
+      setNotificationDotVisible(false);
+      if (window.API && API.notifications && API.notifications.markAllRead && API.getAuthToken && API.getAuthToken()) {
+        try {
+          await API.notifications.markAllRead();
+        } catch (err) {
+          console.warn('notifications: markAllRead', err);
+        }
+      }
+      if (uid) markLocalPlayerNotificationsRead(uid);
+      if (uid) setNotificationsLastViewedNow(uid);
+      await loadNotifications();
+      await refreshUnreadDot();
       notificationPopup.classList.add('active');
     } else {
       notificationPopup.classList.remove('active');
@@ -217,4 +361,11 @@ document.addEventListener('DOMContentLoaded', function () {
       notificationPopup.classList.remove('active');
     }
   });
+
+  refreshUnreadDot();
+  setInterval(refreshUnreadDot, 45000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshUnreadDot();
+  });
+  window.matchfieldRefreshNotificationBadge = refreshUnreadDot;
 });

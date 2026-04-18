@@ -1500,7 +1500,8 @@ function createPaymentNotifications(booking, players) {
     const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
     notifications.push(notification);
     localStorage.setItem('playerNotifications', JSON.stringify(notifications));
-    
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
+
     console.log('Created payment notification for:', player.name, notification);
   });
 }
@@ -1647,6 +1648,7 @@ function notifyOrganizerOfPayment(booking, payerData, amount) {
   const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
   notifications.push(notification);
   localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+  try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
 }
 
 function notifyFieldOwner(booking) {
@@ -1704,6 +1706,7 @@ function sendPlayerInvitations(booking) {
     const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
     notifications.push(notification);
     localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
   });
 
   console.log('Invitations sent to players:', booking.players.map(p => p.name));

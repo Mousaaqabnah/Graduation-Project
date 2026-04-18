@@ -1,11 +1,34 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient, ObjectId } = require('mongodb');
 const { authenticateAllowSuspended } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 router.use(authenticateAllowSuspended);
+
+// Mark all in-app notifications read for current user (native Mongo — avoids Prisma txn/replica-set issues on standalone mongod)
+router.post('/me/mark-read', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    const col = mongo.db().collection('user_notifications');
+    await col.updateMany(
+      {
+        user_id: new ObjectId(String(userId)),
+        $or: [{ read_at: null }, { read_at: { $exists: false } }]
+      },
+      { $set: { read_at: new Date() } }
+    );
+    await mongo.close();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark notifications read error:', error);
+    res.status(500).json({ error: 'Failed to mark notifications as read' });
+  }
+});
 
 router.get('/me', async (req, res) => {
   try {
