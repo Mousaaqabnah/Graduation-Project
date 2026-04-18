@@ -100,7 +100,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const currentUser = getCurrentUser();
     const currentUserId = currentUser && currentUser.id;
     const userRole = (currentUser && currentUser.role) ? String(currentUser.role).toUpperCase() : '';
-    const storageKey = userRole === 'OWNER' ? 'ownerNotifications' : 'playerNotifications';
+    let storageKey = 'playerNotifications';
+    if (userRole === 'OWNER') storageKey = 'ownerNotifications';
+    else if (userRole === 'ADMIN') storageKey = 'adminNotifications';
 
     let apiNotifications = [];
     if (window.API && API.notifications && API.notifications.getMine && API.getAuthToken && API.getAuthToken()) {
@@ -125,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (currentUserId && storageKey === 'playerNotifications') {
       local = local.filter((n) => n.playerId === currentUserId);
     } else {
+      // Owner/admin: no dev-only local queue in this app; API is the source of truth
       local = [];
     }
     const localNotifications = local.map((n) => ({
@@ -171,7 +174,9 @@ document.addEventListener('DOMContentLoaded', function () {
   async function clearAllNotifications() {
     const currentUser = getCurrentUser();
     const userRole = (currentUser && currentUser.role) ? String(currentUser.role).toUpperCase() : '';
-    const storageKey = userRole === 'OWNER' ? 'ownerNotifications' : 'playerNotifications';
+    let storageKey = 'playerNotifications';
+    if (userRole === 'OWNER') storageKey = 'ownerNotifications';
+    else if (userRole === 'ADMIN') storageKey = 'adminNotifications';
     let local = [];
     try {
       local = JSON.parse(localStorage.getItem(storageKey) || '[]');

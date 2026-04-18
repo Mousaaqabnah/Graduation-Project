@@ -215,20 +215,20 @@
 
                             <div class="form-group">
                                 <label>Audience</label>
-                                <div class="tag-selector">
-                                    <button class="tag-btn active" data-audience="all">All users</button>
-                                    <button class="tag-btn" data-audience="players">Players</button>
-                                    <button class="tag-btn" data-audience="owners">Field owners</button>
-                                    <button class="tag-btn" data-audience="admins">Admins</button>
-                                    <button class="tag-btn" data-audience="private">Private</button>
+                                <div class="tag-selector" id="notificationAudienceSelector" role="group" aria-label="Notification audience">
+                                    <button type="button" class="tag-btn active" data-audience="all">All users</button>
+                                    <button type="button" class="tag-btn" data-audience="players">Players</button>
+                                    <button type="button" class="tag-btn" data-audience="owners">Field owners</button>
+                                    <button type="button" class="tag-btn" data-audience="admins">Admins</button>
+                                    <button type="button" class="tag-btn" data-audience="private">Private</button>
                                 </div>
                             </div>
 
                             <div class="form-group">
                                 <label>Channel</label>
-                                <div class="tag-selector">
-                                    <button class="tag-btn active" data-channel="inapp">In-app</button>
-                                    <button class="tag-btn" data-channel="email">Email</button>
+                                <div class="tag-selector" id="notificationChannelSelector" role="group" aria-label="Notification channel">
+                                    <button type="button" class="tag-btn active" data-channel="inapp">In-app</button>
+                                    <button type="button" class="tag-btn" data-channel="email">Email</button>
                                 </div>
                             </div>
 
@@ -474,6 +474,7 @@
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>
     <script src="../../scripts/admin/header-user.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/admin/dashboard.js"></script>
 </body>
 </html>

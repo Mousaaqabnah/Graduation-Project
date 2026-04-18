@@ -4,38 +4,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    // Notification popup toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
-        });
-    }
-    
+    // Bell list: ../../scripts/player/notifications.js
+
     // Profile popup toggle
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
+            const notificationPopup = document.getElementById('notificationPopup');
             if (notificationPopup) {
                 notificationPopup.classList.remove('active');
             }
         });
     }
-    
-    // Close popups when clicking outside
+
+    // Close profile when clicking outside (bell handled in notifications.js)
     document.addEventListener('click', function(e) {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
-        }
         if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
             profilePopup.classList.remove('active');
         }

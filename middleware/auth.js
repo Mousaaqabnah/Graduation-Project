@@ -82,11 +82,14 @@ const requireRole = (...roles) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    
-    if (!roles.includes(req.user.role)) {
+
+    const userRole = String(req.user.role || '').toUpperCase();
+    const allowedRoles = roles.map((r) => String(r || '').toUpperCase());
+
+    if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    
+
     next();
   };
 };

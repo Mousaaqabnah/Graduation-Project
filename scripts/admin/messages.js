@@ -1,6 +1,6 @@
 // Admin Support Inbox (shared across admins)
 
-let notificationBtn, notificationPopup, profileBtn, profilePopup;
+let profileBtn, profilePopup;
 let messageSearch, statusFilter, messagesList;
 let messageModal, closeMessageModalBtn, messageContent;
 let spamBlockedBtn;
@@ -332,25 +332,17 @@ function closeMessageModal() {
   }
 }
 
-function setupNotificationAndProfile() {
-  if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      notificationPopup.classList.toggle('active');
-      if (profilePopup) profilePopup.classList.remove('active');
-    });
-  }
+function setupProfilePopup() {
+  // Bell: ../../scripts/player/notifications.js
   if (profileBtn && profilePopup) {
     profileBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       profilePopup.classList.toggle('active');
+      const notificationPopup = document.getElementById('notificationPopup');
       if (notificationPopup) notificationPopup.classList.remove('active');
     });
   }
   document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-      notificationPopup.classList.remove('active');
-    }
     if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
       profilePopup.classList.remove('active');
     }
@@ -382,8 +374,6 @@ function setupSearchAndFilter() {
 }
 
 function initialize() {
-  notificationBtn = document.getElementById('notificationBtn');
-  notificationPopup = document.getElementById('notificationPopup');
   profileBtn = document.getElementById('profileBtn');
   profilePopup = document.getElementById('profilePopup');
   messageSearch = document.getElementById('messageSearch');
@@ -394,7 +384,7 @@ function initialize() {
   messageContent = document.getElementById('messageContent');
   spamBlockedBtn = document.getElementById('spamBlockedBtn');
 
-  setupNotificationAndProfile();
+  setupProfilePopup();
   setupModalHandlers();
   setupSearchAndFilter();
   loadSupportInbox();

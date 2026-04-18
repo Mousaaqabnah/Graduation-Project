@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
 
@@ -267,28 +267,43 @@ router.post('/notifications/send', [
       });
     }
 
-    const notification = await prisma.notification.create({
-      data: {
-        title,
-        message,
-        audience,
-        channels: channelsArray,
-        targetUserId: audience === 'private' ? targetUserId : null,
-        sentById: req.user.id
-      }
-    });
+    // Use native Mongo writes to avoid Prisma Mongo transaction/replica-set requirement (P2031)
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    const db = mongo.db();
+    const notificationsCol = db.collection('notifications');
+    const userNotificationsCol = db.collection('user_notifications');
 
-    await prisma.userNotification.createMany({
-      data: userIds.map((userId) => ({
-        userId,
-        notificationId: notification.id
-      }))
-    });
+    const now = new Date();
+    const notificationDoc = {
+      title,
+      message,
+      audience,
+      channels: channelsArray,
+      target_user_id: audience === 'private' && targetUserId ? new ObjectId(String(targetUserId)) : null,
+      sent_by_id: req.user && req.user.id ? new ObjectId(String(req.user.id)) : null,
+      created_at: now
+    };
+
+    const inserted = await notificationsCol.insertOne(notificationDoc);
+    const notificationId = inserted.insertedId;
+
+    if (userIds.length > 0) {
+      const userNotificationDocs = userIds.map((userId) => ({
+        user_id: new ObjectId(String(userId)),
+        notification_id: notificationId,
+        read_at: null,
+        created_at: now
+      }));
+      await userNotificationsCol.insertMany(userNotificationDocs, { ordered: false });
+    }
+
+    await mongo.close();
 
     res.status(201).json({
       success: true,
       notification: {
-        id: notification.id,
+        id: String(notificationId),
         title,
         message,
         audience,

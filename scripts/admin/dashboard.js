@@ -1,8 +1,6 @@
 // Admin Dashboard functionality
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
-const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
 const inviteAdminBtn = document.getElementById('inviteAdminBtn');
@@ -17,6 +15,8 @@ const userDropdown = document.getElementById('userDropdown');
 const selectedUserId = document.getElementById('selectedUserId');
 const selectedUserDisplay = document.getElementById('selectedUserDisplay');
 const removeUserBtn = document.getElementById('removeUserBtn');
+const notificationAudienceSelector = document.getElementById('notificationAudienceSelector');
+const notificationChannelSelector = document.getElementById('notificationChannelSelector');
 
 // Invite Admin Modal elements
 const inviteAdminModal = document.getElementById('inviteAdminModal');
@@ -34,35 +34,22 @@ const toggleInviteAdminPasswordBtn = document.getElementById('toggleInviteAdminP
 const copyInviteAdminPasswordBtn = document.getElementById('copyInviteAdminPasswordBtn');
 const doneInviteAdminBtn = document.getElementById('doneInviteAdminBtn');
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        // Close profile popup if open
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Bell + notification list: ../../scripts/player/notifications.js (load after api.js)
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
     profileBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         profilePopup.classList.toggle('active');
-        // Close notification popup if open
+        const notificationPopup = document.getElementById('notificationPopup');
         if (notificationPopup) {
             notificationPopup.classList.remove('active');
         }
     });
 }
 
-// Close popups when clicking outside
+// Close profile popup when clicking outside (bell popup handled in notifications.js)
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
     if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
@@ -124,7 +111,7 @@ async function loadRecentNotifications() {
         }
         const audienceDisplay = { all: 'All users', players: 'Players', owners: 'Field owners', admins: 'Admins', private: 'Private' };
         list.forEach((n) => {
-            const channels = Array.isArray(n.channels) ? n.channels : ['In-app'];
+            const channels = Array.isArray(n.channels) ? n.channels : ['in-app'];
             const audName = audienceDisplay[n.audience] || n.audience;
             const timeStr = formatTimeAgo(new Date(n.createdAt));
             const item = document.createElement('div');
@@ -136,7 +123,7 @@ async function loadRecentNotifications() {
                     <p class="notification-list-time">${escapeHtml(timeStr)}</p>
                 </div>
                 <div class="notification-list-tags">
-                    ${channels.map(c => `<span class="notification-tag">${escapeHtml(c)}</span>`).join('')}
+                    ${channels.map(c => `<span class="notification-tag">${escapeHtml(formatChannelLabel(c))}</span>`).join('')}
                     ${n.audience === 'private' ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audName)}</span>`}
                 </div>
             `;
@@ -183,8 +170,17 @@ tagButtons.forEach(btn => {
                 }
             }
         } else if (isChannel) {
-            // Handle channel selection (multi-select)
+            // Backend requires in-app for every notification.
+            const isInApp = btn.dataset.channel === 'inapp';
+            if (isInApp) {
+                btn.classList.add('active');
+                return;
+            }
             btn.classList.toggle('active');
+            const inAppBtn = selector.querySelector('[data-channel="inapp"]');
+            if (inAppBtn && !inAppBtn.classList.contains('active')) {
+                inAppBtn.classList.add('active');
+            }
         }
     });
 });
@@ -340,17 +336,33 @@ function formatUserRole(role) {
     return roleMap[role] || role;
 }
 
+function normalizeChannelForApi(channel) {
+    const value = String(channel || '').toLowerCase();
+    if (value === 'inapp' || value === 'in-app') return 'in-app';
+    if (value === 'email') return 'email';
+    return value;
+}
+
+function formatChannelLabel(channel) {
+    const normalized = normalizeChannelForApi(channel);
+    if (normalized === 'in-app') return 'In-app';
+    if (normalized === 'email') return 'Email';
+    return String(channel || '');
+}
+
 // Send Notification functionality
 if (sendNotificationBtn) {
     sendNotificationBtn.addEventListener('click', async () => {
         const title = notificationTitle.value.trim();
         const message = notificationMessage.value.trim();
         
-        const selectedAudience = document.querySelector('.tag-selector [data-audience].active')?.dataset.audience || 'all';
+        const selectedAudience =
+            notificationAudienceSelector?.querySelector('[data-audience].active')?.dataset.audience || 'all';
         const isPrivate = selectedAudience === 'private';
-        
-        const selectedChannels = Array.from(document.querySelectorAll('.tag-selector [data-channel].active'))
-            .map(btn => (btn.dataset.channel === 'inapp' ? 'In-app' : 'Email'));
+
+        const selectedChannels = Array.from(
+            notificationChannelSelector?.querySelectorAll('[data-channel].active') ?? []
+        ).map((btn) => normalizeChannelForApi(btn.dataset.channel));
         
         const selectedUser = selectedUserId ? selectedUserId.value : '';
         
@@ -415,10 +427,16 @@ if (sendNotificationBtn) {
                 userDropdown.classList.remove('active');
             }
             
-            document.querySelectorAll('.tag-selector [data-channel]').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tag-selector [data-audience]').forEach(b => b.classList.remove('active'));
-            const audBtn = document.querySelector('[data-audience="all"]');
-            const chBtn = document.querySelector('[data-channel="inapp"]');
+            notificationChannelSelector?.querySelectorAll('[data-channel]').forEach((b) => {
+                if (b.dataset.channel === 'inapp') {
+                    b.classList.add('active');
+                } else {
+                    b.classList.remove('active');
+                }
+            });
+            notificationAudienceSelector?.querySelectorAll('[data-audience]').forEach((b) => b.classList.remove('active'));
+            const audBtn = notificationAudienceSelector?.querySelector('[data-audience="all"]');
+            const chBtn = notificationChannelSelector?.querySelector('[data-channel="inapp"]');
             if (audBtn) audBtn.classList.add('active');
             if (chBtn) chBtn.classList.add('active');
             
@@ -484,7 +502,7 @@ function addNotificationToList(notification) {
             <p class="notification-list-time">${notification.time}</p>
         </div>
         <div class="notification-list-tags">
-${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
+${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
                         ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
                         ${notification.isPrivate && notification.selectedUser ? userInfo : ''}
         </div>
@@ -822,7 +840,7 @@ async function initializeNotifications() {
         const list = res.notifications || [];
         const audienceDisplay = { all: 'all-users', players: 'players', owners: 'field-owners', admins: 'admins', private: 'private' };
         allNotifications = list.map((n) => {
-            const channels = Array.isArray(n.channels) ? n.channels : ['In-app'];
+            const channels = Array.isArray(n.channels) ? n.channels : ['in-app'];
             return {
                 title: n.title,
                 message: n.message,
@@ -899,7 +917,7 @@ function renderAllNotifications(filteredNotifications = null) {
                         <p class="notification-list-time">${escapeHtml(notification.time)}</p>
                     </div>
                     <div class="notification-list-tags">
-                        ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
+                        ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
                         ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
                         ${notification.isPrivate && notification.selectedUser 
                             ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>` : ''}
@@ -941,7 +959,7 @@ function filterNotifications() {
         
         // Channel filter
         const matchesChannel = selectedChannel === 'all' ||
-            notification.channels.includes(selectedChannel === 'in-app' ? 'In-app' : 'Email');
+            notification.channels.some((channel) => normalizeChannelForApi(channel) === normalizeChannelForApi(selectedChannel));
         
         return matchesSearch && matchesAudience && matchesChannel;
     });
