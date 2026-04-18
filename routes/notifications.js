@@ -10,9 +10,9 @@ router.use(authenticateAllowSuspended);
 
 // Mark all in-app notifications read for current user (native Mongo — avoids Prisma txn/replica-set issues on standalone mongod)
 router.post('/me/mark-read', async (req, res) => {
+  const mongo = new MongoClient(process.env.DATABASE_URL);
   try {
     const userId = req.user.id;
-    const mongo = new MongoClient(process.env.DATABASE_URL);
     await mongo.connect();
     const col = mongo.db().collection('user_notifications');
     await col.updateMany(
@@ -22,11 +22,17 @@ router.post('/me/mark-read', async (req, res) => {
       },
       { $set: { read_at: new Date() } }
     );
-    await mongo.close();
     res.json({ success: true });
   } catch (error) {
     console.error('Mark notifications read error:', error);
-    res.status(500).json({ error: 'Failed to mark notifications as read' });
+    res.status(500).json({
+      error: 'Failed to mark notifications as read',
+      details: error && error.message ? String(error.message) : undefined
+    });
+  } finally {
+    try {
+      await mongo.close();
+    } catch (_) {}
   }
 });
 
@@ -69,14 +75,25 @@ router.get('/me', async (req, res) => {
   }
 });
 
+// Clear all in-app notifications for current user (native Mongo — avoids Prisma txn/replica-set issues)
 router.delete('/me', async (req, res) => {
+  const mongo = new MongoClient(process.env.DATABASE_URL);
   try {
     const userId = req.user.id;
-    await prisma.userNotification.deleteMany({ where: { userId } });
+    const userOid = new ObjectId(String(userId));
+    await mongo.connect();
+    await mongo.db().collection('user_notifications').deleteMany({ user_id: userOid });
     res.json({ success: true });
   } catch (error) {
     console.error('Clear notifications error:', error);
-    res.status(500).json({ error: 'Failed to clear notifications' });
+    res.status(500).json({
+      error: 'Failed to clear notifications',
+      details: error && error.message ? String(error.message) : undefined
+    });
+  } finally {
+    try {
+      await mongo.close();
+    } catch (_) {}
   }
 });
 

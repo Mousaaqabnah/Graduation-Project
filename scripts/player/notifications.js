@@ -44,6 +44,46 @@ document.addEventListener('DOMContentLoaded', function () {
     document.head.appendChild(style);
   })();
 
+  (function injectNotificationPopupLayoutStyles() {
+    if (document.getElementById('matchfield-notification-popup-layout')) return;
+    const style = document.createElement('style');
+    style.id = 'matchfield-notification-popup-layout';
+    style.textContent = `
+      #notificationPopup.notification-popup{
+        max-height:min(72vh,420px);
+        overflow:hidden;
+        flex-direction:column;
+      }
+      #notificationPopup.notification-popup.active{
+        display:flex;
+      }
+      #notificationPopup .notification-popup-header{
+        flex-shrink:0;
+        display:flex;
+        flex-direction:row;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+      }
+      #notificationPopup .notification-popup-header h3{
+        flex:1 1 auto;
+        min-width:0;
+        margin:0;
+      }
+      #notificationPopup .clear-all-notifications-btn{
+        flex-shrink:0;
+      }
+      #notificationPopup .notification-popup-content{
+        flex:1 1 auto;
+        min-height:0;
+        max-height:none;
+        overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
+      }
+    `;
+    document.head.appendChild(style);
+  })();
+
   const notificationWrap = notificationBtn.closest('.notification-wrapper');
   let badgeEl = notificationBtn.querySelector('.notification-unread-badge');
   if (!badgeEl && notificationWrap) {
@@ -139,9 +179,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const header = notificationPopup.querySelector('.notification-popup-header');
   if (header && !header.querySelector('.clear-all-notifications-btn')) {
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'clear-all-notifications-btn';
@@ -306,27 +343,59 @@ document.addEventListener('DOMContentLoaded', function () {
     let storageKey = 'playerNotifications';
     if (userRole === 'OWNER') storageKey = 'ownerNotifications';
     else if (userRole === 'ADMIN') storageKey = 'adminNotifications';
+    const currentUserId = currentUser && currentUser.id;
+    const token = window.API && API.getAuthToken && API.getAuthToken();
+
+    if (token && window.API && API.notifications && API.notifications.clearAll) {
+      try {
+        await API.notifications.clearAll();
+      } catch (e) {
+        console.warn('clear API notifications', e);
+        const msg = (e && e.message) ? String(e.message) : '';
+        alert(
+          msg
+            ? 'Could not clear notifications: ' + msg
+            : 'Could not clear notifications on the server. Please try again.'
+        );
+        return;
+      }
+    }
+
     let local = [];
     try {
       local = JSON.parse(localStorage.getItem(storageKey) || '[]');
     } catch (e) {}
-    const currentUserId = currentUser && currentUser.id;
     if (currentUserId && storageKey === 'playerNotifications') {
       local = local.filter((n) => n.playerId !== currentUserId);
     } else {
       local = [];
     }
-    localStorage.setItem(storageKey, JSON.stringify(local));
-    if (window.API && API.notifications && API.notifications.clearAll && API.getAuthToken && API.getAuthToken()) {
-      try { await API.notifications.clearAll(); } catch (e) { console.warn('clear API notifications', e); }
-    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(local));
+    } catch (_) {}
+
     if (currentUserId) setNotificationsLastViewedNow(currentUserId);
     await loadNotifications();
     await refreshUnreadDot();
   }
 
   const clearBtn = notificationPopup.querySelector('.clear-all-notifications-btn');
-  if (clearBtn) clearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearAllNotifications(); });
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async function (e) {
+      e.stopPropagation();
+      if (clearBtn.disabled) return;
+      clearBtn.disabled = true;
+      clearBtn.style.cursor = 'wait';
+      clearBtn.style.opacity = '0.65';
+      try {
+        await clearAllNotifications();
+      } finally {
+        clearBtn.disabled = false;
+        clearBtn.style.cursor = '';
+        clearBtn.style.opacity = '';
+      }
+    });
+  }
 
   notificationBtn.addEventListener('click', async function (e) {
     e.stopPropagation();

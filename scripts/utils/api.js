@@ -169,9 +169,11 @@ async function apiRequest(endpoint, options = {}) {
     if (!response.ok) {
       const firstValErr =
         Array.isArray(data.errors) && data.errors[0] && (data.errors[0].msg || data.errors[0].message);
-      const base = data.error || firstValErr || response.statusText || 'Request failed';
-      const extra = data.details ? ` ${data.details}` : '';
-      throw new Error(String(base) + extra);
+      let base = data.error || firstValErr || response.statusText || 'Request failed';
+      if (data.details != null && String(data.details).trim() !== '') {
+        base += ': ' + String(data.details);
+      }
+      throw new Error(String(base));
     }
 
     return data;
