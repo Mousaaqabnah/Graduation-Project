@@ -30,15 +30,140 @@ function formatOwnerTry(amount) {
     return '₺' + n.toLocaleString('tr-TR');
 }
 
+let ownerDashboardFieldsById = new Map();
+
+function ownerFieldModerationUi(f) {
+    const mod = String((f && f.moderationStatus) || '').toUpperCase();
+    const active = !f || f.isActive !== false;
+    if (mod === 'REJECTED') return { variant: 'rejected', label: 'Rejected' };
+    if (mod === 'PENDING') return { variant: 'pending', label: 'Pending admin approval' };
+    if (mod === 'APPROVED') return active ? { variant: 'approved', label: 'Approved & live' } : { variant: 'pending', label: 'Approved (not visible yet)' };
+    return active ? { variant: 'approved', label: 'Live' } : { variant: 'pending', label: 'Pending admin approval' };
+}
+
+function setFieldStatusBadgeFromField(f) {
+    const badge = document.getElementById('fieldStatusBadge');
+    if (!badge) return;
+    const ui = ownerFieldModerationUi(f || {});
+    badge.className = 'field-status-badge' + (ui.variant === 'approved' ? '' : ' ' + ui.variant);
+    const dotClass = 'status-dot' + (ui.variant === 'approved' ? '' : ' ' + ui.variant);
+    badge.innerHTML = '<span class="' + dotClass + '"></span><span class="status-text">' + ui.label + '</span>';
+}
+
+function detectSportLabel(sportValue) {
+    const raw = String(sportValue || '').trim().toLowerCase();
+    if (!raw) return 'Football';
+    if (raw === 'soccer') return 'Football';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function applyManageFeaturesFromField(features) {
+    const arr = Array.isArray(features) ? features : [];
+    const normalized = arr.map(function(v) { return String(v || '').trim().toLowerCase(); }).filter(Boolean);
+
+    const known = new Set();
+    document.querySelectorAll('input[name="manageAmenities"], input[name="manageFeatures"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent ? cb.nextElementSibling.textContent : '').trim();
+        const key = label.toLowerCase();
+        if (key) known.add(key);
+        cb.checked = key ? normalized.indexOf(key) !== -1 : false;
+    });
+
+    const highlightsList = document.getElementById('manageHighlightsList');
+    if (!highlightsList) return;
+    highlightsList.innerHTML = '';
+    arr.forEach(function(item) {
+        const text = String(item || '').trim();
+        if (!text || known.has(text.toLowerCase())) return;
+        const node = document.createElement('div');
+        node.className = 'highlight-item';
+        node.innerHTML = '<span>' + text + '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
+        highlightsList.appendChild(node);
+    });
+}
+
+function applyManageInfoArraysFromField(field) {
+    const amenities = Array.isArray(field && field.amenities) ? field.amenities : [];
+    const features = Array.isArray(field && field.features) ? field.features : [];
+    const highlights = Array.isArray(field && field.highlights) ? field.highlights : [];
+    const combined = amenities.concat(features, highlights);
+    applyManageFeaturesFromField(combined);
+}
+
+function inferFileNameFromUrl(url, fallback) {
+    const value = String(url || '').trim();
+    if (!value) return fallback;
+    if (value.startsWith('data:')) {
+        if (value.includes('pdf')) return fallback.replace(/\.[^.]*$/, '.pdf');
+        if (value.includes('png')) return fallback.replace(/\.[^.]*$/, '.png');
+        if (value.includes('jpeg') || value.includes('jpg')) return fallback.replace(/\.[^.]*$/, '.jpg');
+        return fallback;
+    }
+    try {
+        const clean = value.split('?')[0].split('#')[0];
+        const seg = clean.split('/').pop();
+        return seg || fallback;
+    } catch (_err) {
+        return fallback;
+    }
+}
+
+function setManageDocumentPreview(type, documentUrl) {
+    const previewId = type === 'ownership' ? 'manageOwnershipPreview' : 'manageLicensePreview';
+    const previewEl = document.getElementById(previewId);
+    if (!previewEl) return;
+
+    if (!documentUrl) {
+        previewEl.classList.remove('active');
+        previewEl.innerHTML = '';
+        return;
+    }
+
+    const fileName = inferFileNameFromUrl(documentUrl, type === 'ownership' ? 'ownership_document.pdf' : 'license_document.pdf');
+    previewEl.classList.add('active');
+    previewEl.innerHTML =
+        '<div class="file-preview-item">' +
+        '<i class="fi fi-rr-file" style="margin-right: 8px;"></i>' +
+        '<span>' + fileName + '</span>' +
+        '<div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">' +
+        '<span style="font-size: 11px; color: #10B981; font-weight: 500;">Uploaded</span>' +
+        '<button type="button" onclick="removeManageFile(\'' + type + '\')" title="Remove file">&times;</button>' +
+        '</div>' +
+        '</div>';
+}
+
+function applyManageScheduleFromField(scheduleInput) {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const schedule = scheduleInput && typeof scheduleInput === 'object' ? scheduleInput : {};
+    days.forEach(function(day) {
+        const row = schedule[day] || {};
+        const checkbox = document.querySelector('input[name="manageWorkingDays"][value="' + day + '"]');
+        const openEl = document.getElementById('manage-' + day + '-opening');
+        const closeEl = document.getElementById('manage-' + day + '-closing');
+        if (openEl && row.opening) openEl.value = row.opening;
+        if (closeEl && row.closing) closeEl.value = row.closing;
+        if (checkbox) checkbox.checked = row.enabled !== false;
+        toggleManageDaySchedule(day, checkbox ? checkbox.checked : true);
+    });
+}
+
 /** Load stats + today's bookings + field cards from API (owner-scoped on the server). */
 async function loadOwnerDashboard() {
     if (typeof API === 'undefined') return;
 
     try {
-        const [statsRes, bookingsRes] = await Promise.all([
-            API.owner && API.owner.getStats ? API.owner.getStats() : Promise.resolve(null),
+        const [bookingsRes] = await Promise.all([
             API.bookings.getAll({ limit: 200 })
         ]);
+
+        let statsRes = null;
+        if (API.owner && API.owner.getStats) {
+            try {
+                statsRes = await API.owner.getStats();
+            } catch (statsErr) {
+                console.warn('loadOwnerDashboard: owner/stats failed', statsErr);
+            }
+        }
 
         let fieldsRes = { fields: [] };
         if (API.fields && API.fields.getMine) {
@@ -54,18 +179,27 @@ async function loadOwnerDashboard() {
             }
         }
 
+        const fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+        ownerDashboardFieldsById = new Map(fields.map(function(f) {
+            return [ownerBookingId(f), f];
+        }));
+
         if (statsRes && statsRes.stats) {
             const s = statsRes.stats;
             const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
             setVal('statValToday', s.todayBookings != null ? String(s.todayBookings) : '0');
             setVal('statValUpcoming', s.upcomingBookings != null ? String(s.upcomingBookings) : '0');
-            setVal('statValFields', s.totalFields != null ? String(s.totalFields) : '0');
+            // Single source of truth: match "My Fields" page (/fields/me).
+            setVal('statValFields', String(fields.length));
             setVal('statValRevenue', formatOwnerTry(s.revenueThisWeek));
             const sub = document.getElementById('statSubRevenue');
             if (sub && typeof s.revenueChangePercent === 'number') {
                 const sign = s.revenueChangePercent >= 0 ? '+' : '';
                 sub.textContent = sign + s.revenueChangePercent + '% vs last week';
             }
+        } else {
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            setVal('statValFields', String(fields.length));
         }
 
         const list = (bookingsRes && bookingsRes.bookings) ? bookingsRes.bookings : [];
@@ -94,7 +228,6 @@ async function loadOwnerDashboard() {
         updateBookingsTable();
 
         const grid = document.getElementById('dashboardFieldsGrid');
-        const fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
         if (grid) {
             grid.innerHTML = fields.slice(0, 6).map(function(f) {
                 const img = (f.images && f.images[0]) || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop';
@@ -256,6 +389,7 @@ function openModal(fieldId) {
     if (editFieldModal) {
         editFieldModal.classList.add('active');
         document.body.style.overflow = 'hidden';
+        editFieldModal.dataset.fieldId = fieldId ? String(fieldId) : '';
         
         // Show menu, hide sections
         showManageMenu();
@@ -272,6 +406,7 @@ function closeModal() {
     if (editFieldModal) {
         editFieldModal.classList.remove('active');
         document.body.style.overflow = '';
+        editFieldModal.dataset.fieldId = '';
         // Reset to menu view
         showManageMenu();
     }
@@ -353,10 +488,91 @@ function openManageSection(sectionName) {
     }
 }
 
-// Load field data into modal (placeholder)
-function loadFieldData(fieldId) {
-    // This would typically fetch data from an API
-    console.log(`Loading data for field ${fieldId}`);
+// Load field data into modal
+async function loadFieldData(fieldId) {
+    let f = ownerDashboardFieldsById.get(String(fieldId));
+    try {
+        if (typeof API !== 'undefined' && API.fields && API.fields.getById) {
+            const res = await API.fields.getById(fieldId);
+            if (res && res.field) f = res.field;
+        }
+    } catch (err) {
+        console.warn('dashboard loadFieldData getById failed, using cached field', err);
+    }
+    if (!f) return;
+
+    setFieldStatusBadgeFromField(f);
+
+    const nameEl = document.getElementById('manageFieldName');
+    if (nameEl) nameEl.value = f.name || '';
+
+    const sportEl = document.getElementById('manageSportCategory');
+    if (sportEl) {
+        const wanted = detectSportLabel(f.sport);
+        const match = Array.from(sportEl.options).find(function(opt) {
+            return String(opt.textContent || '').trim().toLowerCase() === wanted.toLowerCase();
+        });
+        if (match) sportEl.value = match.value;
+    }
+
+    const typeEl = document.getElementById('manageFieldType');
+    if (typeEl) {
+        const t = String(f.type || '').toUpperCase();
+        typeEl.value = t === 'INDOOR' ? 'Indoor' : 'Outdoor';
+    }
+
+    const capacityEl = document.getElementById('manageCapacity');
+    if (capacityEl) {
+        capacityEl.value = f.capacity != null ? String(f.capacity) : '';
+    }
+
+    const descEl = document.getElementById('manageDescription');
+    if (descEl) descEl.value = f.description || '';
+
+    const pphEl = document.getElementById('managePricePerHour');
+    if (pphEl) pphEl.value = f.pricePerHour != null ? String(f.pricePerHour) : '';
+
+    const addressEl = document.getElementById('manageFieldAddress');
+    if (addressEl) addressEl.value = f.address || f.location || '';
+
+    const cityEl = document.getElementById('manageFieldCity');
+    if (cityEl) cityEl.value = f.city || '';
+
+    const districtEl = document.getElementById('manageFieldDistrict');
+    if (districtEl) districtEl.value = f.district || '';
+
+    const latEl = document.getElementById('manageLatitude');
+    if (latEl) latEl.textContent = f.latitude != null ? String(f.latitude) : '-';
+
+    const lngEl = document.getElementById('manageLongitude');
+    if (lngEl) lngEl.textContent = f.longitude != null ? String(f.longitude) : '-';
+
+    const visibilityToggle = document.getElementById('manageVisibilityToggle');
+    if (visibilityToggle) visibilityToggle.classList.toggle('active', f.isActive !== false);
+
+    applyManageInfoArraysFromField(f);
+    applyManageScheduleFromField(f.schedule || f.workingSchedule || {});
+
+    const datesList = document.getElementById('manageUnavailableDatesList');
+    if (datesList) datesList.innerHTML = '';
+
+    const imagesContainer = document.querySelector('#edit-info-section .images-container');
+    if (imagesContainer) {
+        imagesContainer.querySelectorAll('.image-preview').forEach(function(node) { node.remove(); });
+        const addBtn = imagesContainer.querySelector('.add-image-btn');
+        const images = Array.isArray(f.images) ? f.images : [];
+        images.forEach(function(src) {
+            if (!src) return;
+            const imagePreview = document.createElement('div');
+            imagePreview.className = 'image-preview';
+            imagePreview.innerHTML = '<img src="' + src + '" alt="Field"><button class="remove-image" onclick="removeImage(this)">&times;</button>';
+            if (addBtn) imagesContainer.insertBefore(imagePreview, addBtn);
+            else imagesContainer.appendChild(imagePreview);
+        });
+    }
+
+    setManageDocumentPreview('ownership', f.ownershipDocumentUrl || '');
+    setManageDocumentPreview('license', f.licensesDocumentUrl || f.licenseDocumentUrl || '');
 }
 
 // View Field Details
@@ -1279,11 +1495,45 @@ function removeManageDocumentPreview(previewId) {
 }
 
 function submitManageChanges() {
-    const data = {};
-    
-    console.log('Submitting changes for approval:', data);
-    alert('Changes submitted for approval!');
-    closeModal();
+    if (typeof API === 'undefined' || !API.fields || !API.fields.update) {
+        alert('API not available.');
+        return;
+    }
+    const modal = document.getElementById('editFieldModal');
+    const activeCard = modal ? modal.dataset.fieldId : '';
+    if (!activeCard) {
+        alert('No field selected.');
+        return;
+    }
+
+    const typeSel = document.getElementById('manageFieldType');
+    const typeEnum = String(typeSel && typeSel.value ? typeSel.value : 'Outdoor').toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
+    const sportSel = document.getElementById('manageSportCategory');
+    const sport = sportSel && sportSel.options[sportSel.selectedIndex]
+        ? sportSel.options[sportSel.selectedIndex].text.trim()
+        : 'Football';
+    const capacityRaw = (document.getElementById('manageCapacity')?.value || '').trim();
+    const capacityNum = capacityRaw === '' ? null : parseInt(capacityRaw, 10);
+
+    const payload = {
+        name: (document.getElementById('manageFieldName')?.value || '').trim(),
+        sport: sport,
+        description: document.getElementById('manageDescription')?.value || '',
+        type: typeEnum,
+        capacity: Number.isInteger(capacityNum) ? capacityNum : null,
+        pricePerHour: Math.round(parseFloat(document.getElementById('managePricePerHour')?.value || '0') || 0),
+        location: (document.getElementById('manageFieldAddress')?.value || '').trim()
+    };
+
+    API.fields.update(activeCard, payload)
+        .then(function() {
+            alert('Field updated successfully.');
+            closeModal();
+            loadOwnerDashboard();
+        })
+        .catch(function(err) {
+            alert((err && err.message) || 'Could not update field.');
+        });
 }
 
 function handleImageUpload(event) {

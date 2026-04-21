@@ -1,6 +1,45 @@
 // Fields page — API.fields.getMine / create / delete / unavailable-dates (same auth + fetch pattern as player).
 // ownerFieldEsc, formatOwnerFieldPrice, view-field modal: scripts/owner/view-field-modal.js (must load before this file)
 
+function setFieldStatusBadgeLoading() {
+    const badge = document.getElementById('fieldStatusBadge');
+    if (!badge) return;
+    badge.className = 'field-status-badge pending';
+    badge.innerHTML =
+        '<span class="status-dot pending"></span><span class="status-text">Loading…</span>';
+}
+
+/** Admin moderation + listing visibility (API: moderationStatus, isActive). */
+function ownerFieldModerationUi(f) {
+    const mod = String(f.moderationStatus || '').toUpperCase();
+    const active = f.isActive !== false;
+    if (mod === 'REJECTED') {
+        return { variant: 'rejected', label: 'Rejected' };
+    }
+    if (mod === 'PENDING') {
+        return { variant: 'pending', label: 'Pending admin approval' };
+    }
+    if (mod === 'APPROVED') {
+        if (active) return { variant: 'approved', label: 'Approved & live' };
+        return { variant: 'pending', label: 'Approved (not visible yet)' };
+    }
+    if (active) {
+        return { variant: 'approved', label: 'Live' };
+    }
+    return { variant: 'pending', label: 'Pending admin approval' };
+}
+
+function setFieldStatusBadgeFromField(f) {
+    const badge = document.getElementById('fieldStatusBadge');
+    if (!badge) return;
+    const ui = ownerFieldModerationUi(f);
+    const v = ui.variant;
+    badge.className = 'field-status-badge' + (v === 'approved' ? '' : ' ' + v);
+    const dotClass = 'status-dot' + (v === 'approved' ? '' : ' ' + v);
+    badge.innerHTML =
+        '<span class="' + dotClass + '"></span><span class="status-text">' + ownerFieldEsc(ui.label) + '</span>';
+}
+
 function renderOwnerFieldsList(fields) {
     const list = document.getElementById('fieldsList');
     if (!list) return;
@@ -14,6 +53,11 @@ function renderOwnerFieldsList(fields) {
         const typeTag = f.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
         const rating = f.rating != null ? f.rating : '—';
         const rc = f.reviewCount != null ? f.reviewCount : 0;
+        const modUi = ownerFieldModerationUi(f);
+        const modTagClass =
+            modUi.variant === 'approved' ? 'field-tag field-tag-mod field-tag-mod-live' :
+            modUi.variant === 'rejected' ? 'field-tag field-tag-mod field-tag-mod-rejected' :
+            'field-tag field-tag-mod field-tag-mod-pending';
         return (
             '<div class="field-list-card" data-field-name="' + ownerFieldEsc(f.name) + '" data-field-id="' + ownerFieldEsc(id) + '">' +
             '<div class="field-list-image"><img src="' + ownerFieldEsc(img) + '" alt=""></div>' +
@@ -25,6 +69,7 @@ function renderOwnerFieldsList(fields) {
             '<div class="field-list-tags">' +
             '<span class="field-tag">' + typeTag + '</span>' +
             '<span class="field-tag">' + ownerFieldEsc(f.sport || '') + '</span>' +
+            '<span class="' + modTagClass + '">' + ownerFieldEsc(modUi.label) + '</span>' +
             '</div></div>' +
             '<div class="field-list-actions">' +
             '<div class="field-list-price-container">' +
@@ -364,6 +409,19 @@ function removeFieldImage(index) {
     renderFieldImages();
 }
 
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) {
+            resolve('');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e && e.target && e.target.result) || '');
+        reader.onerror = () => reject(new Error('Failed to read file.'));
+        reader.readAsDataURL(file);
+    });
+}
+
 
 // Toggle day schedule (enable/disable time inputs)
 function toggleDaySchedule(day, enabled) {
@@ -444,7 +502,7 @@ function toggleFieldVisibility() {
 }
 
 // Submit field form
-function submitFieldForm() {
+async function submitFieldForm() {
     if (!validateCurrentStep()) {
         return;
     }
@@ -546,22 +604,33 @@ function submitFieldForm() {
     const lngEl = document.getElementById('longitude');
     const latStr = latEl ? latEl.textContent.trim() : '';
     const lngStr = lngEl ? lngEl.textContent.trim() : '';
-    const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
-    const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; });
-    const features = highlights.concat(amenities).concat(feat).filter(Boolean);
+    const latNum = latStr && latStr !== '-' ? parseFloat(latStr) : NaN;
+    const lngNum = lngStr && lngStr !== '-' ? parseFloat(lngStr) : NaN;
+    const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
+    const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
 
     const payload = {
         name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
         sport: sportLabel,
         description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
+        capacity: parseInt(document.getElementById('capacity') && document.getElementById('capacity').value, 10) || null,
         type: isIndoor ? 'INDOOR' : 'OUTDOOR',
         location: locationLine,
         address: (addrEl && addrEl.value) || undefined,
+        city: (cityEl && cityEl.value) || undefined,
+        district: (distEl && distEl.value) || undefined,
         pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour') && document.getElementById('pricePerHour').value) || 0),
-        features: features,
+        amenities: amenities,
+        features: feat,
+        highlights: highlights.slice(),
         images: [],
-        latitude: latStr && latStr !== '-' ? parseFloat(latStr) : undefined,
-        longitude: lngStr && lngStr !== '-' ? parseFloat(lngStr) : undefined,
+        schedule: formData.schedule,
+        bookingType: formData.bookingType,
+        advanceBooking: formData.advanceBooking,
+        cancellationPolicy: formData.cancellationPolicy,
+        visibilityRequested: !!formData.visibility,
+        latitude: Number.isFinite(latNum) ? latNum : undefined,
+        longitude: Number.isFinite(lngNum) ? lngNum : undefined,
         isActive: document.getElementById('fieldVisibilityToggle') ? document.getElementById('fieldVisibilityToggle').classList.contains('active') : true
     };
 
@@ -571,7 +640,21 @@ function submitFieldForm() {
         submitBtn.textContent = 'Submitting...';
     }
 
-    API.fields.create(payload).then(async function(res) {
+    try {
+        const ownershipDataUrl = await fileToDataUrl(formData.ownershipDoc);
+        const licenseDataUrl = await fileToDataUrl(formData.licensesDoc);
+        const imageDataUrls = await Promise.all(
+            (fieldImages || [])
+                .map((img) => (img && img.file ? img.file : null))
+                .filter(Boolean)
+                .map((file) => fileToDataUrl(file))
+        );
+
+        if (ownershipDataUrl) payload.ownershipDocumentUrl = ownershipDataUrl;
+        if (licenseDataUrl) payload.licensesDocumentUrl = licenseDataUrl;
+        payload.images = imageDataUrls.filter(Boolean);
+
+        const res = await API.fields.create(payload);
         const field = res && res.field;
         const fieldId = field && field.id;
         if (fieldId && unavailableDates && unavailableDates.length && API.fields.addUnavailableDate) {
@@ -586,14 +669,14 @@ function submitFieldForm() {
         alert('Field created successfully.');
         closeAddFieldModal();
         loadOwnerFieldsFromApi();
-    }).catch(function(err) {
-        alert(err.message || 'Could not create field. Owner verification may be required.');
-    }).finally(function() {
+    } catch (err) {
+        alert((err && err.message) || 'Could not create field. Owner verification may be required.');
+    } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Submit for Approval';
         }
-    });
+    }
 }
 
 // Close modal when clicking outside
@@ -878,10 +961,21 @@ async function loadFieldData(fieldId) {
     if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.getById) {
         return;
     }
+    setFieldStatusBadgeLoading();
     try {
         const res = await API.fields.getById(fieldId);
         const f = res && res.field;
-        if (!f) return;
+        if (!f) {
+            const badge = document.getElementById('fieldStatusBadge');
+            if (badge) {
+                badge.className = 'field-status-badge pending';
+                badge.innerHTML =
+                    '<span class="status-dot pending"></span><span class="status-text">Field not found</span>';
+            }
+            return;
+        }
+
+        setFieldStatusBadgeFromField(f);
 
         const nameEl = document.getElementById('manageFieldName');
         if (nameEl) nameEl.value = f.name || '';
@@ -940,6 +1034,12 @@ async function loadFieldData(fieldId) {
         }
     } catch (e) {
         console.error('loadFieldData', e);
+        const badge = document.getElementById('fieldStatusBadge');
+        if (badge) {
+            badge.className = 'field-status-badge pending';
+            badge.innerHTML =
+                '<span class="status-dot pending"></span><span class="status-text">Could not load status</span>';
+        }
         alert((e && e.message) || 'Could not load field for editing.');
     }
 }

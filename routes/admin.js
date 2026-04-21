@@ -5,6 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
+const { mongoFieldUpdateAndFetch } = require('../lib/mongoFieldWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -499,39 +500,54 @@ router.put('/fields/:fieldId/moderation', [
     const status = req.body.status;
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
 
-    const field = await prisma.field.update({
-      where: { id: fieldId },
-      data: {
-        moderationStatus: status,
-        moderationReason: status === 'REJECTED' ? (reason || null) : null,
-        moderatedAt: new Date(),
-        moderatedById: req.user.id,
-        isActive: status === 'APPROVED'
-      },
-      include: {
-        owner: { select: { id: true, fullName: true, email: true } }
-      }
+    const updateResult = await mongoFieldUpdateAndFetch(fieldId, {
+      moderationStatus: status,
+      moderationReason: status === 'REJECTED' ? (reason || null) : null,
+      moderatedAt: new Date(),
+      moderatedById: req.user.id,
+      isActive: status === 'APPROVED'
     });
+    if (!updateResult || !updateResult.matched || !updateResult.field) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+    const field = updateResult.field;
 
-    // Notify owner
+    // Notify owner (native Mongo writes to avoid Prisma P2031 on standalone MongoDB)
     try {
       const title = status === 'APPROVED' ? 'Your field was approved' : 'Your field was rejected';
       const message = status === 'APPROVED'
         ? `Your field "${field.name}" is now visible to players.`
         : `Your field "${field.name}" was rejected.${reason ? ` Reason: ${reason}` : ''}`;
-      const notification = await prisma.notification.create({
-        data: {
-          title,
-          message,
-          audience: 'private',
-          channels: ['in-app'],
-          targetUserId: field.ownerId,
-          sentById: req.user.id
+
+      if (isMongoObjectIdString(String(field.ownerId)) && isMongoObjectIdString(String(req.user.id))) {
+        const mongo = new MongoClient(process.env.DATABASE_URL);
+        await mongo.connect();
+        try {
+          const db = mongo.db();
+          const notificationsCol = db.collection('notifications');
+          const userNotificationsCol = db.collection('user_notifications');
+          const now = new Date();
+
+          const inserted = await notificationsCol.insertOne({
+            title,
+            message,
+            audience: 'private',
+            channels: ['in-app'],
+            target_user_id: new ObjectId(String(field.ownerId)),
+            sent_by_id: new ObjectId(String(req.user.id)),
+            created_at: now
+          });
+
+          await userNotificationsCol.insertOne({
+            user_id: new ObjectId(String(field.ownerId)),
+            notification_id: inserted.insertedId,
+            read_at: null,
+            created_at: now
+          });
+        } finally {
+          await mongo.close();
         }
-      });
-      await prisma.userNotification.create({
-        data: { userId: field.ownerId, notificationId: notification.id }
-      });
+      }
     } catch (e) {
       console.warn('Could not notify field owner:', e);
     }

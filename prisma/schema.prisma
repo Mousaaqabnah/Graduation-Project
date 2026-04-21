@@ -105,15 +105,28 @@ model Field {
   name        String
   sport       String    // Football, Tennis, Basketball, Padel, Volleyball, Ice Hockey, etc.
   description String?
+  capacity    Int?
   type        FieldType @default(OUTDOOR) // INDOOR | OUTDOOR
   location    String
   address     String?
+  city        String?
+  district    String?
   latitude    Float?
   longitude   Float?
   phone       String?
   pricePerHour Int      @map("price_per_hour") // in smallest currency unit (e.g. kuruş for TRY)
+  amenities   String[]  @default([])
   features    String[]  @default([]) // e.g. ["Parking", "Changing Rooms", "Water Station"]
+  highlights  String[]  @default([])
   images      String[]  @default([]) // URLs of images
+  schedule    Json?
+  bookingType String?   @map("booking_type")
+  advanceBooking String? @map("advance_booking")
+  cancellationPolicy String? @map("cancellation_policy")
+  visibilityRequested Boolean? @map("visibility_requested")
+  /// Optional URLs for owner-submitted verification files (shown in admin review).
+  ownershipDocumentUrl String? @map("ownership_document_url")
+  licensesDocumentUrl  String? @map("licenses_document_url")
   rating      Float?    @default(0) // computed from reviews
   reviewCount Int       @default(0) @map("review_count")
   isActive    Boolean   @default(true) @map("is_active")

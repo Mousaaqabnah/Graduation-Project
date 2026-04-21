@@ -3,9 +3,11 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { mongoUserGetVerificationStatus } = require('../lib/mongoUserWrite');
 const {
   mongoFieldGetOwnerId,
   mongoFieldUpdateAndFetch,
+  mongoFieldCreateAndFetch,
   mongoFieldUnavailableDeleteInRange,
   mongoFieldGetByIdPublicDetail,
   mongoFieldUnavailableListForField,
@@ -456,6 +458,37 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+/** Avoid NaN / invalid floats — Prisma rejects NaN for Float fields and surfaces a 500. */
+function parseCoordOrNull(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = typeof value === 'number' ? value : parseFloat(String(value).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Prisma String[] must be strings only (not objects); tolerate a single URL string. */
+function normalizeStringArray(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (v === undefined || v === null ? '' : String(v).trim()))
+      .filter((s) => s.length > 0);
+  }
+  if (typeof value === 'string' && value.trim() !== '') return [value.trim()];
+  return [];
+}
+
+function parseIntOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? Math.round(value) : parseInt(String(value).trim(), 10);
+  return Number.isInteger(n) ? n : null;
+}
+
+function normalizeScheduleObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value;
+}
+
 // Create field (Owner only)
 router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
   body('name').trim().notEmpty(),
@@ -470,16 +503,45 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, sport, description, type, location, address, phone, pricePerHour, features, images, latitude, longitude } = req.body;
+    const {
+      name,
+      sport,
+      description,
+      capacity,
+      type,
+      location,
+      address,
+      city,
+      district,
+      phone,
+      pricePerHour,
+      amenities,
+      features,
+      highlights,
+      images,
+      schedule,
+      bookingType,
+      advanceBooking,
+      cancellationPolicy,
+      visibilityRequested,
+      latitude,
+      longitude,
+      ownershipDocumentUrl,
+      licensesDocumentUrl
+    } = req.body;
+
+    function optionalDocumentUrl(v) {
+      if (v == null || typeof v !== 'string') return null;
+      const t = v.trim();
+      // Accept long data URLs (base64) produced by owner-side uploads.
+      if (!t || t.length > 10 * 1024 * 1024) return null;
+      return t;
+    }
 
     // Check if owner is verified (if they're an owner)
     if (req.user.role === 'OWNER') {
-      const owner = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { verificationStatus: true }
-      });
-
-      if (owner.verificationStatus !== 'APPROVED') {
+      const verificationStatus = await mongoUserGetVerificationStatus(req.user.id);
+      if (verificationStatus !== 'APPROVED') {
         return res.status(403).json({ error: 'Owner verification required to create fields' });
       }
     }
@@ -488,36 +550,38 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
     const moderationStatus = isAdmin ? 'APPROVED' : 'PENDING';
     const isActive = isAdmin; // owner-created fields must be approved by admin first
 
-    const field = await prisma.field.create({
-      data: {
-        name,
-        sport,
-        description,
-        type,
-        location,
-        address,
-        phone,
-        pricePerHour: parseInt(pricePerHour),
-        features: features || [],
-        images: images || [],
-        latitude: latitude != null ? parseFloat(latitude) : null,
-        longitude: longitude != null ? parseFloat(longitude) : null,
-        ownerId: req.user.id,
-        moderationStatus,
-        moderationReason: null,
-        moderatedAt: isAdmin ? new Date() : null,
-        moderatedById: isAdmin ? req.user.id : null,
-        isActive
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true
-          }
-        }
-      }
+    // Native insert — Prisma create() hits P2031 on standalone MongoDB (requires replica set for transactions).
+    const field = await mongoFieldCreateAndFetch({
+      name,
+      sport,
+      description,
+      capacity: parseIntOrNull(capacity),
+      type,
+      location,
+      address,
+      city: city != null ? String(city).trim() || null : null,
+      district: district != null ? String(district).trim() || null : null,
+      phone,
+      pricePerHour: parseInt(pricePerHour, 10),
+      amenities: normalizeStringArray(amenities),
+      features: normalizeStringArray(features),
+      highlights: normalizeStringArray(highlights),
+      images: normalizeStringArray(images),
+      schedule: normalizeScheduleObject(schedule),
+      bookingType: bookingType != null ? String(bookingType).trim() || null : null,
+      advanceBooking: advanceBooking != null ? String(advanceBooking).trim() || null : null,
+      cancellationPolicy: cancellationPolicy != null ? String(cancellationPolicy).trim() || null : null,
+      visibilityRequested: visibilityRequested === undefined ? null : !!visibilityRequested,
+      latitude: parseCoordOrNull(latitude),
+      longitude: parseCoordOrNull(longitude),
+      ownershipDocumentUrl: optionalDocumentUrl(ownershipDocumentUrl),
+      licensesDocumentUrl: optionalDocumentUrl(licensesDocumentUrl),
+      ownerId: req.user.id,
+      moderationStatus,
+      moderationReason: null,
+      moderatedAt: isAdmin ? new Date() : null,
+      moderatedById: isAdmin ? req.user.id : null,
+      isActive
     });
 
     const msg = isAdmin
@@ -526,7 +590,12 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
     res.status(201).json({ message: msg, field });
   } catch (error) {
     console.error('Create field error:', error);
-    res.status(500).json({ error: 'Failed to create field' });
+    const payload = { error: 'Failed to create field' };
+    if (process.env.NODE_ENV !== 'production') {
+      const msg = error && error.message ? String(error.message) : String(error);
+      payload.details = msg;
+    }
+    res.status(500).json(payload);
   }
 });
 
@@ -573,14 +642,54 @@ router.put('/:id', authenticate, [
     }
 
     const updateData = {};
-    const allowedFields = ['name', 'sport', 'description', 'type', 'location', 'address', 'phone', 'pricePerHour', 'features', 'images', 'isActive', 'latitude', 'longitude'];
+    const allowedFields = [
+      'name',
+      'sport',
+      'description',
+      'capacity',
+      'type',
+      'location',
+      'address',
+      'city',
+      'district',
+      'phone',
+      'pricePerHour',
+      'amenities',
+      'features',
+      'highlights',
+      'images',
+      'schedule',
+      'bookingType',
+      'advanceBooking',
+      'cancellationPolicy',
+      'visibilityRequested',
+      'isActive',
+      'latitude',
+      'longitude',
+      'ownershipDocumentUrl',
+      'licensesDocumentUrl'
+    ];
     
     allowedFields.forEach(f => {
       if (req.body[f] !== undefined) {
         if (f === 'pricePerHour') {
           updateData[f] = parseInt(req.body[f], 10);
+        } else if (f === 'capacity') {
+          updateData[f] = parseIntOrNull(req.body[f]);
         } else if (f === 'latitude' || f === 'longitude') {
-          updateData[f] = req.body[f] != null ? parseFloat(req.body[f]) : null;
+          updateData[f] = parseCoordOrNull(req.body[f]);
+        } else if (f === 'schedule') {
+          updateData[f] = normalizeScheduleObject(req.body[f]);
+        } else if (f === 'visibilityRequested') {
+          updateData[f] = !!req.body[f];
+        } else if (f === 'ownershipDocumentUrl' || f === 'licensesDocumentUrl') {
+          const v = req.body[f];
+          if (v === null || v === '') {
+            updateData[f] = null;
+          } else {
+            const t = String(v).trim();
+            updateData[f] = t.length <= 10 * 1024 * 1024 ? t : null;
+          }
         } else {
           updateData[f] = req.body[f];
         }
@@ -653,6 +762,10 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to delete field', ...details });
   }
 });
+
+if (process.env.NODE_ENV !== 'production') {
+  console.log('[api/fields] Field creation uses native MongoDB (restart server after changing routes/fields.js).');
+}
 
 module.exports = router;
 
