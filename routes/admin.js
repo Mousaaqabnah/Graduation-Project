@@ -5,7 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
-const { mongoFieldUpdateAndFetch } = require('../lib/mongoFieldWrite');
+const { mongoFieldUpdateAndFetch, mongoFieldGetByIdPublicDetail } = require('../lib/mongoFieldWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -500,13 +500,38 @@ router.put('/fields/:fieldId/moderation', [
     const status = req.body.status;
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
 
-    const updateResult = await mongoFieldUpdateAndFetch(fieldId, {
+    const current = await mongoFieldGetByIdPublicDetail(fieldId);
+    if (!current) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+    const pendingChanges =
+      current.pendingChanges && typeof current.pendingChanges === 'object'
+        ? current.pendingChanges
+        : null;
+    const hasPendingChanges = !!(pendingChanges && Object.keys(pendingChanges).length > 0);
+
+    const apply = {
       moderationStatus: status,
       moderationReason: status === 'REJECTED' ? (reason || null) : null,
       moderatedAt: new Date(),
-      moderatedById: req.user.id,
-      isActive: status === 'APPROVED'
-    });
+      moderatedById: req.user.id
+    };
+
+    if (status === 'APPROVED') {
+      if (hasPendingChanges) {
+        Object.assign(apply, pendingChanges);
+      }
+      apply.pendingChanges = null;
+      apply.pendingChangeRequestedAt = null;
+      apply.isActive = true;
+    } else if (status === 'REJECTED') {
+      apply.pendingChanges = null;
+      apply.pendingChangeRequestedAt = null;
+      // If this was an edit request on an already-live field, keep it active.
+      apply.isActive = hasPendingChanges ? current.isActive !== false : false;
+    }
+
+    const updateResult = await mongoFieldUpdateAndFetch(fieldId, apply);
     if (!updateResult || !updateResult.matched || !updateResult.field) {
       return res.status(404).json({ error: 'Field not found' });
     }

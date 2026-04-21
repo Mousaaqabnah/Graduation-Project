@@ -489,6 +489,23 @@ function normalizeScheduleObject(value) {
   return value;
 }
 
+function normalizeUpdateFieldValue(field, value) {
+  if (field === 'pricePerHour') return parseInt(value, 10);
+  if (field === 'capacity') return parseIntOrNull(value);
+  if (field === 'latitude' || field === 'longitude') return parseCoordOrNull(value);
+  if (field === 'schedule') return normalizeScheduleObject(value);
+  if (field === 'visibilityRequested') return !!value;
+  if (field === 'amenities' || field === 'features' || field === 'highlights' || field === 'images') {
+    return normalizeStringArray(value);
+  }
+  if (field === 'ownershipDocumentUrl' || field === 'licensesDocumentUrl') {
+    if (value === null || value === '') return null;
+    const t = String(value).trim();
+    return t.length <= 10 * 1024 * 1024 ? t : null;
+  }
+  return value;
+}
+
 // Create field (Owner only)
 router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
   body('name').trim().notEmpty(),
@@ -642,6 +659,7 @@ router.put('/:id', authenticate, [
     }
 
     const updateData = {};
+    const pendingSensitiveData = {};
     const allowedFields = [
       'name',
       'sport',
@@ -669,32 +687,46 @@ router.put('/:id', authenticate, [
       'ownershipDocumentUrl',
       'licensesDocumentUrl'
     ];
+    const sensitiveFields = new Set([
+      'name',
+      'sport',
+      'type',
+      'location',
+      'address',
+      'city',
+      'district',
+      'latitude',
+      'longitude',
+      'ownershipDocumentUrl',
+      'licensesDocumentUrl'
+    ]);
     
     allowedFields.forEach(f => {
       if (req.body[f] !== undefined) {
-        if (f === 'pricePerHour') {
-          updateData[f] = parseInt(req.body[f], 10);
-        } else if (f === 'capacity') {
-          updateData[f] = parseIntOrNull(req.body[f]);
-        } else if (f === 'latitude' || f === 'longitude') {
-          updateData[f] = parseCoordOrNull(req.body[f]);
-        } else if (f === 'schedule') {
-          updateData[f] = normalizeScheduleObject(req.body[f]);
-        } else if (f === 'visibilityRequested') {
-          updateData[f] = !!req.body[f];
+        const normalized = normalizeUpdateFieldValue(f, req.body[f]);
+        if (req.user.role !== 'ADMIN' && sensitiveFields.has(f)) {
+          pendingSensitiveData[f] = normalized;
         } else if (f === 'ownershipDocumentUrl' || f === 'licensesDocumentUrl') {
-          const v = req.body[f];
-          if (v === null || v === '') {
-            updateData[f] = null;
-          } else {
-            const t = String(v).trim();
-            updateData[f] = t.length <= 10 * 1024 * 1024 ? t : null;
-          }
+          updateData[f] = normalized;
         } else {
-          updateData[f] = req.body[f];
+          updateData[f] = normalized;
         }
       }
     });
+
+    const hasPendingSensitive = Object.keys(pendingSensitiveData).length > 0;
+    if (hasPendingSensitive) {
+      updateData.pendingChanges = pendingSensitiveData;
+      updateData.pendingChangeRequestedAt = new Date();
+      updateData.moderationStatus = 'PENDING';
+      updateData.moderationReason = null;
+      updateData.moderatedAt = null;
+      updateData.moderatedById = null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.json({ message: 'No changes to update' });
+    }
 
     let updatedField;
     try {
@@ -712,7 +744,10 @@ router.put('/:id', authenticate, [
       return res.status(404).json({ error: 'Field not found' });
     }
 
-    res.json({ message: 'Field updated successfully', field: updatedField });
+    const message = hasPendingSensitive
+      ? 'Field updated. Sensitive changes were submitted for admin approval.'
+      : 'Field updated successfully';
+    res.json({ message, field: updatedField });
   } catch (error) {
     console.error('Update field error:', error);
     res.status(500).json({ error: 'Failed to update field' });

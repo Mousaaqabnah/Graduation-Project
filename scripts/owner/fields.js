@@ -808,13 +808,71 @@ function applyManageFeaturesFromField(features) {
 function selectManageSportByName(sportName) {
     const sel = document.getElementById('manageSportCategory');
     if (!sel) return;
-    const want = String(sportName || 'Football').trim().toLowerCase();
+    const raw = String(sportName || '').trim().toLowerCase();
+    if (!raw) return;
+    const norm = raw.replace(/[_-]+/g, ' ');
+    const aliases = {
+        football: ['football', 'soccer', 'futbol', 'futsal football', 'mini football', 'hali saha'],
+        basketball: ['basketball', 'basket ball'],
+        tennis: ['tennis'],
+        padel: ['padel', 'paddle', 'padel tennis'],
+        futsal: ['futsal'],
+        volleyball: ['volleyball', 'voleybol'],
+        badminton: ['badminton']
+    };
+    let canonical = '';
+    Object.keys(aliases).some(function(key) {
+        const words = aliases[key];
+        const matched = words.some(function(w) {
+            return norm === w || norm.indexOf(w + ' ') === 0 || norm.indexOf(' ' + w) >= 0;
+        });
+        if (matched) canonical = key;
+        return matched;
+    });
+    const want = canonical || norm;
     for (let i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].text.trim().toLowerCase() === want) {
+        const optionText = String(sel.options[i].text || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[_-]+/g, ' ');
+        if (optionText === want) {
             sel.selectedIndex = i;
             return;
         }
     }
+}
+
+function resetManageImagesContainer() {
+    const container = document.querySelector('#edit-info-section .images-container');
+    if (!container) return;
+    container.querySelectorAll('.image-preview').forEach(function(node) {
+        node.remove();
+    });
+}
+
+function appendManageImagePreview(src) {
+    const container = document.querySelector('#edit-info-section .images-container');
+    if (!container || !src) return;
+    const addBtn = container.querySelector('.add-image-btn');
+    const imagePreview = document.createElement('div');
+    imagePreview.className = 'image-preview';
+    imagePreview.innerHTML =
+        '<img src="' +
+        ownerFieldEsc(src) +
+        '" alt="Field"><button class="remove-image" onclick="removeImage(this)">&times;</button>';
+    if (addBtn) {
+        container.insertBefore(imagePreview, addBtn);
+    } else {
+        container.appendChild(imagePreview);
+    }
+}
+
+function collectManageImagesFromDom() {
+    return Array.from(document.querySelectorAll('#edit-info-section .images-container .image-preview img'))
+        .map(function(img) {
+            return (img && img.getAttribute('src')) || '';
+        })
+        .filter(Boolean);
 }
 
 function unavailableYmdFromApi(d) {
@@ -827,6 +885,49 @@ function unavailableYmdFromApi(d) {
         '-' +
         String(x.getUTCDate()).padStart(2, '0')
     );
+}
+
+function inferFileNameFromUrl(url, fallback) {
+    const value = String(url || '').trim();
+    if (!value) return fallback;
+    if (value.startsWith('data:')) {
+        if (value.includes('pdf')) return fallback.replace(/\.[^.]*$/, '.pdf');
+        if (value.includes('png')) return fallback.replace(/\.[^.]*$/, '.png');
+        if (value.includes('jpeg') || value.includes('jpg')) return fallback.replace(/\.[^.]*$/, '.jpg');
+        return fallback;
+    }
+    try {
+        const clean = value.split('?')[0].split('#')[0];
+        const seg = clean.split('/').pop();
+        return seg || fallback;
+    } catch (_err) {
+        return fallback;
+    }
+}
+
+function setManageDocumentPreview(type, documentUrl) {
+    const previewId = type === 'ownership' ? 'manageOwnershipPreview' : 'manageLicensePreview';
+    const previewEl = document.getElementById(previewId);
+    if (!previewEl) return;
+    if (!documentUrl) {
+        previewEl.classList.remove('active');
+        previewEl.innerHTML = '';
+        return;
+    }
+    const fileName = inferFileNameFromUrl(
+        documentUrl,
+        type === 'ownership' ? 'ownership_document.pdf' : 'license_document.pdf'
+    );
+    previewEl.classList.add('active');
+    previewEl.innerHTML =
+        '<div class="file-preview-item">' +
+        '<i class="fi fi-rr-file" style="margin-right: 8px;"></i>' +
+        '<span>' + ownerFieldEsc(fileName) + '</span>' +
+        '<div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">' +
+        '<span style="font-size: 11px; color: #10B981; font-weight: 500;">Uploaded</span>' +
+        '<button type="button" onclick="removeManageFile(\'' + type + '\')" title="Remove file">&times;</button>' +
+        '</div>' +
+        '</div>';
 }
 
 function openModal(fieldId) {
@@ -993,11 +1094,42 @@ async function loadFieldData(fieldId) {
 
         const addrEl = document.getElementById('manageFieldAddress');
         if (addrEl) addrEl.value = f.address || f.location || '';
+        const cityEl = document.getElementById('manageFieldCity');
+        if (cityEl) cityEl.value = f.city || '';
+        const districtEl = document.getElementById('manageFieldDistrict');
+        if (districtEl) districtEl.value = f.district || '';
+        const capEl = document.getElementById('manageCapacity');
+        if (capEl) capEl.value = f.capacity != null ? String(f.capacity) : '';
 
         const descEl = document.getElementById('manageDescription');
         if (descEl) descEl.value = f.description || '';
 
         applyManageFeaturesFromField(f.features);
+        applyManageScheduleFromField(f.schedule);
+        resetManageImagesContainer();
+        (Array.isArray(f.images) ? f.images : []).forEach(function(src) {
+            appendManageImagePreview(src);
+        });
+        setManageDocumentPreview('ownership', f.ownershipDocumentUrl || '');
+        setManageDocumentPreview('license', f.licensesDocumentUrl || f.licenseDocumentUrl || '');
+        const ownPrev = document.getElementById('manageOwnershipPreview');
+        const licPrev = document.getElementById('manageLicensePreview');
+        if (ownPrev) ownPrev.dataset.removed = '0';
+        if (licPrev) licPrev.dataset.removed = '0';
+        const ownUpload = document.getElementById('manageOwnershipDocPreview');
+        const licUpload = document.getElementById('manageLicensesDocPreview');
+        if (ownUpload) {
+            ownUpload.innerHTML = '';
+            ownUpload.classList.remove('active');
+        }
+        if (licUpload) {
+            licUpload.innerHTML = '';
+            licUpload.classList.remove('active');
+        }
+        const ownInput = document.getElementById('manageOwnershipDoc');
+        const licInput = document.getElementById('manageLicensesDoc');
+        if (ownInput) ownInput.value = '';
+        if (licInput) licInput.value = '';
 
         const latEl = document.getElementById('manageLatitude');
         const lngEl = document.getElementById('manageLongitude');
@@ -1007,6 +1139,31 @@ async function loadFieldData(fieldId) {
         const visToggle = document.getElementById('manageVisibilityToggle');
         if (visToggle) {
             visToggle.classList.toggle('active', f.isActive !== false);
+        }
+        const maintToggle = document.getElementById('manageMaintenanceToggle');
+        if (maintToggle) {
+            maintToggle.classList.toggle('active', f.isActive === false);
+        }
+        const bookingTypeValue = String(f.bookingType || 'instant').toLowerCase();
+        const bookingInput = document.querySelector(
+            `input[name="manageBookingType"][value="${bookingTypeValue === 'request' ? 'request' : 'instant'}"]`
+        );
+        if (bookingInput) bookingInput.checked = true;
+        const advSel = document.getElementById('manageAdvanceBooking');
+        if (advSel && f.advanceBooking != null) {
+            const want = String(f.advanceBooking);
+            const hasOption = Array.from(advSel.options).some(function(opt) {
+                return String(opt.value) === want;
+            });
+            if (hasOption) advSel.value = want;
+        }
+        const cancelSel = document.getElementById('manageCancellationPolicy');
+        if (cancelSel && f.cancellationPolicy) {
+            const want = String(f.cancellationPolicy);
+            const hasOption = Array.from(cancelSel.options).some(function(opt) {
+                return String(opt.value) === want;
+            });
+            if (hasOption) cancelSel.value = want;
         }
 
         const datesList = document.getElementById('manageUnavailableDatesList');
@@ -1269,10 +1426,14 @@ function toggleManageDaySchedule(day, enabled) {
     
     if (openingInput && closingInput && row) {
         if (enabled) {
+            openingInput.disabled = false;
+            closingInput.disabled = false;
             openingInput.required = true;
             closingInput.required = true;
             row.classList.remove('disabled');
         } else {
+            openingInput.disabled = true;
+            closingInput.disabled = true;
             openingInput.required = false;
             closingInput.required = false;
             row.classList.add('disabled');
@@ -1288,6 +1449,36 @@ function initializeManageDaySchedules() {
             toggleManageDaySchedule(day, checkbox.checked);
         }
     });
+}
+
+function applyManageScheduleFromField(schedule) {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const src = schedule && typeof schedule === 'object' ? schedule : {};
+    days.forEach(function(day) {
+        const dayCfg = src[day] && typeof src[day] === 'object' ? src[day] : {};
+        const checkbox = document.querySelector(`input[name="manageWorkingDays"][value="${day}"]`);
+        const openingInput = document.getElementById(`manage-${day}-opening`);
+        const closingInput = document.getElementById(`manage-${day}-closing`);
+        const enabled = dayCfg.enabled !== false;
+        if (checkbox) checkbox.checked = enabled;
+        if (openingInput && dayCfg.opening) openingInput.value = dayCfg.opening;
+        if (closingInput && dayCfg.closing) closingInput.value = dayCfg.closing;
+        toggleManageDaySchedule(day, enabled);
+    });
+}
+
+function collectManageSchedule() {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const schedule = {};
+    days.forEach(function(day) {
+        const checked = !!document.querySelector(`input[name="manageWorkingDays"][value="${day}"]`)?.checked;
+        schedule[day] = {
+            enabled: checked,
+            opening: document.getElementById(`manage-${day}-opening`)?.value || null,
+            closing: document.getElementById(`manage-${day}-closing`)?.value || null
+        };
+    });
+    return schedule;
 }
 
 function addManageHighlight() {
@@ -1354,23 +1545,17 @@ async function removeManageUnavailableDate(button) {
 
 function handleManageImageUpload(event) {
     const files = Array.from(event.target.files);
-    const container = document.querySelector('#edit-info-section .images-container');
     
     files.forEach(file => {
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                const imagePreview = document.createElement('div');
-                imagePreview.className = 'image-preview';
-                imagePreview.innerHTML = `
-                    <img src="${e.target.result}" alt="Field">
-                    <button class="remove-image" onclick="removeImage(this)">&times;</button>
-                `;
-                container.insertBefore(imagePreview, container.querySelector('.add-image-btn'));
+                appendManageImagePreview((e && e.target && e.target.result) || '');
             };
             reader.readAsDataURL(file);
         }
     });
+    event.target.value = '';
 }
 
 function initializeManageMap() {
@@ -1418,6 +1603,12 @@ function removeManageFile(type) {
         if (fileItem) {
             fileItem.remove();
         }
+        filePreview.dataset.removed = '1';
+    }
+    const inputId = type === 'ownership' ? 'manageOwnershipDoc' : 'manageLicensesDoc';
+    const input = document.getElementById(inputId);
+    if (input) {
+        input.value = '';
     }
 }
 
@@ -1510,16 +1701,31 @@ async function submitManageChanges() {
         name: (document.getElementById('manageFieldName')?.value || '').trim() || 'Field',
         sport,
         description: document.getElementById('manageDescription')?.value || '',
+        capacity: parseInt(document.getElementById('manageCapacity')?.value, 10) || null,
         type: typeEnum,
         location: locationLine,
         address: addr || undefined,
+        city: city || undefined,
+        district: dist || undefined,
         pricePerHour: Math.round(parseFloat(document.getElementById('managePricePerHour')?.value) || 0),
         features: collectManageFeatureStrings(),
+        images: collectManageImagesFromDom(),
+        schedule: collectManageSchedule(),
+        bookingType: document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant',
+        advanceBooking: document.getElementById('manageAdvanceBooking')?.value || '3',
+        cancellationPolicy: document.getElementById('manageCancellationPolicy')?.value || 'moderate',
+        visibilityRequested: !!visOn,
         isActive: !!visOn && !maintOn
     };
 
     if (latTxt && !isNaN(parseFloat(latTxt))) payload.latitude = parseFloat(latTxt);
     if (lngTxt && !isNaN(parseFloat(lngTxt))) payload.longitude = parseFloat(lngTxt);
+    const ownRemoved = document.getElementById('manageOwnershipPreview')?.dataset.removed === '1';
+    const licRemoved = document.getElementById('manageLicensePreview')?.dataset.removed === '1';
+    const ownDocFile = document.getElementById('manageOwnershipDoc')?.files?.[0];
+    const licDocFile = document.getElementById('manageLicensesDoc')?.files?.[0];
+    if (ownRemoved) payload.ownershipDocumentUrl = null;
+    if (licRemoved) payload.licensesDocumentUrl = null;
 
     const btn = document.getElementById('manageSubmitBtn');
     if (btn) {
@@ -1527,6 +1733,8 @@ async function submitManageChanges() {
     }
 
     try {
+        if (ownDocFile) payload.ownershipDocumentUrl = await fileToDataUrl(ownDocFile);
+        if (licDocFile) payload.licensesDocumentUrl = await fileToDataUrl(licDocFile);
         await API.fields.update(ownerManagingFieldId, payload);
 
         if (API.fields.addUnavailableDate && API.fields.listUnavailableDates) {

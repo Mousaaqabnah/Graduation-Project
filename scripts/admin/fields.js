@@ -189,6 +189,10 @@ function mergeAdminFieldRowWithDetail(row, detail) {
         price: formatPriceTry(pph),
         ownershipDocumentUrl: detail.ownershipDocumentUrl || row.ownershipDocumentUrl || '',
         licensesDocumentUrl: detail.licensesDocumentUrl || row.licensesDocumentUrl || '',
+        pendingChanges:
+            detail.pendingChanges && typeof detail.pendingChanges === 'object'
+                ? detail.pendingChanges
+                : row.pendingChanges || null,
         moderationReason: detail.moderationReason || row.moderationReason || '',
         createdAt: detail.createdAt || row.createdAt || null,
         unavailableDates
@@ -379,12 +383,62 @@ function buildAdminUnavailableDatesSection(field) {
     );
 }
 
+function formatPendingFieldLabel(key) {
+    const labels = {
+        name: 'Field name',
+        sport: 'Sport',
+        type: 'Court type',
+        location: 'Location',
+        address: 'Address',
+        city: 'City',
+        district: 'District',
+        latitude: 'Latitude',
+        longitude: 'Longitude',
+        ownershipDocumentUrl: 'Ownership document',
+        licensesDocumentUrl: 'Licenses document'
+    };
+    return labels[key] || key;
+}
+
+function buildAdminPendingChangesSection(field) {
+    const pending = field && field.pendingChanges && typeof field.pendingChanges === 'object'
+        ? field.pendingChanges
+        : null;
+    const keys = pending ? Object.keys(pending) : [];
+    if (!keys.length) return '';
+    const rows = keys.map(function(key) {
+        let value = pending[key];
+        if (value === null || value === undefined || value === '') {
+            value = 'Removed';
+        } else if (typeof value === 'object') {
+            value = JSON.stringify(value);
+        } else {
+            value = String(value);
+        }
+        if (key === 'ownershipDocumentUrl' || key === 'licensesDocumentUrl') {
+            value = value === 'Removed' ? 'Removed' : 'Updated file submitted';
+        }
+        return (
+            '<div class="field-info-item"><div class="field-info-label">Pending change: ' +
+            escapeHtml(formatPendingFieldLabel(key)) +
+            '</div><div class="field-info-value">' +
+            escapeHtml(value) +
+            '</div></div>'
+        );
+    }).join('');
+    return (
+        '<div class="field-info-item"><div class="field-info-label">Owner requested changes</div><div class="field-info-value">These edits are waiting for admin approval.</div></div>' +
+        rows
+    );
+}
+
 function buildAdminFieldInfoMarkup(field) {
     const scheduleText = escapeHtml(formatScheduleForAdmin(field.schedule));
     return (
         buildAdminFieldPicturesSection(field) +
         buildAdminFieldDocumentsSection(field) +
         buildAdminUnavailableDatesSection(field) +
+        buildAdminPendingChangesSection(field) +
         '<div class="field-info-item">' +
         '<div class="field-info-label">Field name</div>' +
         '<div class="field-info-value">' +
@@ -593,7 +647,9 @@ function mapField(f) {
         type: f.type || '',
         createdAt: f.createdAt || null,
         ownershipDocumentUrl: f.ownershipDocumentUrl || '',
-        licensesDocumentUrl: f.licensesDocumentUrl || ''
+        licensesDocumentUrl: f.licensesDocumentUrl || '',
+        pendingChanges:
+            f.pendingChanges && typeof f.pendingChanges === 'object' ? f.pendingChanges : null
     };
 }
 
