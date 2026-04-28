@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient } = require('mongodb');
 const { authenticate } = require('../middleware/auth');
 const { mongoUserSetFields } = require('../lib/mongoUserWrite');
 
@@ -13,6 +14,44 @@ const prisma = new PrismaClient();
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
+
+async function createUserWithNativeMongo(data) {
+  const client = new MongoClient(process.env.DATABASE_URL);
+  await client.connect();
+  try {
+    const db = client.db();
+    const now = new Date();
+    const roleValue = data.role || 'PLAYER';
+    const userDoc = {
+      email: data.email,
+      password_hash: data.passwordHash,
+      full_name: data.fullName,
+      phone: data.phone || null,
+      date_of_birth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender || null,
+      location: data.location || null,
+      avatar: null,
+      role: roleValue,
+      status: 'ACTIVE',
+      verification_status: roleValue === 'OWNER' ? 'NOT_SUBMITTED' : null,
+      created_at: now,
+      updated_at: now
+    };
+
+    const result = await db.collection('users').insertOne(userDoc);
+    return {
+      id: String(result.insertedId),
+      email: userDoc.email,
+      fullName: userDoc.full_name,
+      role: userDoc.role,
+      status: userDoc.status,
+      avatar: userDoc.avatar,
+      createdAt: userDoc.created_at
+    };
+  } finally {
+    await client.close();
+  }
+}
 
 // Register new user
 router.post('/register', [
@@ -30,40 +69,19 @@ router.post('/register', [
     const email = String(req.body.email).trim().toLowerCase();
     const { password, fullName, phone, dateOfBirth, gender, location, role } = req.body;
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        fullName,
-        phone,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        gender,
-        location,
-        role: role || 'PLAYER',
-        verificationStatus: role === 'OWNER' ? 'NOT_SUBMITTED' : null
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        status: true,
-        avatar: true,
-        createdAt: true
-      }
+    // Create user via native MongoDB write to support standalone MongoDB (no replica set).
+    const user = await createUserWithNativeMongo({
+      email,
+      passwordHash,
+      fullName,
+      phone,
+      dateOfBirth,
+      gender,
+      location,
+      role
     });
 
     // Generate token
@@ -75,6 +93,9 @@ router.post('/register', [
       token
     });
   } catch (error) {
+    if (error && (error.code === 11000 || error.code === '11000')) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }

@@ -114,6 +114,22 @@ router.put('/verify-owner/:userId', [
       return res.status(400).json({ error: 'Invalid user id' });
     }
 
+    const currentUser = await prisma.user.findUnique({
+      where: { id: idTrim },
+      select: {
+        id: true,
+        role: true,
+        fullName: true,
+        verificationStatus: true
+      }
+    });
+    if (!currentUser || String(currentUser.role || '').toUpperCase() !== 'OWNER') {
+      return res.status(404).json({ error: 'Owner not found' });
+    }
+    if (String(currentUser.verificationStatus || '').toUpperCase() !== 'PENDING') {
+      return res.status(400).json({ error: 'Only pending owner verifications can be reviewed' });
+    }
+
     const matched = await mongoUserSetFields(idTrim, {
       verification_status: verificationStatus,
       verified_at: verificationStatus === 'APPROVED' ? new Date() : null
@@ -133,6 +149,48 @@ router.put('/verify-owner/:userId', [
         verifiedAt: true
       }
     });
+
+    // Notify owner about verification decision (best effort).
+    try {
+      if (isMongoObjectIdString(String(idTrim)) && isMongoObjectIdString(String(req.user.id))) {
+        const mongo = new MongoClient(process.env.DATABASE_URL);
+        await mongo.connect();
+        try {
+          const db = mongo.db();
+          const notificationsCol = db.collection('notifications');
+          const userNotificationsCol = db.collection('user_notifications');
+          const now = new Date();
+          const ownerName = (user && user.fullName) || (currentUser && currentUser.fullName) || 'Owner';
+          const title = verificationStatus === 'APPROVED'
+            ? 'Owner verification approved'
+            : 'Owner verification rejected';
+          const message = verificationStatus === 'APPROVED'
+            ? `Hi ${ownerName}, your owner account has been verified. You can now fully use owner features.`
+            : `Hi ${ownerName}, your owner verification was rejected.${reason ? ` Reason: ${String(reason)}` : ''}`;
+
+          const inserted = await notificationsCol.insertOne({
+            title,
+            message,
+            audience: 'private',
+            channels: ['in-app'],
+            target_user_id: new ObjectId(String(idTrim)),
+            sent_by_id: new ObjectId(String(req.user.id)),
+            created_at: now
+          });
+
+          await userNotificationsCol.insertOne({
+            user_id: new ObjectId(String(idTrim)),
+            notification_id: inserted.insertedId,
+            read_at: null,
+            created_at: now
+          });
+        } finally {
+          await mongo.close();
+        }
+      }
+    } catch (notifyErr) {
+      console.warn('Could not notify owner after verification review:', notifyErr);
+    }
 
     res.json({ message: 'Owner verification updated', user });
   } catch (error) {
