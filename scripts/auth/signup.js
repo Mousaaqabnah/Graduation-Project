@@ -3,6 +3,26 @@ const playerTab = document.getElementById('playerTab');
 const ownerTab = document.getElementById('ownerTab');
 const signupForm = document.getElementById('signupForm');
 
+function initPasswordToggles() {
+    const toggleButtons = document.querySelectorAll('.password-toggle-btn');
+
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const passwordField = document.getElementById(targetId);
+            const icon = this.querySelector('i');
+            if (!passwordField || !icon) return;
+
+            const isHidden = passwordField.type === 'password';
+            passwordField.type = isHidden ? 'text' : 'password';
+            icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
+            this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        });
+    });
+}
+
+initPasswordToggles();
+
 function clearFormFields() {
     const inputs = signupForm.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="password"], input[type="date"]');
     inputs.forEach(input => {

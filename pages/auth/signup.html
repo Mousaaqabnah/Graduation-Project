@@ -122,13 +122,18 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="password">Password</label>
-                                <input 
-                                    type="password" 
-                                    id="password" 
-                                    name="password" 
-                                    placeholder="Enter your password"
-                                    required
-                                >
+                                <div class="password-input-wrapper">
+                                    <input 
+                                        type="password" 
+                                        id="password" 
+                                        name="password" 
+                                        placeholder="Enter your password"
+                                        required
+                                    >
+                                    <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password">
+                                        <i class="fi fi-rr-eye"></i>
+                                    </button>
+                                </div>
                                 <div class="password-strength" id="passwordStrength">
                                     <span class="strength-label">Password strength: </span>
                                     <span class="strength-value" id="strengthValue">Weak</span>
@@ -137,13 +142,18 @@
                             
                             <div class="form-group">
                                 <label for="confirmPassword">Confirm password</label>
-                                <input 
-                                    type="password" 
-                                    id="confirmPassword" 
-                                    name="confirmPassword" 
-                                    placeholder="Re-enter password"
-                                    required
-                                >
+                                <div class="password-input-wrapper">
+                                    <input 
+                                        type="password" 
+                                        id="confirmPassword" 
+                                        name="confirmPassword" 
+                                        placeholder="Re-enter password"
+                                        required
+                                    >
+                                    <button type="button" class="password-toggle-btn" data-target="confirmPassword" aria-label="Show password">
+                                        <i class="fi fi-rr-eye"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         

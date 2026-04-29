@@ -1,3 +1,23 @@
+function initPasswordToggles() {
+    const toggleButtons = document.querySelectorAll('.password-toggle-btn');
+
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const passwordInput = document.getElementById(targetId);
+            const icon = this.querySelector('i');
+            if (!passwordInput || !icon) return;
+
+            const isHidden = passwordInput.type === 'password';
+            passwordInput.type = isHidden ? 'text' : 'password';
+            icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
+            this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        });
+    });
+}
+
+initPasswordToggles();
+
 // Form submission handler
 document.getElementById('loginForm').addEventListener('submit', async function(e) {
     e.preventDefault();

@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const changePasswordCancel = document.getElementById('changePasswordCancel');
     const changePasswordForm = document.getElementById('changePasswordForm');
     const changePasswordError = document.getElementById('changePasswordError');
+    const passwordToggleButtons = document.querySelectorAll('.password-toggle-btn');
 
     function openChangePasswordModal() {
         if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
@@ -56,6 +57,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             changePasswordModal.classList.add('active');
             if (changePasswordForm) changePasswordForm.reset();
             if (changePasswordError) changePasswordError.textContent = '';
+            resetPasswordVisibility();
             var cur = document.getElementById('currentPassword');
             if (cur) cur.focus();
         }
@@ -63,6 +65,19 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     function closeChangePasswordModal() {
         if (changePasswordModal) changePasswordModal.classList.remove('active');
+    }
+
+    function resetPasswordVisibility() {
+        passwordToggleButtons.forEach(function(button) {
+            var targetId = button.getAttribute('data-toggle-password');
+            var input = targetId ? document.getElementById(targetId) : null;
+            var icon = button.querySelector('i');
+            if (!input) return;
+            input.type = 'password';
+            button.setAttribute('aria-pressed', 'false');
+            button.setAttribute('aria-label', 'Show password');
+            if (icon) icon.className = 'fi fi-rr-eye';
+        });
     }
 
     if (changePasswordBtn) {
@@ -79,6 +94,21 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (e.target === changePasswordModal) closeChangePasswordModal();
         });
     }
+
+    passwordToggleButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            var targetId = button.getAttribute('data-toggle-password');
+            var input = targetId ? document.getElementById(targetId) : null;
+            var icon = button.querySelector('i');
+            if (!input) return;
+
+            var isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+            button.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            if (icon) icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
+        });
+    });
 
     if (changePasswordForm) {
         changePasswordForm.addEventListener('submit', function(e) {
