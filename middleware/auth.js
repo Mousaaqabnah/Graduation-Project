@@ -23,7 +23,8 @@ const authenticate = async (req, res, next) => {
         fullName: true,
         role: true,
         status: true,
-        avatar: true
+        avatar: true,
+        verificationStatus: true
       }
     });
 
@@ -113,10 +114,27 @@ const requireOwnerOrAdmin = async (req, res, next) => {
   }
 };
 
+// If current user is OWNER, require approved verification to access protected actions.
+const requireVerifiedOwner = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const role = String(req.user.role || '').toUpperCase();
+  if (role !== 'OWNER') return next();
+  const verificationStatus = String(req.user.verificationStatus || '').toUpperCase();
+  if (verificationStatus !== 'APPROVED') {
+    return res.status(403).json({
+      error: 'Owner account verification is required before using owner features'
+    });
+  }
+  return next();
+};
+
 module.exports = {
   authenticate,
   authenticateAllowSuspended,
   requireRole,
-  requireOwnerOrAdmin
+  requireOwnerOrAdmin,
+  requireVerifiedOwner
 };
 

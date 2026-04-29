@@ -7,9 +7,21 @@ const { mongoGetOrCreateConversation } = require('../lib/mongoConversation');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function denyChatForUnverifiedOwner(req, res) {
+  if (!req.user) return false;
+  const role = String(req.user.role || '').toUpperCase();
+  const verificationStatus = String(req.user.verificationStatus || '').toUpperCase();
+  if (role === 'OWNER' && verificationStatus !== 'APPROVED') {
+    res.status(403).json({ error: 'Owner verification required to use chat' });
+    return true;
+  }
+  return false;
+}
+
 // Get user's conversations
 router.get('/conversations', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const conversations = await prisma.conversation.findMany({
       where: {
         OR: [
@@ -68,6 +80,7 @@ router.get('/conversations', authenticate, async (req, res) => {
 // Get or create conversation (native Mongo — Prisma create hits P2031 on standalone mongod)
 router.get('/conversation/:userId', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const otherId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
     const meId = String(req.user.id);
 
@@ -93,6 +106,7 @@ router.get('/conversation/:userId', authenticate, async (req, res) => {
 // Get messages for a conversation
 router.get('/conversation/:conversationId/messages', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
     const { page = 1, limit = 50 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -149,6 +163,7 @@ router.post('/conversation/:conversationId/messages', authenticate, [
   body('content').trim().notEmpty()
 ], async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
     const { content } = req.body;
 
@@ -227,6 +242,7 @@ router.post('/conversation/:conversationId/messages', authenticate, [
 // Star/unstar conversation (admin marks as important)
 router.patch('/conversation/:conversationId/star', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
     const { starred } = req.body;
 
@@ -257,6 +273,7 @@ router.patch('/conversation/:conversationId/star', authenticate, async (req, res
 // Block/unblock conversation (admin marks as spam or restores to normal)
 router.patch('/conversation/:conversationId/block', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
     const { blocked } = req.body; // true = block, false = unblock
 
@@ -287,6 +304,7 @@ router.patch('/conversation/:conversationId/block', authenticate, async (req, re
 // Mark message as read
 router.put('/conversation/:conversationId/messages/:messageId/read', authenticate, async (req, res) => {
   try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId, messageId } = req.params;
 
     const message = await prisma.message.findFirst({

@@ -85,6 +85,37 @@
         return { text: 'Not verified', ok: false };
     }
 
+    function updateVerificationSubmissionUI(user) {
+        var card = document.getElementById('verificationUploadCard');
+        var statusText = document.getElementById('verificationUploadStatus');
+        var submitBtn = document.getElementById('submitVerificationBtn');
+        var frontInput = document.getElementById('idFrontFile');
+        var backInput = document.getElementById('idBackFile');
+        if (!card || !statusText || !submitBtn || !frontInput || !backInput) return;
+
+        var status = String((user && user.verificationStatus) || '').toUpperCase();
+        var isApproved = status === 'APPROVED';
+        var isPending = status === 'PENDING';
+        var isRejected = status === 'REJECTED';
+
+        if (isApproved) {
+            statusText.textContent = 'Your account is verified. No further action is required.';
+        } else if (isPending) {
+            statusText.textContent = 'Your verification request is pending admin review.';
+        } else if (isRejected) {
+            statusText.textContent = 'Your previous request was rejected. Please upload clear ID images and submit again.';
+        } else {
+            statusText.textContent = 'Verify your account by uploading your national ID (front and back).';
+        }
+
+        var disabled = isApproved || isPending;
+        frontInput.disabled = disabled;
+        backInput.disabled = disabled;
+        submitBtn.disabled = disabled;
+        submitBtn.style.opacity = disabled ? '0.6' : '';
+        submitBtn.style.cursor = disabled ? 'not-allowed' : '';
+    }
+
     function renderProfile(user, stats) {
         cachedUser = user;
         if (typeof API !== 'undefined' && API.setCurrentUser && API.getCurrentUser) {
@@ -129,6 +160,7 @@
         if (badge) {
             badge.style.opacity = v.ok ? '1' : '0.85';
         }
+        updateVerificationSubmissionUI(user);
 
         if (stats != null) {
             var s = stats || {};
@@ -358,6 +390,65 @@
                     }
                 } catch (err) {
                     alert((err && err.message) || 'Could not upload photo');
+                }
+            });
+        }
+
+        var idFrontInput = document.getElementById('idFrontFile');
+        var idBackInput = document.getElementById('idBackFile');
+        var idFrontFileName = document.getElementById('idFrontFileName');
+        var idBackFileName = document.getElementById('idBackFileName');
+        var submitVerificationBtn = document.getElementById('submitVerificationBtn');
+
+        function bindFileName(inputEl, nameEl) {
+            if (!inputEl || !nameEl) return;
+            inputEl.addEventListener('change', function () {
+                var f = inputEl.files && inputEl.files[0];
+                nameEl.textContent = f ? f.name : 'No file selected';
+            });
+        }
+        bindFileName(idFrontInput, idFrontFileName);
+        bindFileName(idBackInput, idBackFileName);
+
+        if (submitVerificationBtn) {
+            submitVerificationBtn.addEventListener('click', async function () {
+                if (!cachedUser || !API || !API.users || !API.users.submitOwnerVerification) return;
+                var status = String(cachedUser.verificationStatus || '').toUpperCase();
+                if (status === 'APPROVED') {
+                    alert('Your account is already verified.');
+                    return;
+                }
+                if (status === 'PENDING') {
+                    alert('Your verification request is already pending review.');
+                    return;
+                }
+                var frontFile = idFrontInput && idFrontInput.files && idFrontInput.files[0];
+                var backFile = idBackInput && idBackInput.files && idBackInput.files[0];
+                if (!frontFile || !backFile) {
+                    alert('Please upload both ID front and ID back images.');
+                    return;
+                }
+
+                submitVerificationBtn.disabled = true;
+                submitVerificationBtn.style.opacity = '0.7';
+                submitVerificationBtn.textContent = 'Submitting...';
+                try {
+                    var idFrontUrl = await compressImageToJpegDataUrl(frontFile, 1600, 0.8);
+                    var idBackUrl = await compressImageToJpegDataUrl(backFile, 1600, 0.8);
+                    await API.users.submitOwnerVerification(idFrontUrl, idBackUrl);
+                    await loadProfileFromApi();
+                    if (idFrontInput) idFrontInput.value = '';
+                    if (idBackInput) idBackInput.value = '';
+                    if (idFrontFileName) idFrontFileName.textContent = 'No file selected';
+                    if (idBackFileName) idBackFileName.textContent = 'No file selected';
+                    alert('Verification submitted successfully. Please wait for admin review.');
+                } catch (err) {
+                    alert((err && err.message) || 'Could not submit verification');
+                } finally {
+                    submitVerificationBtn.textContent = 'Submit for Verification';
+                    submitVerificationBtn.style.opacity = '';
+                    submitVerificationBtn.disabled = false;
+                    updateVerificationSubmissionUI(cachedUser || {});
                 }
             });
         }

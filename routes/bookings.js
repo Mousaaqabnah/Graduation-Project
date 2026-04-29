@@ -8,8 +8,10 @@ const { isMongoObjectIdString, mongoBookingSetFields } = require('../lib/mongoBo
 const router = express.Router();
 const prisma = new PrismaClient();
 
+router.use(authenticate);
+
 // Get all bookings (with filters)
-router.get('/', authenticate, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 20, status, fieldId, userId } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -103,7 +105,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get booking by ID
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -169,7 +171,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Create booking
-router.post('/', authenticate, [
+router.post('/', [
   body('fieldId').notEmpty(),
   body('date').isISO8601(),
   body('timeSlotStart').notEmpty(),
@@ -246,7 +248,7 @@ router.post('/', authenticate, [
 });
 
 // Update booking status
-router.put('/:id/status', authenticate, [
+router.put('/:id/status', [
   body('status').isIn(['PENDING', 'UPCOMING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'])
 ], async (req, res) => {
   try {
@@ -329,7 +331,7 @@ router.put('/:id/status', authenticate, [
 });
 
 // Reschedule booking (change date/time) - must be at least 24h before original start
-router.put('/:id/reschedule', authenticate, [
+router.put('/:id/reschedule', [
   body('date').isISO8601(),
   body('timeSlotStart').notEmpty(),
   body('timeSlotEnd').notEmpty()
@@ -422,7 +424,7 @@ router.put('/:id/reschedule', authenticate, [
 });
 
 // Add participant to booking
-router.post('/:id/participants', authenticate, [
+router.post('/:id/participants', [
   body('userId').notEmpty()
 ], async (req, res) => {
   try {
@@ -487,7 +489,7 @@ router.post('/:id/participants', authenticate, [
 });
 
 // Remove current user as participant (leave booking)
-router.delete('/:id/participants/me', authenticate, async (req, res) => {
+router.delete('/:id/participants/me', async (req, res) => {
   try {
     const { id } = req.params;
 
