@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { mongoGetOrCreateConversation } = require('../lib/mongoConversation');
 const { mongoCreateMessageAndTouchConversation } = require('../lib/mongoMessageWrite');
+const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -191,21 +192,11 @@ router.post('/conversation/:conversationId/messages', authenticate, [
     // Notify the recipient (other user in conversation)
     const recipientId = conversation.user1Id === req.user.id ? conversation.user2Id : conversation.user1Id;
     try {
-      const notification = await prisma.notification.create({
-        data: {
-          title: 'Reply from MatchField Support',
-          message: content,
-          audience: 'private',
-          channels: ['in-app'],
-          targetUserId: recipientId,
-          sentById: req.user.id
-        }
-      });
-      await prisma.userNotification.create({
-        data: {
-          userId: recipientId,
-          notificationId: notification.id
-        }
+      await mongoCreateUserNotification({
+        title: 'Reply from MatchField Support',
+        message: content,
+        targetUserId: recipientId,
+        sentById: req.user.id
       });
     } catch (notifErr) {
       console.warn('Could not create in-app notification for reply:', notifErr);

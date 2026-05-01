@@ -12,6 +12,21 @@ var searchQuery = '';
 // Raw bookings from API (for payment button / cancel lookup)
 var allBookingsCache = [];
 
+function getCurrentUserSafe() {
+    if (typeof API !== 'undefined' && typeof API.getCurrentUser === 'function') {
+        return API.getCurrentUser();
+    }
+    try {
+        var fromSession = sessionStorage.getItem('currentUser');
+        if (fromSession) return JSON.parse(fromSession);
+    } catch (_) {}
+    try {
+        var fromLocal = localStorage.getItem('currentUser');
+        if (fromLocal) return JSON.parse(fromLocal);
+    } catch (_) {}
+    return null;
+}
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
     loadBookingsFromStorage();
@@ -196,7 +211,7 @@ function mergePaymentStatusFromLocalStorage(apiBookings) {
 
 function loadBookingsFromStorageFallback(applyBookings) {
     var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    var playerData = typeof API !== 'undefined' && API.getCurrentUser ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerData = getCurrentUserSafe() || {};
     var playerId = (playerData && (playerData.id || playerData._id)) || 'player_1';
     var pid = String(playerId || '');
     var playerBookings = allBookings.filter(function(booking) {
@@ -250,7 +265,7 @@ function convertBookingToDisplayFormat(booking) {
     var paymentStatusLabel = null;
     var displayStatusLower = (displayStatus || '').toLowerCase();
     if (displayStatusLower !== 'completed' && displayStatusLower !== 'cancelled') {
-        var currentUser = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || 'null');
+        var currentUser = getCurrentUserSafe();
         var currentUserId = currentUser ? String(currentUser.id || currentUser._id || '') : '';
         var participants = booking.participants || booking.players || [];
         var organizerId = String(booking.organizerId || (booking.organizer && booking.organizer.id) || '');
@@ -428,7 +443,7 @@ function getPaymentButton(booking) {
     var rawStatus = String((fullBooking.status || '') || '').toLowerCase();
     if (rawStatus === 'completed' || rawStatus === 'cancelled') return '';
 
-    var playerData = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerData = getCurrentUserSafe() || {};
     var playerIdStr = String((playerData && (playerData.id || playerData._id)) || '');
     var isOrganizer = String(fullBooking.organizerId || (fullBooking.organizer && fullBooking.organizer.id) || '') === playerIdStr;
     
@@ -516,13 +531,13 @@ function isCurrentUserOrganizer(bookingId) {
     }
     if (!fullBooking) return false;
     
-    var playerData = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerData = getCurrentUserSafe() || {};
     var pid = String((playerData && (playerData.id || playerData._id)) || '');
     return String(fullBooking.organizerId || (fullBooking.organizer && fullBooking.organizer.id) || '') === pid;
 }
 
 function hasCurrentUserPaidAsParticipant(bookingId) {
-    var playerData = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerData = getCurrentUserSafe() || {};
     var pid = String((playerData && (playerData.id || playerData._id)) || '');
     if (hasPaidForBooking(bookingId, pid)) return true;
     var fullBooking = allBookingsCache.find(function(b) { return String(b.id) === String(bookingId); });
@@ -654,7 +669,7 @@ function cancelBooking(bookingId) {
 function leaveBooking(bookingId) {
     if (!confirm('Are you sure you want to leave this booking? The organizer will be notified.')) return;
     
-    var playerData = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : JSON.parse(localStorage.getItem('currentUser') || '{}');
+    var playerData = getCurrentUserSafe() || {};
     var playerId = playerData && playerData.id;
     var playerName = playerData && (playerData.fullName || playerData.name || 'A player');
     
@@ -1154,8 +1169,7 @@ async function showPaymentStatusInfo(bookingId) {
     }
 
     const currentUser =
-        (window.API && typeof window.API.getCurrentUser === 'function' && window.API.getCurrentUser()) ||
-        JSON.parse(localStorage.getItem('currentUser') || '{}') ||
+        getCurrentUserSafe() ||
         JSON.parse(localStorage.getItem('playerData') || '{}');
     const currentPlayerId = currentUser && (currentUser.id || currentUser._id);
 

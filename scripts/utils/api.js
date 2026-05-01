@@ -106,34 +106,51 @@ function getApiBaseUrl() {
   return origin === '' ? '/api' : `${origin}/api`;
 }
 
-// Get auth token from localStorage
+// We keep auth session per tab (sessionStorage) so different tabs
+// can stay logged in as different users during testing.
+function getAuthStorage() {
+  try {
+    if (typeof sessionStorage !== 'undefined') return sessionStorage;
+  } catch (_) {
+    /* ignore */
+  }
+  return localStorage;
+}
+
+// Get auth token from storage
 function getAuthToken() {
-  return localStorage.getItem('authToken');
+  const s = getAuthStorage();
+  return s.getItem('authToken');
 }
 
-// Set auth token in localStorage
+// Set auth token in storage
 function setAuthToken(token) {
-  localStorage.setItem('authToken', token);
+  const s = getAuthStorage();
+  s.setItem('authToken', token);
 }
 
-// Remove auth token from localStorage
+// Remove auth token from storage
 function removeAuthToken() {
+  try { sessionStorage.removeItem('authToken'); } catch (_) { /* ignore */ }
   localStorage.removeItem('authToken');
 }
 
-// Get current user from localStorage
+// Get current user from storage
 function getCurrentUser() {
-  const userStr = localStorage.getItem('currentUser');
+  const s = getAuthStorage();
+  const userStr = s.getItem('currentUser');
   return userStr ? JSON.parse(userStr) : null;
 }
 
-// Set current user in localStorage
+// Set current user in storage
 function setCurrentUser(user) {
-  localStorage.setItem('currentUser', JSON.stringify(user));
+  const s = getAuthStorage();
+  s.setItem('currentUser', JSON.stringify(user));
 }
 
-// Remove current user from localStorage
+// Remove current user from storage
 function removeCurrentUser() {
+  try { sessionStorage.removeItem('currentUser'); } catch (_) { /* ignore */ }
   localStorage.removeItem('currentUser');
 }
 
