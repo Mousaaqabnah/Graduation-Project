@@ -252,7 +252,8 @@ model Conversation {
 
 model Message {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  content   String
+  content   String   @default("")
+  attachments Json?  @map("attachments") // [{ url, mimeType, originalName, size }]
   createdAt DateTime @default(now()) @map("created_at")
   readAt    DateTime? @map("read_at")
 

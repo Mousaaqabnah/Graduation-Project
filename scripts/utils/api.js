@@ -106,6 +106,16 @@ function getApiBaseUrl() {
   return origin === '' ? '/api' : `${origin}/api`;
 }
 
+/** Origin for Socket.IO client (no /api suffix). */
+function getSocketOrigin() {
+  const base = getApiBaseUrl();
+  if (typeof window === 'undefined') return '';
+  if (base.startsWith('http')) {
+    return base.replace(/\/api\/?$/, '');
+  }
+  return window.location.origin;
+}
+
 // We keep auth session per tab (sessionStorage) so different tabs
 // can stay logged in as different users during testing.
 function getAuthStorage() {
@@ -172,7 +182,21 @@ async function apiRequest(endpoint, options = {}) {
   }
 
   try {
-    const response = await fetch(url, config);
+    let response;
+    try {
+      response = await fetch(url, config);
+    } catch (fetchError) {
+      // On some Windows setups, localhost can fail while 127.0.0.1 works.
+      const canTryLoopbackFallback =
+        fetchError &&
+        fetchError.name === 'TypeError' &&
+        /^https?:\/\/localhost(?::\d+)?\//i.test(url);
+      if (!canTryLoopbackFallback) {
+        throw fetchError;
+      }
+      const loopbackUrl = url.replace(/^https?:\/\/localhost(?=[:/])/i, 'http://127.0.0.1');
+      response = await fetch(loopbackUrl, config);
+    }
     let data;
     const contentType = response.headers.get('content-type');
     try {
@@ -510,10 +534,14 @@ const messagesAPI = {
     return apiRequest(`/messages/conversation/${conversationId}/messages?${queryString}`);
   },
 
-  sendMessage: async (conversationId, content) => {
+  sendMessage: async (conversationId, payload) => {
+    const body =
+      typeof payload === 'string'
+        ? { content: payload }
+        : { content: payload.content || '', attachments: payload.attachments || undefined };
     return apiRequest(`/messages/conversation/${conversationId}/messages`, {
       method: 'POST',
-      body: { content }
+      body
     });
   },
 
@@ -521,6 +549,32 @@ const messagesAPI = {
     return apiRequest(`/messages/conversation/${conversationId}/messages/${messageId}/read`, {
       method: 'PUT'
     });
+  },
+
+  markAllRead: async (conversationId) => {
+    return apiRequest(`/messages/conversation/${conversationId}/messages/read-all`, {
+      method: 'PUT'
+    });
+  },
+
+  uploadChatAttachment: async (file) => {
+    const url = `${getApiBaseUrl()}/messages/attachment`;
+    const token = getAuthToken();
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_) {}
+    if (!response.ok) {
+      throw new Error(data.error || response.statusText || 'Upload failed');
+    }
+    return data;
   },
 
   setBlocked: async (conversationId, blocked) => {
@@ -640,6 +694,7 @@ window.API = {
     return getApiBaseUrl();
   },
   getApiBaseUrl,
+  getSocketOrigin,
   getDevApiPort,
   auth: authAPI,
   users: usersAPI,

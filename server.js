@@ -1,7 +1,12 @@
+const http = require('http');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
+const { setChatIo } = require('./lib/chatEvents');
+const { attachSocketChat } = require('./lib/socketChat');
 
 // Load environment variables
 dotenv.config();
@@ -25,11 +30,16 @@ app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
+// Uploaded chat files (local disk)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Tells the browser the real HTTP port when PORT≠3000 (must be before express.static('/scripts')).
 app.get('/scripts/utils/runtime-api-port.js', (req, res) => {
   res.type('application/javascript; charset=utf-8');
   res.set('Cache-Control', 'no-store, max-age=0');
-  res.send(`window.__API_PORT__=${JSON.stringify(Number(PORT))};`);
+  const numericPort = Number(PORT);
+  const safePort = Number.isFinite(numericPort) && numericPort > 0 ? numericPort : 3000;
+  res.send(`window.__API_PORT__=${JSON.stringify(safePort)};`);
 });
 
 // Serve static files with paths that match HTML (../../styles/... → /styles/...)
@@ -48,13 +58,14 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'MatchField API is running' });
 });
 
-// API Routes
+// API Routes — chat upload routes must register before generic /messages routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/fields', require('./routes/fields'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/favorites', require('./routes/favorites'));
+app.use('/api/messages', require('./routes/chatUpload'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/support', require('./routes/support'));
@@ -76,17 +87,29 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Start server (0.0.0.0 so http://127.0.0.1:PORT and http://localhost:PORT both reach the API on Windows)
-const server = app.listen(PORT, '0.0.0.0', () => {
+const httpServer = http.createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: true,
+    credentials: true
+  }
+});
+
+setChatIo(io);
+attachSocketChat(io);
+
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://localhost:${PORT} (and http://127.0.0.1:${PORT})`);
   console.log(`📊 API available at http://localhost:${PORT}/api`);
   console.log(`📄 Open app: http://localhost:${PORT}/pages/auth/login.html`);
+  console.log(`🔌 Socket.IO enabled`);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
-  server.close(async () => {
+  httpServer.close(async () => {
     await prisma.$disconnect();
     console.log('HTTP server closed');
     process.exit(0);
@@ -95,7 +118,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
-  server.close(async () => {
+  httpServer.close(async () => {
     await prisma.$disconnect();
     console.log('HTTP server closed');
     process.exit(0);
@@ -103,4 +126,3 @@ process.on('SIGINT', async () => {
 });
 
 module.exports = app;
-
