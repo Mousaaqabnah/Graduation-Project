@@ -14,6 +14,9 @@ const chatState = {
   isSending: false
 };
 
+const CHAT_REFRESH_MS = 4000;
+let chatRefreshTimer = null;
+
 // Helper: Get current user from API
 function getCurrentUserId() {
   const user = typeof API !== 'undefined' && API.getCurrentUser ? API.getCurrentUser() : null;
@@ -82,6 +85,38 @@ function mapConversation(conv, currentUserId) {
   };
 }
 
+function didConversationsChange(prev, next) {
+  if (!Array.isArray(prev) || !Array.isArray(next)) return true;
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (!a || !b) return true;
+    if (a.id !== b.id) return true;
+    if (String(a.lastMessage || '') !== String(b.lastMessage || '')) return true;
+    if (String(a.lastMessageTime || '') !== String(b.lastMessageTime || '')) return true;
+    if (String(a.timeAgo || '') !== String(b.timeAgo || '')) return true;
+  }
+  return false;
+}
+
+function didMessagesChange(prev, next) {
+  if (!Array.isArray(prev) || !Array.isArray(next)) return true;
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (!a || !b) return true;
+    if (String(a.id || '') !== String(b.id || '')) return true;
+    if (String(a.content || '') !== String(b.content || '')) return true;
+    if (String(a.createdAt || '') !== String(b.createdAt || '')) return true;
+    const aSender = a.sender ? String(a.sender.id || '') : '';
+    const bSender = b.sender ? String(b.sender.id || '') : '';
+    if (aSender !== bSender) return true;
+  }
+  return false;
+}
+
 // Show toast notification
 function showToast(message, type = 'success') {
   const existing = document.querySelector('.chat-toast');
@@ -111,7 +146,8 @@ function escapeHtml(text) {
 }
 
 // Load conversations from API
-async function loadConversations() {
+async function loadConversations(options = {}) {
+  const silent = Boolean(options.silent);
   if (!API || !API.messages) {
     showToast('API not available', 'error');
     return;
@@ -123,8 +159,10 @@ async function loadConversations() {
     return;
   }
 
-  chatState.isLoading = true;
-  renderLoadingState(true);
+  if (!silent) {
+    chatState.isLoading = true;
+    renderLoadingState(true);
+  }
 
   try {
     const res = await API.messages.getConversations();
@@ -134,8 +172,11 @@ async function loadConversations() {
       const role = (c.otherUser && c.otherUser.role) ? String(c.otherUser.role).toUpperCase() : '';
       return role !== 'ADMIN';
     });
+    const hasListChanged = didConversationsChange(chatState.conversations, convs);
     chatState.conversations = convs;
-    renderMessageList();
+    if (!silent || hasListChanged) {
+      renderMessageList();
+    }
 
     // If we had a selected conversation, keep it
     if (chatState.currentConversationId) {
@@ -161,31 +202,54 @@ async function loadConversations() {
     showEmptyChatState();
     hideChatInput();
   } finally {
-    chatState.isLoading = false;
-    renderLoadingState(false);
+    if (!silent) {
+      chatState.isLoading = false;
+      renderLoadingState(false);
+    }
   }
 }
 
 // Load messages for a conversation
-async function loadMessages(conversationId) {
+async function loadMessages(conversationId, options = {}) {
+  const silent = Boolean(options.silent);
   if (!API || !API.messages) return;
 
-  chatState.isLoading = true;
-  renderMessagesLoading(true);
+  if (!silent) {
+    chatState.isLoading = true;
+    renderMessagesLoading(true);
+  }
 
   try {
     const res = await API.messages.getMessages(conversationId);
-    chatState.messages = res.messages || [];
+    const incoming = res.messages || [];
+    const hasChanged = didMessagesChange(chatState.messages, incoming);
+    if (!hasChanged) return;
+
+    const container = document.getElementById('chatMessages');
+    const wasNearBottom = container
+      ? (container.scrollHeight - container.scrollTop - container.clientHeight) < 80
+      : false;
+    const prevScrollTop = container ? container.scrollTop : 0;
+
+    chatState.messages = incoming;
     renderMessages(chatState.messages, chatState.currentConversation);
-    scrollToBottom();
+    if (container) {
+      if (wasNearBottom) {
+        scrollToBottom();
+      } else {
+        container.scrollTop = prevScrollTop;
+      }
+    }
   } catch (err) {
     console.error('Load messages error:', err);
     showToast(err.message || 'Failed to load messages', 'error');
     chatState.messages = [];
     renderMessages([], chatState.currentConversation);
   } finally {
-    chatState.isLoading = false;
-    renderMessagesLoading(false);
+    if (!silent) {
+      chatState.isLoading = false;
+      renderMessagesLoading(false);
+    }
   }
 }
 
@@ -475,6 +539,35 @@ function scrollToBottom() {
   if (container) container.scrollTop = container.scrollHeight;
 }
 
+async function refreshChatData() {
+  if (chatState.isLoading || chatState.isSending) return;
+  try {
+    await loadConversations({ silent: true });
+    if (chatState.currentConversationId) {
+      const stillExists = chatState.conversations.some(c => c.id === chatState.currentConversationId);
+      if (stillExists) {
+        await loadMessages(chatState.currentConversationId, { silent: true });
+      }
+    }
+  } catch (err) {
+    console.error('Background chat refresh error:', err);
+  }
+}
+
+function startChatAutoRefresh() {
+  if (chatRefreshTimer) return;
+  chatRefreshTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    refreshChatData();
+  }, CHAT_REFRESH_MS);
+}
+
+function stopChatAutoRefresh() {
+  if (!chatRefreshTimer) return;
+  clearInterval(chatRefreshTimer);
+  chatRefreshTimer = null;
+}
+
 // Filter conversations (search)
 function filterConversations(query) {
   const items = document.querySelectorAll('.message-item');
@@ -731,4 +824,7 @@ document.addEventListener('DOMContentLoaded', function () {
   hideChatInput();
 
   loadConversations();
+  startChatAutoRefresh();
 });
+
+window.addEventListener('beforeunload', stopChatAutoRefresh);

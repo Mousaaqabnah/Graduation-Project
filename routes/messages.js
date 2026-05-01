@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { mongoGetOrCreateConversation } = require('../lib/mongoConversation');
+const { mongoCreateMessageAndTouchConversation } = require('../lib/mongoMessageWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -185,32 +186,10 @@ router.post('/conversation/:conversationId/messages', authenticate, [
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId,
-        senderId: req.user.id,
-        content
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true
-          }
-        }
-      }
-    });
-
-    // Update conversation updatedAt
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() }
-    });
+    const message = await mongoCreateMessageAndTouchConversation(conversationId, req.user.id, content);
 
     // Notify the recipient (other user in conversation)
     const recipientId = conversation.user1Id === req.user.id ? conversation.user2Id : conversation.user1Id;
-    const senderName = message.sender ? message.sender.fullName : 'Support';
     try {
       const notification = await prisma.notification.create({
         data: {
@@ -232,7 +211,7 @@ router.post('/conversation/:conversationId/messages', authenticate, [
       console.warn('Could not create in-app notification for reply:', notifErr);
     }
 
-    res.status(201).json({ message: 'Message sent', message });
+    res.status(201).json({ message });
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
