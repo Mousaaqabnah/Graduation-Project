@@ -7,6 +7,9 @@ let spamBlockedBtn;
 
 let allThreads = [];
 let isViewingSpam = false;
+let conversationTake = 80;
+let submissionTake = 80;
+let inboxPollTimer = null;
 
 function escapeHtml(text) {
   if (text == null) return '';
@@ -39,18 +42,54 @@ function mapConversationToThread(conv, currentUser) {
   const otherEmail = otherUser ? (otherUser.email || '') : '';
   const isFromUser = latest && latest.sender && meId && String(latest.sender.id) !== meId;
   const isUnread = !!(isFromUser && latest && !latest.readAt);
+  const latestFromAdmin = !!(latest && meId && latest.sender && String(latest.sender.id) === meId);
+  const workflowStatus = latestFromAdmin ? 'replied' : 'pending';
   return {
     id: conv.id, // use conversationId as stable id
     conversationId: conv.id,
+    replyElSuffix: `c${conv.id}`,
+    isContactSubmission: false,
     latestMessageId: latest ? latest.id : null,
     fullName: otherName,
     email: otherEmail,
     topic: latest ? (String(latest.content).slice(0, 60) + (String(latest.content).length > 60 ? '...' : '')) : 'Conversation',
     message: latest ? latest.content : 'No messages yet.',
+    messagePreview: latest
+      ? String(latest.content).slice(0, 220) + (String(latest.content).length > 220 ? '…' : '')
+      : 'No messages yet.',
     date: latest ? latest.createdAt : conv.updatedAt,
     status: isUnread ? 'unread' : 'read',
+    workflowStatus,
     starred,
     blocked
+  };
+}
+
+function mapSubmissionToThread(sub) {
+  const sid = String(sub.id);
+  const date = sub.createdAt || sub.created_at;
+  const rawTopic = sub.topic ? String(sub.topic) : 'Contact form';
+  const topicLine = rawTopic.length > 72 ? `${rawTopic.slice(0, 72)}…` : rawTopic;
+  const rawMsg = sub.message || '';
+  const seen = !!(sub.adminSeenAt);
+  return {
+    id: `submission:${sid}`,
+    conversationId: `submission:${sid}`,
+    replyElSuffix: `s${sid}`,
+    isContactSubmission: true,
+    submissionMongoId: sid,
+    latestMessageId: null,
+    fullName: sub.fullName || 'User',
+    email: sub.email || '',
+    topic: topicLine,
+    message: rawMsg,
+    messagePreview: rawMsg.length > 220 ? `${rawMsg.slice(0, 220)}…` : rawMsg,
+    phone: sub.phone || '',
+    date,
+    status: seen ? 'read' : 'unread',
+    workflowStatus: seen ? 'replied' : 'pending',
+    starred: false,
+    blocked: false
   };
 }
 
@@ -74,6 +113,12 @@ function renderThreads(threads) {
     const badges = [];
     if (t.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
     else badges.push({ text: 'Read', class: 'read' });
+    if (!t.isContactSubmission && t.workflowStatus === 'pending' && t.status === 'unread') {
+      badges.push({ text: 'Needs your reply', class: 'marked' });
+    }
+    if (!t.isContactSubmission && t.workflowStatus === 'replied') {
+      badges.push({ text: 'You replied last', class: 'read' });
+    }
     if (t.starred) badges.push({ text: '(marked)', class: 'marked' });
     const badgesHtml = badges.length > 0 ? `
       <div class="message-badges">
@@ -88,17 +133,19 @@ function renderThreads(threads) {
             <p class="message-sender-email">${escapeHtml(t.email)}</p>
           </div>
           <h4 class="message-subject">${escapeHtml(t.topic || 'No topic')}</h4>
-          <p class="message-preview">${escapeHtml(t.message)}</p>
+          <p class="message-preview">${escapeHtml(t.messagePreview != null ? t.messagePreview : t.message)}</p>
           ${badgesHtml}
         </div>
         <div class="message-actions-right">
           <div class="message-icon-actions">
+            ${t.isContactSubmission ? `<span class="status-badge unread" title="From Contact Us form">Contact form</span>` : `
             <button class="message-icon-btn ${t.starred ? 'starred' : ''}" onclick="toggleStar('${escapeHtml(t.id)}')" title="${t.starred ? 'Unstar' : 'Star'}">
               <i class="fi ${t.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
             </button>
             <button class="message-icon-btn ${t.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock('${escapeHtml(t.id)}')" title="${t.blocked ? 'Unblock (move to normal)' : 'Block/Spam'}">
               <i class="fi ${t.blocked ? 'fi-rr-check-circle' : 'fi-rr-circle-xmark'}"></i>
             </button>
+            `}
           </div>
           <p class="message-time">${escapeHtml(timeAgo)}</p>
           <button class="btn-view-message" onclick="showMessageDetail('${escapeHtml(t.id)}')">View Message</button>
@@ -117,17 +164,31 @@ function filterThreads() {
       if (!hay.includes(term)) return false;
     }
     if (selectedStatus !== 'all') {
-      if (t.status !== selectedStatus) return false;
+      if (selectedStatus === 'pending' && t.workflowStatus !== 'pending') return false;
+      if (selectedStatus === 'replied' && t.workflowStatus !== 'replied') return false;
+      if (
+        (selectedStatus === 'unread' || selectedStatus === 'read') &&
+        t.status !== selectedStatus
+      ) {
+        return false;
+      }
     }
     return true;
   });
   renderThreads(filtered);
 }
 
-async function loadSupportInbox() {
+async function loadSupportInbox(opts) {
   if (!messagesList) return;
+  const silent = Boolean(opts && opts.silent);
   const loadingIndicator = document.getElementById('loadingIndicator');
-  if (loadingIndicator) loadingIndicator.textContent = 'Loading messages from server...';
+
+  if (!silent) {
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'block';
+      loadingIndicator.textContent = 'Loading messages from server...';
+    }
+  }
 
   try {
     if (!window.API || !API.admin || !API.admin.supportGetConversations) {
@@ -145,23 +206,46 @@ async function loadSupportInbox() {
       } catch (_) {}
     }
 
-    const res = await API.admin.supportGetConversations({ limit: 200 });
+    const res = await API.admin.supportGetConversations({
+      conversationTake,
+      submissionTake
+    });
     const conversations = (res && res.conversations) ? res.conversations : [];
-    allThreads = conversations.map((c) => mapConversationToThread(c, currentUser));
+    const backlog = (res && res.submissionBacklog) ? res.submissionBacklog : [];
+    const convThreads = conversations.map((c) => mapConversationToThread(c, currentUser));
+    const subThreads = backlog.map((s) => mapSubmissionToThread(s));
+    allThreads = [...subThreads, ...convThreads];
     allThreads.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     filterThreads();
   } catch (e) {
     console.error('Load support inbox error:', e);
-    messagesList.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#DC2626"><p style="margin:0">${escapeHtml(e && e.message ? e.message : 'Failed to load messages')}</p></div>`;
+    if (!silent) {
+      messagesList.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#DC2626"><p style="margin:0">${escapeHtml(e && e.message ? e.message : 'Failed to load messages')}</p></div>`;
+    }
   } finally {
-    const li = document.getElementById('loadingIndicator');
-    if (li) li.remove();
+    if (!silent) {
+      const li = document.getElementById('loadingIndicator');
+      if (li) li.remove();
+    }
+  }
+}
+
+async function autoMarkSubmissionSeenWhenViewed(t) {
+  if (!t.isContactSubmission || t.status !== 'unread') return;
+  if (!window.API || !API.admin || !API.admin.supportMarkSubmissionSeen) return;
+  try {
+    await API.admin.supportMarkSubmissionSeen(t.submissionMongoId);
+    t.status = 'read';
+    t.workflowStatus = 'replied';
+    filterThreads();
+  } catch (_) {
+    /* leave unread if the request fails */
   }
 }
 
 async function toggleStar(threadId) {
   const t = allThreads.find((x) => String(x.id) === String(threadId));
-  if (!t) return;
+  if (!t || t.isContactSubmission) return;
   const next = !t.starred;
   try {
     await API.admin.supportSetStarred(t.conversationId, next);
@@ -174,7 +258,7 @@ async function toggleStar(threadId) {
 
 async function toggleBlock(threadId) {
   const t = allThreads.find((x) => String(x.id) === String(threadId));
-  if (!t) return;
+  if (!t || t.isContactSubmission) return;
   const next = !t.blocked;
   const ok = confirm(next ? `Block/Spam message from ${t.fullName}?` : `Unblock this message from ${t.fullName}?`);
   if (!ok) return;
@@ -187,12 +271,36 @@ async function toggleBlock(threadId) {
   }
 }
 
+function appendReplyFormToMessageModal(t) {
+  const suf = escapeHtml(t.replyElSuffix);
+  const tid = escapeHtml(t.id);
+  const replyDiv = document.createElement('div');
+  replyDiv.innerHTML = `
+    <div class="reply-section">
+      <h4 class="reply-section-title">Reply to ${escapeHtml(t.fullName)}</h4>
+      <form class="reply-form" id="replyForm-${suf}" onsubmit="handleReplySubmit(event, '${tid}')">
+        <div class="reply-form-group">
+          <label for="replyMessage-${suf}" class="reply-label">Your Reply</label>
+          <textarea id="replyMessage-${suf}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
+        </div>
+        <div class="reply-form-actions">
+          <button type="button" class="btn-cancel-reply" onclick="cancelReply('${tid}')">Cancel</button>
+          <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
+        </div>
+      </form>
+    </div>
+    <div class="message-detail-actions">
+      <button class="btn-reply-toggle" onclick="toggleReplySection('${tid}')"><i class="fi fi-rr-envelope"></i> Reply</button>
+    </div>
+  `;
+  while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
+}
+
 async function showMessageDetail(threadId) {
   const t = allThreads.find((x) => String(x.id) === String(threadId));
   if (!t || !messageContent || !messageModal) return;
 
-  // mark latest as read (best effort)
-  if (t.status === 'unread' && t.latestMessageId) {
+  if (!t.isContactSubmission && t.status === 'unread' && t.latestMessageId) {
     t.status = 'read';
     filterThreads();
     try {
@@ -201,6 +309,36 @@ async function showMessageDetail(threadId) {
   }
 
   const initials = String(t.fullName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  messageModal.classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  if (t.isContactSubmission) {
+    await autoMarkSubmissionSeenWhenViewed(t);
+    const phoneLine = t.phone
+      ? `<p class="message-detail-meta"><strong>Phone:</strong> ${escapeHtml(t.phone)}</p>`
+      : '';
+    const timeStr = t.date ? getTimeAgo(t.date) : '';
+    messageContent.innerHTML = `
+      <div class="message-detail-header">
+        <div class="message-detail-avatar">${escapeHtml(initials)}</div>
+        <div class="message-detail-info">
+          <h3 class="message-detail-name">${escapeHtml(t.fullName)}</h3>
+          <p class="message-detail-email">${escapeHtml(t.email)}</p>
+        </div>
+      </div>
+      <div class="message-detail-thread" id="messageDetailThread">
+        <div class="message-detail-thread-label">Contact form message</div>
+        <div class="message-detail-item from-user">
+          <div class="message-detail-item-header">${escapeHtml(t.fullName)} · ${escapeHtml(timeStr)}</div>
+          <div class="message-detail-item-text">${escapeHtml(t.message)}</div>
+        </div>
+        ${phoneLine}
+      </div>
+    `;
+    appendReplyFormToMessageModal(t);
+    return;
+  }
+
   messageContent.innerHTML = `
     <div class="message-detail-header">
       <div class="message-detail-avatar">${escapeHtml(initials)}</div>
@@ -212,8 +350,6 @@ async function showMessageDetail(threadId) {
     <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> Loading full conversation...</div>
     <div class="message-detail-thread" id="messageDetailThread" style="display:none;"></div>
   `;
-  messageModal.classList.add('active');
-  document.body.style.overflow = 'hidden';
 
   try {
     const res = await API.admin.supportGetMessages(t.conversationId, { page: 1, limit: 200 });
@@ -252,68 +388,56 @@ async function showMessageDetail(threadId) {
     }
   }
 
-  // Reply UI
-  const replyDiv = document.createElement('div');
-  replyDiv.innerHTML = `
-    <div class="reply-section">
-      <h4 class="reply-section-title">Reply to ${escapeHtml(t.fullName)}</h4>
-      <form class="reply-form" id="replyForm${escapeHtml(t.id)}" onsubmit="handleReplySubmit(event, '${escapeHtml(t.id)}')">
-        <div class="reply-form-group">
-          <label for="replyMessage${escapeHtml(t.id)}" class="reply-label">Your Reply</label>
-          <textarea id="replyMessage${escapeHtml(t.id)}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
-        </div>
-        <div class="reply-form-actions">
-          <button type="button" class="btn-cancel-reply" onclick="cancelReply('${escapeHtml(t.id)}')">Cancel</button>
-          <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
-        </div>
-      </form>
-    </div>
-    <div class="message-detail-actions">
-      <button class="btn-reply-toggle" onclick="toggleReplySection('${escapeHtml(t.id)}')"><i class="fi fi-rr-envelope"></i> Reply</button>
-    </div>
-  `;
-  while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
+  appendReplyFormToMessageModal(t);
 }
 
 function toggleReplySection(threadId) {
-  const form = document.getElementById(`replyForm${threadId}`);
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !t.replyElSuffix) return;
+  const form = document.getElementById(`replyForm-${t.replyElSuffix}`);
   if (!form) return;
   const replySection = form.closest('.reply-section');
   if (!replySection) return;
   replySection.classList.toggle('active');
   if (replySection.classList.contains('active')) {
-    const ta = document.getElementById(`replyMessage${threadId}`);
+    const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
     if (ta) ta.focus();
   }
 }
 
 function cancelReply(threadId) {
-  const form = document.getElementById(`replyForm${threadId}`);
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !t.replyElSuffix) return;
+  const form = document.getElementById(`replyForm-${t.replyElSuffix}`);
   if (!form) return;
   const replySection = form.closest('.reply-section');
   if (replySection) replySection.classList.remove('active');
-  const ta = document.getElementById(`replyMessage${threadId}`);
+  const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
   if (ta) ta.value = '';
 }
 
 async function handleReplySubmit(event, threadId) {
   event.preventDefault();
   const t = allThreads.find((x) => String(x.id) === String(threadId));
-  if (!t) return;
-  const ta = document.getElementById(`replyMessage${threadId}`);
+  if (!t || !t.replyElSuffix) return;
+  const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
   const text = ta ? String(ta.value || '').trim() : '';
   if (!text) return alert('Please enter a reply message.');
 
-  const submitBtn = document.querySelector(`#replyForm${CSS.escape(threadId)} .btn-send-reply`);
+  const submitBtn = document.querySelector(`#replyForm-${CSS.escape(t.replyElSuffix)} .btn-send-reply`);
   const originalHtml = submitBtn ? submitBtn.innerHTML : '';
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Sending...';
   }
   try {
-    await API.admin.supportSendMessage(t.conversationId, text);
+    if (t.isContactSubmission) {
+      await API.admin.supportReplyFromSubmission(t.submissionMongoId, text);
+    } else {
+      await API.admin.supportSendMessage(t.conversationId, text);
+    }
     closeMessageModal();
-    await loadSupportInbox();
+    await loadSupportInbox({ silent: true });
     alert('Reply sent. The user will see it in their notifications.');
   } catch (e) {
     alert(e && e.message ? e.message : 'Failed to send reply.');
@@ -384,10 +508,39 @@ function initialize() {
   messageContent = document.getElementById('messageContent');
   spamBlockedBtn = document.getElementById('spamBlockedBtn');
 
+  const loadMoreBtn = document.getElementById('loadMoreInboxBtn');
+  const refreshBtn = document.getElementById('refreshInboxBtn');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', () => {
+      conversationTake = Math.min(300, conversationTake + 60);
+      submissionTake = Math.min(200, submissionTake + 40);
+      if (conversationTake >= 300 && submissionTake >= 200) {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.textContent = 'Maximum loaded';
+      }
+      loadSupportInbox();
+    });
+  }
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      try {
+        await loadSupportInbox({ silent: true });
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    });
+  }
+
   setupProfilePopup();
   setupModalHandlers();
   setupSearchAndFilter();
   loadSupportInbox();
+
+  if (inboxPollTimer) clearInterval(inboxPollTimer);
+  inboxPollTimer = setInterval(() => {
+    loadSupportInbox({ silent: true });
+  }, 45000);
 }
 
 // Expose for onclick handlers
@@ -398,7 +551,6 @@ window.closeMessageModal = closeMessageModal;
 window.handleReplySubmit = handleReplySubmit;
 window.cancelReply = cancelReply;
 window.toggleReplySection = toggleReplySection;
-
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initialize);
 } else {

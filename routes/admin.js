@@ -646,15 +646,42 @@ router.put('/fields/:fieldId/moderation', [
 // Support inbox (Admin team)
 // ------------------------
 
-// List support conversations (shared inbox)
+async function notifyInAppSupportRecipient(conv, adminId, content) {
+  const recipients = [String(conv.user1Id), String(conv.user2Id)].filter((id) => id !== String(adminId));
+  const recipientId = recipients[0];
+  if (!recipientId) return;
+  try {
+    const notification = await prisma.notification.create({
+      data: {
+        title: 'Reply from MatchField Support',
+        message: content,
+        audience: 'private',
+        channels: ['in-app'],
+        targetUserId: recipientId,
+        sentById: adminId
+      }
+    });
+    await prisma.userNotification.create({
+      data: { userId: recipientId, notificationId: notification.id }
+    });
+  } catch (e) {
+    console.warn('Admin support notify error:', e);
+  }
+}
+
+// List support conversations (shared inbox) + Contact form rows not yet linked to a thread
 router.get('/support/conversations', async (req, res) => {
   try {
-    const { limit = 100 } = req.query;
-    const take = Math.min(500, Math.max(1, parseInt(limit) || 100));
+    const legacyLimit = parseInt(req.query.limit, 10);
+    const convTake = Math.min(
+      300,
+      Math.max(1, parseInt(req.query.conversationTake, 10) || (Number.isFinite(legacyLimit) ? legacyLimit : 80))
+    );
+    const subTake = Math.min(200, Math.max(1, parseInt(req.query.submissionTake, 10) || 80));
 
     const conversations = await prisma.conversation.findMany({
       where: { isSupportThread: true },
-      take,
+      take: convTake,
       include: {
         user1: { select: { id: true, fullName: true, email: true, avatar: true, role: true } },
         user2: { select: { id: true, fullName: true, email: true, avatar: true, role: true } },
@@ -666,17 +693,111 @@ router.get('/support/conversations', async (req, res) => {
             content: true,
             createdAt: true,
             readAt: true,
-            sender: { select: { id: true, fullName: true, avatar: true } }
+            sender: { select: { id: true, fullName: true, avatar: true, role: true } }
           }
         }
       },
       orderBy: { updatedAt: 'desc' }
     });
 
-    res.json({ conversations });
+    const admin = await prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+      select: { id: true }
+    });
+
+    let submissionBacklog = [];
+    try {
+      const mongo = new MongoClient(process.env.DATABASE_URL);
+      await mongo.connect();
+      try {
+        const col = mongo.db().collection('support_contact_submissions');
+        const docs = await col
+          .find({
+            $or: [{ prisma_conversation_id: null }, { prisma_conversation_id: { $exists: false } }]
+          })
+          .sort({ created_at: -1 })
+          .limit(subTake)
+          .toArray();
+
+        const maxRepair = 40;
+        let repaired = 0;
+        for (const d of docs) {
+          let skipPush = false;
+          const userIdStr = d.user_id ? String(d.user_id) : null;
+          if (userIdStr && admin && repaired < maxRepair) {
+            const conv = await prisma.conversation.findFirst({
+              where: {
+                isSupportThread: true,
+                OR: [
+                  { user1Id: userIdStr, user2Id: admin.id },
+                  { user1Id: admin.id, user2Id: userIdStr }
+                ]
+              }
+            });
+            if (conv) {
+              const n = await prisma.message.count({ where: { conversationId: conv.id } });
+              if (n > 0) {
+                await col.updateOne(
+                  { _id: d._id },
+                  { $set: { prisma_conversation_id: String(conv.id) } }
+                );
+                skipPush = true;
+                repaired += 1;
+              }
+            }
+          }
+          if (skipPush) continue;
+
+          submissionBacklog.push({
+            id: String(d._id),
+            fullName: d.full_name,
+            email: d.email,
+            phone: d.phone || null,
+            topic: d.topic || null,
+            message: d.message,
+            userId: userIdStr,
+            createdAt: d.created_at || null,
+            adminSeenAt: d.admin_seen_at || null
+          });
+        }
+      } finally {
+        await mongo.close();
+      }
+    } catch (e) {
+      console.warn('Admin support: submission backlog load failed:', e);
+    }
+
+    res.json({ conversations, submissionBacklog });
   } catch (error) {
     console.error('Admin support conversations error:', error);
     res.status(500).json({ error: 'Failed to fetch support conversations' });
+  }
+});
+
+// Mark a Contact form backlog row as seen (no reply required)
+router.patch('/support/submission/:submissionId/seen', async (req, res) => {
+  try {
+    const { submissionId } = req.params;
+    if (!ObjectId.isValid(submissionId)) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    try {
+      const r = await mongo.db().collection('support_contact_submissions').updateOne(
+        { _id: new ObjectId(submissionId) },
+        { $set: { admin_seen_at: new Date() } }
+      );
+      if (r.matchedCount === 0) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+    } finally {
+      await mongo.close();
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Admin support submission seen error:', error);
+    res.status(500).json({ error: 'Failed to update submission' });
   }
 });
 
@@ -747,33 +868,141 @@ router.post('/support/conversation/:conversationId/messages', [
       data: { updatedAt: new Date() }
     });
 
-    // notify the non-admin side (best effort)
-    const recipients = [String(conv.user1Id), String(conv.user2Id)].filter((id) => id !== String(req.user.id));
-    const recipientId = recipients[0];
-    if (recipientId) {
-      try {
-        const notification = await prisma.notification.create({
-          data: {
-            title: 'Reply from MatchField Support',
-            message: content,
-            audience: 'private',
-            channels: ['in-app'],
-            targetUserId: recipientId,
-            sentById: req.user.id
-          }
-        });
-        await prisma.userNotification.create({
-          data: { userId: recipientId, notificationId: notification.id }
-        });
-      } catch (e) {
-        console.warn('Admin support notify error:', e);
-      }
-    }
+    await notifyInAppSupportRecipient(conv, req.user.id, content);
 
     res.status(201).json({ message: 'Message sent', messageObj: message });
   } catch (error) {
     console.error('Admin support send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// First reply on a Contact form row that never reached Prisma (still in admin backlog)
+router.post('/support/submission/:submissionId/reply', [
+  body('content').trim().notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { submissionId } = req.params;
+    const { content } = req.body;
+
+    if (!ObjectId.isValid(submissionId)) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    let doc;
+    try {
+      doc = await mongo.db().collection('support_contact_submissions').findOne({ _id: new ObjectId(submissionId) });
+    } finally {
+      await mongo.close();
+    }
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    if (doc.prisma_conversation_id) {
+      const convId = String(doc.prisma_conversation_id);
+      const conv = await prisma.conversation.findUnique({ where: { id: convId } });
+      if (!conv || !conv.isSupportThread) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+      const message = await prisma.message.create({
+        data: { conversationId: convId, senderId: req.user.id, content },
+        include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } }
+      });
+      await prisma.conversation.update({
+        where: { id: convId },
+        data: { updatedAt: new Date() }
+      });
+      await notifyInAppSupportRecipient(conv, req.user.id, content);
+      return res.status(201).json({ message: 'Message sent', conversationId: convId, messageObj: message });
+    }
+
+    const userId = doc.user_id ? String(doc.user_id) : null;
+    if (!userId) {
+      return res.status(400).json({
+        error:
+          'This contact was not linked to a logged-in account, so a chat thread cannot be started. Use email or phone from the submission.'
+      });
+    }
+
+    const adminId = req.user.id;
+
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        isSupportThread: true,
+        OR: [
+          { user1Id: userId, user2Id: adminId },
+          { user1Id: adminId, user2Id: userId }
+        ]
+      }
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: { user1Id: userId, user2Id: adminId, isSupportThread: true }
+      });
+    } else if (!conversation.isSupportThread) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { isSupportThread: true }
+      });
+    }
+
+    const msgCount = await prisma.message.count({ where: { conversationId: conversation.id } });
+    if (msgCount === 0) {
+      const contentParts = [];
+      if (doc.topic) contentParts.push(`Topic: ${doc.topic}`);
+      contentParts.push(String(doc.message));
+      if (doc.phone) contentParts.push(`Phone: ${doc.phone}`);
+      contentParts.push(`From: ${doc.full_name} <${doc.email}> (via Contact form)`);
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: userId,
+          content: contentParts.join('\n\n')
+        }
+      });
+    }
+
+    const adminMsg = await prisma.message.create({
+      data: { conversationId: conversation.id, senderId: adminId, content },
+      include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } }
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() }
+    });
+
+    const mongo2 = new MongoClient(process.env.DATABASE_URL);
+    await mongo2.connect();
+    try {
+      await mongo2.db().collection('support_contact_submissions').updateOne(
+        { _id: new ObjectId(submissionId) },
+        { $set: { prisma_conversation_id: String(conversation.id) } }
+      );
+    } finally {
+      await mongo2.close();
+    }
+
+    await notifyInAppSupportRecipient(conversation, adminId, content);
+
+    res.status(201).json({
+      message: 'Reply sent',
+      conversationId: conversation.id,
+      messageObj: adminMsg
+    });
+  } catch (error) {
+    console.error('Admin support submission reply error:', error);
+    res.status(500).json({ error: 'Failed to send reply' });
   }
 });
 

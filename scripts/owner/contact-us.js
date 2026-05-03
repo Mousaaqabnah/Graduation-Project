@@ -2,7 +2,51 @@
 document.addEventListener('DOMContentLoaded', function () {
   setupForm();
   setupPopups();
+  loadSupportDisplayInfo();
+  prefillContactForm();
 });
+
+async function loadSupportDisplayInfo() {
+  const emailEl = document.getElementById('supportEmailText');
+  const waEl = document.getElementById('supportWhatsappText');
+  const phoneEl = document.getElementById('supportPhoneText');
+  if (!emailEl && !waEl && !phoneEl) return;
+  try {
+    if (window.API && window.API.support && window.API.support.getContactInfo) {
+      const data = await window.API.support.getContactInfo();
+      if (emailEl && data.email) emailEl.textContent = data.email;
+      if (waEl && data.whatsapp) waEl.textContent = data.whatsapp;
+      if (phoneEl && data.phoneLine) phoneEl.textContent = data.phoneLine;
+    }
+  } catch (e) {
+    console.warn('Contact page: could not load support display info', e);
+  }
+}
+
+async function prefillContactForm() {
+  const nameInput = document.getElementById('fullName');
+  const emailInput = document.getElementById('email');
+  const phoneInput = document.getElementById('phone');
+  if (!nameInput || !emailInput || !window.API) return;
+
+  let user = typeof API.getCurrentUser === 'function' ? API.getCurrentUser() : null;
+  try {
+    if (typeof API.getAuthToken === 'function' && API.getAuthToken() && API.auth && API.auth.getCurrentUser) {
+      const res = await API.auth.getCurrentUser();
+      if (res && res.user) {
+        user = res.user;
+        if (typeof API.setCurrentUser === 'function') API.setCurrentUser(user);
+      }
+    }
+  } catch (_) {
+    /* keep cached user */
+  }
+
+  if (!user) return;
+  if (!String(nameInput.value || '').trim() && user.fullName) nameInput.value = user.fullName;
+  if (!String(emailInput.value || '').trim() && user.email) emailInput.value = user.email;
+  if (phoneInput && !String(phoneInput.value || '').trim() && user.phone) phoneInput.value = user.phone;
+}
 
 function setupForm() {
   const contactForm = document.getElementById('contactForm');
@@ -12,11 +56,11 @@ function setupForm() {
       e.preventDefault();
 
       const formData = {
-        fullName: document.getElementById('fullName').value,
-        email: document.getElementById('email').value,
-        phone: document.getElementById('phone').value,
-        topic: document.getElementById('topic').value,
-        message: document.getElementById('message').value
+        fullName: String(document.getElementById('fullName').value || '').trim(),
+        email: String(document.getElementById('email').value || '').trim(),
+        phone: String(document.getElementById('phone').value || '').trim(),
+        topic: String(document.getElementById('topic').value || '').trim(),
+        message: String(document.getElementById('message').value || '').trim()
       };
 
       if (!formData.fullName || !formData.email || !formData.message) {
@@ -40,12 +84,19 @@ function setupForm() {
       }
 
       try {
-        if (window.API && window.API.support && window.API.support.contact) {
-          await window.API.support.contact(formData);
-        } else {
-          console.log('Contact form (no API.support):', formData);
+        if (!(window.API && window.API.support && window.API.support.contact)) {
+          throw new Error('Contact API is not available. Reload the page and ensure the server is running.');
         }
-        alert('Thank you for your message! We will get back to you soon.');
+        const payload = {
+          fullName: formData.fullName,
+          email: formData.email,
+          message: formData.message,
+          ...(formData.phone ? { phone: formData.phone } : {}),
+          ...(formData.topic ? { topic: formData.topic } : {})
+        };
+        const res = await window.API.support.contact(payload);
+        alert((res && res.message) || 'Thank you for your message! We will get back to you soon.');
+        contactForm.reset();
       } catch (err) {
         console.error('Contact form error:', err);
         alert(err.message || 'Failed to send your message. Please try again later.');

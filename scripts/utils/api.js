@@ -208,9 +208,14 @@ async function apiRequest(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      const firstValErr =
-        Array.isArray(data.errors) && data.errors[0] && (data.errors[0].msg || data.errors[0].message);
-      let base = data.error || firstValErr || response.statusText || 'Request failed';
+      let validationMsg = '';
+      if (Array.isArray(data.errors) && data.errors.length) {
+        validationMsg = data.errors
+          .map((e) => (e && (e.msg || e.message)) || '')
+          .filter(Boolean)
+          .join('; ');
+      }
+      let base = data.error || validationMsg || response.statusText || 'Request failed';
       if (data.details != null && String(data.details).trim() !== '') {
         base += ': ' + String(data.details);
       }
@@ -504,6 +509,8 @@ const favoritesAPI = {
 
 // Support / Contact API
 const supportAPI = {
+  getContactInfo: async () => apiRequest('/support/contact-info'),
+
   contact: async (data) => {
     return apiRequest('/support/contact', {
       method: 'POST',
@@ -651,8 +658,18 @@ const adminAPI = {
 
   // Shared Support Inbox
   supportGetConversations: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/admin/support/conversations${queryString ? '?' + queryString : ''}`);
+    const q = new URLSearchParams();
+    if (params.conversationTake != null && String(params.conversationTake).trim() !== '') {
+      q.set('conversationTake', String(params.conversationTake));
+    }
+    if (params.submissionTake != null && String(params.submissionTake).trim() !== '') {
+      q.set('submissionTake', String(params.submissionTake));
+    }
+    if (params.limit != null && String(params.limit).trim() !== '') {
+      q.set('limit', String(params.limit));
+    }
+    const qs = q.toString();
+    return apiRequest(`/admin/support/conversations${qs ? '?' + qs : ''}`);
   },
 
   supportGetMessages: async (conversationId, params = {}) => {
@@ -684,6 +701,19 @@ const adminAPI = {
     return apiRequest(`/admin/support/conversation/${encodeURIComponent(conversationId)}/star`, {
       method: 'PATCH',
       body: { starred }
+    });
+  },
+
+  supportReplyFromSubmission: async (submissionMongoId, content) => {
+    return apiRequest(`/admin/support/submission/${encodeURIComponent(submissionMongoId)}/reply`, {
+      method: 'POST',
+      body: { content }
+    });
+  },
+
+  supportMarkSubmissionSeen: async (submissionMongoId) => {
+    return apiRequest(`/admin/support/submission/${encodeURIComponent(submissionMongoId)}/seen`, {
+      method: 'PATCH'
     });
   }
 };
