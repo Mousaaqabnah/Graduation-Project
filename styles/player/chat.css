@@ -520,7 +520,8 @@ body {
     max-height: calc(100vh - 120px);
     min-height: 600px;
     align-items: stretch;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 /* Message List Container */
@@ -839,6 +840,7 @@ body {
 /* Chat Conversation Container */
 .chat-conversation-container {
     flex: 1;
+    min-width: 0;
     background: #FCFDFF;
     border-radius: 20px;
     border: 1px solid #E5E5E5;
@@ -854,19 +856,20 @@ body {
     border-bottom: 1px solid #E5E7EB;
     background: white;
     flex-shrink: 0;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.chat-header:hover {
-    background: #F9FAFB;
 }
 
 .chat-header-info {
     display: flex;
     align-items: center;
     gap: 12px;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 4px 8px;
+    margin: -4px -8px;
+    transition: background-color 0.2s;
 }
+
+
 
 .chat-avatar {
     width: 50px;
@@ -1175,9 +1178,17 @@ body {
 
 .field-owner-status {
     font-size: 13px;
-    color: #10B981;
     margin: 0;
     font-weight: 500;
+    color: #6B7280;
+}
+
+.field-owner-status.field-owner-status--online {
+    color: #10B981;
+}
+
+.field-owner-status.field-owner-status--offline {
+    color: #6B7280;
 }
 
 .field-owner-actions {
@@ -1265,10 +1276,22 @@ body {
 
 /* Responsive Design */
 @media (max-width: 1400px) {
-    .field-info-sidebar {
-        display: none;
+    /* Sidebars are out-of-flow so they are not clipped by .chat-container; toggle still works */
+    .field-info-sidebar:not(.visible) {
+        display: none !important;
     }
-    
+
+    .field-info-sidebar.visible {
+        display: flex !important;
+        position: fixed;
+        z-index: 250;
+        right: 20px;
+        top: 88px;
+        width: min(330px, calc(100vw - 40px));
+        max-height: calc(100vh - 100px);
+        box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+    }
+
     .main-content {
         margin-right: 32px;
     }
@@ -1875,7 +1898,14 @@ body {
 .chat-header-info {
     flex: 1;
     min-width: 0;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 4px 8px;
+    margin: -4px -8px;
+    transition: background-color 0.2s;
 }
+
+
 
 .chat-messages-inner {
     display: flex;

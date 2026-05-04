@@ -225,8 +225,8 @@
                 </div>
 
                 <!-- Right Sidebar - Field Owner Info -->
-                <aside class="field-info-sidebar" id="fieldInfoSidebar" style="display: none;">
-            <div class="field-image-container">
+                <aside class="field-info-sidebar" id="fieldInfoSidebar">
+                    <div class="field-image-container">
                 <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format" alt="Field Image" id="fieldImage">
             </div>
             
@@ -239,7 +239,7 @@
                     </div>
                     <div class="field-owner-info">
                         <h4 id="fieldOwnerName">Mousa Aqabnah</h4>
-                        <p class="field-owner-status" id="fieldOwnerStatus">Online</p>
+                        <p class="field-owner-status" id="fieldOwnerStatus">—</p>
                     </div>
                 </div>
                 
@@ -252,35 +252,35 @@
                         <i class="fi fi-rr-eye"></i>
                         <span>View Field Page</span>
                     </button>
-                    <button class="field-action-btn primary">
+                    <button type="button" class="field-action-btn primary" id="bookNowBtn">
                         <i class="fi fi-rr-calendar-day"></i>
                         <span>Book Now</span>
                     </button>
                 </div>
             </div>
-            
-            <div class="field-information-section">
-                <h3>Field Information</h3>
-                <div class="field-info-grid">
-                    <div class="field-info-item">
-                        <span class="field-info-label">Type:</span>
-                        <span class="field-info-value" id="fieldType">Football Field</span>
+
+                    <div class="field-information-section">
+                        <h3>Field Information</h3>
+                        <div class="field-info-grid">
+                            <div class="field-info-item">
+                                <span class="field-info-label">Sport:</span>
+                                <span class="field-info-value" id="fieldType">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Rate:</span>
+                                <span class="field-info-value" id="fieldRate">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Court:</span>
+                                <span class="field-info-value" id="fieldSize">—</span>
+                            </div>
+                            <div class="field-info-item">
+                                <span class="field-info-label">Surface / extras:</span>
+                                <span class="field-info-value" id="fieldSurface">—</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Rate:</span>
-                        <span class="field-info-value" id="fieldRate">₺1500/h</span>
-                    </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Size:</span>
-                        <span class="field-info-value" id="fieldSize">Standard (45x22m)</span>
-                    </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Surface:</span>
-                        <span class="field-info-value" id="fieldSurface">Artificial Turf</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
+                </aside>
             </div>
         </main>
     </div>

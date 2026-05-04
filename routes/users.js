@@ -262,36 +262,86 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
 // Get user by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    // Users can only view their own profile unless they're admin
-    if (String(req.user.id) !== String(id) && req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Access denied' });
+    const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+    if (!isMongoObjectIdString(idTrim)) {
+      return res.status(400).json({ error: 'Invalid user id' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        dateOfBirth: true,
-        gender: true,
-        location: true,
-        avatar: true,
-        role: true,
-        status: true,
-        verificationStatus: true,
-        createdAt: true
+    const isSelf = String(req.user.id) === String(idTrim);
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (isSelf || isAdmin) {
+      const user = await prisma.user.findUnique({
+        where: { id: idTrim },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          phone: true,
+          dateOfBirth: true,
+          gender: true,
+          location: true,
+          avatar: true,
+          role: true,
+          status: true,
+          verificationStatus: true,
+          createdAt: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
-    });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.json({ user });
     }
 
-    res.json({ user });
+    // Field owners may load a limited player profile for the owner chat sidebar (no email / phone).
+    if (req.user.role === 'OWNER') {
+      const target = await prisma.user.findUnique({
+        where: { id: idTrim },
+        select: {
+          id: true,
+          fullName: true,
+          avatar: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          location: true
+        }
+      });
+
+      if (!target || target.role !== 'PLAYER') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const totalBookings = await prisma.booking.count({
+        where: {
+          status: { not: 'CANCELLED' },
+          OR: [
+            { organizerId: idTrim },
+            { participants: { some: { userId: idTrim } } }
+          ]
+        }
+      });
+
+      return res.json({
+        user: {
+          id: target.id,
+          fullName: target.fullName,
+          avatar: target.avatar,
+          role: target.role,
+          status: target.status,
+          createdAt: target.createdAt,
+          location: target.location
+        },
+        playerChatSummary: {
+          totalBookings
+        }
+      });
+    }
+
+    return res.status(403).json({ error: 'Access denied' });
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to fetch user' });

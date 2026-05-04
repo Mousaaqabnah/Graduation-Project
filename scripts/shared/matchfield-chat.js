@@ -77,6 +77,13 @@
     return d.toLocaleDateString();
   }
 
+  function formatMemberSince(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
+
   function formatMessageTime(date) {
     if (!date) return '';
     const d = new Date(date);
@@ -291,8 +298,14 @@
       <button type="button" class="chat-mod-btn" id="chatBlockBtn" title="Block conversation"><i class="fi fi-rr-ban"></i></button>
     `;
     header.appendChild(bar);
-    document.getElementById('chatStarBtn').addEventListener('click', toggleStar);
-    document.getElementById('chatBlockBtn').addEventListener('click', toggleBlock);
+    document.getElementById('chatStarBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleStar();
+    });
+    document.getElementById('chatBlockBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleBlock();
+    });
   }
 
   function refreshModerationButtons() {
@@ -356,18 +369,105 @@
     if (attachBtn) attachBtn.disabled = blocked;
   }
 
+  function getFieldBookNowButton() {
+    return (
+      document.getElementById('bookNowBtn') ||
+      document.querySelector('#fieldInfoSidebar .field-action-btn.primary')
+    );
+  }
+
+  function applyPlayerSidebarPresence(conv) {
+    const statusEl = document.getElementById('playerStatus');
+    const dot = document.querySelector('#playerInfoSidebar .player-avatar-large .online-indicator');
+    if (!conv) {
+      if (statusEl) {
+        statusEl.textContent = '—';
+        statusEl.classList.remove('player-status--online', 'player-status--offline');
+      }
+      if (dot) dot.style.display = 'none';
+      return;
+    }
+    const online = conv.status === 'online';
+    if (statusEl) {
+      statusEl.textContent = online ? 'Online' : 'Offline';
+      statusEl.classList.remove('player-status--online', 'player-status--offline');
+      statusEl.classList.add(online ? 'player-status--online' : 'player-status--offline');
+    }
+    if (dot) dot.style.display = online ? '' : 'none';
+  }
+
   function updatePlayerInfoSidebar(conv) {
     if (!conv || !conv.otherUser) return;
     const u = conv.otherUser;
     const nameEl = document.getElementById('playerName');
     const avatarEl = document.getElementById('playerAvatar');
-    const statusEl = document.getElementById('playerStatus');
     if (nameEl) nameEl.textContent = u.fullName || conv.name || 'Player';
     if (avatarEl) avatarEl.src = getAvatarUrl(u);
-    if (statusEl) {
-      statusEl.textContent = conv.status === 'online' ? 'Online' : 'Offline';
-      statusEl.style.color = conv.status === 'online' ? '#10B981' : '#6B7280';
+    applyPlayerSidebarPresence(conv);
+  }
+
+  /** Owner chat: load booking count, member since, location (requires GET /users/:id for owners). */
+  async function enrichPlayerSidebar(conv) {
+    if (!conv || VARIANT !== 'owner' || !document.getElementById('playerInfoSidebar')) return;
+    const tb = document.getElementById('totalBookings');
+    const ms = document.getElementById('memberSince');
+    const locEl = document.getElementById('playerLocation');
+    if (!API || !API.users || !API.users.getById) {
+      if (tb) tb.textContent = '—';
+      if (ms) ms.textContent = '—';
+      if (locEl) locEl.textContent = '—';
+      return;
     }
+    try {
+      const res = await API.users.getById(conv.userId);
+      const u = res.user;
+      const sum = res.playerChatSummary || {};
+      if (tb) tb.textContent = typeof sum.totalBookings === 'number' ? String(sum.totalBookings) : '—';
+      if (ms) ms.textContent = u && u.createdAt ? formatMemberSince(u.createdAt) : '—';
+      if (locEl) {
+        const loc = u && u.location != null ? String(u.location).trim() : '';
+        locEl.textContent = loc || '—';
+      }
+      if (u) {
+        const nameEl = document.getElementById('playerName');
+        const avatarEl = document.getElementById('playerAvatar');
+        if (nameEl && u.fullName) nameEl.textContent = u.fullName;
+        if (avatarEl) avatarEl.src = getAvatarUrl(u);
+        applyPlayerSidebarPresence(conv);
+      }
+    } catch (_) {
+      if (tb) tb.textContent = '—';
+      if (ms) ms.textContent = '—';
+      if (locEl) locEl.textContent = '—';
+    }
+  }
+
+  function resetPlayerSidebarStats() {
+    ['totalBookings', 'memberSince', 'playerLocation'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+    applyPlayerSidebarPresence(null);
+  }
+
+  function applyFieldOwnerSidebarPresence(ownerConv) {
+    const ownerStatusEl = document.getElementById('fieldOwnerStatus');
+    const dot = document.querySelector('#fieldInfoSidebar .field-owner-avatar .online-indicator');
+    if (!ownerConv) {
+      if (ownerStatusEl) {
+        ownerStatusEl.textContent = '—';
+        ownerStatusEl.classList.remove('field-owner-status--online', 'field-owner-status--offline');
+      }
+      if (dot) dot.style.display = 'none';
+      return;
+    }
+    const online = ownerConv.status === 'online';
+    if (ownerStatusEl) {
+      ownerStatusEl.textContent = online ? 'Online' : 'Offline';
+      ownerStatusEl.classList.remove('field-owner-status--online', 'field-owner-status--offline');
+      ownerStatusEl.classList.add(online ? 'field-owner-status--online' : 'field-owner-status--offline');
+    }
+    if (dot) dot.style.display = online ? '' : 'none';
   }
 
   function updateFieldInfoSidebar(info) {
@@ -376,7 +476,6 @@
     const owner = info.owner;
     const ownerNameEl = document.getElementById('fieldOwnerName');
     const ownerAvatarEl = document.getElementById('fieldOwnerAvatar');
-    const ownerStatusEl = document.getElementById('fieldOwnerStatus');
     const typeEl = document.getElementById('fieldType');
     const rateEl = document.getElementById('fieldRate');
     const sizeEl = document.getElementById('fieldSize');
@@ -384,18 +483,26 @@
     const imgEl = document.getElementById('fieldImage');
     if (ownerNameEl) ownerNameEl.textContent = owner.name;
     if (ownerAvatarEl) ownerAvatarEl.src = owner.avatar;
-    if (ownerStatusEl) {
-      ownerStatusEl.textContent = owner.status === 'online' ? 'Online' : 'Offline';
-      ownerStatusEl.style.color = owner.status === 'online' ? '#10B981' : '#6B7280';
-    }
+    applyFieldOwnerSidebarPresence(owner);
+    const bookBtn = getFieldBookNowButton();
     if (field) {
       if (imgEl) imgEl.src = (field.images && field.images[0]) || 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format';
-      if (typeEl) typeEl.textContent = field.sport || 'Field';
+      if (typeEl) typeEl.textContent = field.sport || field.name || 'Field';
       if (rateEl) rateEl.textContent = field.pricePerHour != null ? `₺${field.pricePerHour}/h` : 'N/A';
-      if (sizeEl) sizeEl.textContent = field.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
-      if (surfaceEl) surfaceEl.textContent = (field.features && field.features[0]) || field.type || 'Standard';
+      if (sizeEl) {
+        const bits = [];
+        if (field.type === 'INDOOR') bits.push('Indoor');
+        else if (field.type === 'OUTDOOR') bits.push('Outdoor');
+        if (field.capacity != null && String(field.capacity).trim() !== '') {
+          bits.push(`${field.capacity} players max`);
+        }
+        sizeEl.textContent = bits.length ? bits.join(' · ') : '—';
+      }
+      if (surfaceEl) {
+        const feats = Array.isArray(field.features) ? field.features.filter(Boolean) : [];
+        surfaceEl.textContent = feats.length ? feats.slice(0, 4).join(', ') : '—';
+      }
       const viewBtn = document.getElementById('viewFieldPageBtn');
-      const bookBtn = document.getElementById('bookNowBtn');
       if (viewBtn) {
         viewBtn.disabled = false;
         viewBtn.style.opacity = '1';
@@ -411,7 +518,6 @@
       if (sizeEl) sizeEl.textContent = '—';
       if (surfaceEl) surfaceEl.textContent = '—';
       const viewBtn = document.getElementById('viewFieldPageBtn');
-      const bookBtn = document.getElementById('bookNowBtn');
       if (viewBtn) {
         viewBtn.disabled = true;
         viewBtn.style.opacity = '0.6';
@@ -543,6 +649,13 @@
     chatState.currentConversation = conv;
     chatState.currentFieldInfo = null;
     chatState.currentPlayerSummary = null;
+    resetPlayerSidebarStats();
+
+    const headerInfoClear = document.querySelector('#chatHeader .chat-header-info');
+    if (headerInfoClear) headerInfoClear.title = '';
+    const headerElClear = document.getElementById('chatHeader');
+    if (headerElClear) headerElClear.title = '';
+    applyFieldOwnerSidebarPresence(null);
 
     document.querySelectorAll('.message-item').forEach((item) => {
       item.classList.toggle('active', item.dataset.chatId === conversationId);
@@ -565,15 +678,16 @@
     await loadMessagesInitial(conversationId);
 
     const role = conv.otherUser ? String(conv.otherUser.role || '').toUpperCase() : '';
+    const chatHeaderInfo = document.querySelector('#chatHeader .chat-header-info');
     const chatHeader = document.getElementById('chatHeader');
+    if (chatHeader) chatHeader.title = '';
 
     if (VARIANT === 'owner') {
       if (role === 'PLAYER') {
         chatState.currentPlayerSummary = conv;
         updatePlayerInfoSidebar(conv);
-        const playerSidebar = document.getElementById('playerInfoSidebar');
-        if (playerSidebar) playerSidebar.classList.add('visible');
-        if (chatHeader) chatHeader.title = 'Click to show player info';
+        if (chatHeaderInfo) chatHeaderInfo.title = 'Click name or avatar to show player info';
+        await enrichPlayerSidebar(conv);
       } else if (role === 'OWNER' && API && API.fields) {
         try {
           const res = await API.fields.getByOwner(conv.userId);
@@ -581,19 +695,15 @@
           const field = fields.length > 0 ? fields[0] : null;
           chatState.currentFieldInfo = { field, owner: conv };
           updateFieldInfoSidebar(chatState.currentFieldInfo);
-          const fieldSidebar = document.getElementById('fieldInfoSidebar');
-          if (fieldSidebar) fieldSidebar.classList.add('visible');
         } catch (err) {
           chatState.currentFieldInfo = { field: null, owner: conv };
           updateFieldInfoSidebar(chatState.currentFieldInfo);
-          const fieldSidebar = document.getElementById('fieldInfoSidebar');
-          if (fieldSidebar) fieldSidebar.classList.add('visible');
         }
-        if (chatHeader) chatHeader.title = 'Click to show field info';
+        if (chatHeaderInfo) chatHeaderInfo.title = 'Click name or avatar to show field info';
+      } else if (chatHeaderInfo) {
+        chatHeaderInfo.title = '';
       }
     } else {
-      const sidebar = document.getElementById('fieldInfoSidebar');
-      if (sidebar) sidebar.classList.remove('visible');
       if (role === 'OWNER' && API && API.fields) {
         try {
           const res = await API.fields.getByOwner(conv.userId);
@@ -601,12 +711,13 @@
           const field = fields.length > 0 ? fields[0] : null;
           chatState.currentFieldInfo = { field, owner: conv };
           updateFieldInfoSidebar(chatState.currentFieldInfo);
-          if (sidebar) sidebar.classList.add('visible');
         } catch (err) {
           chatState.currentFieldInfo = { field: null, owner: conv };
           updateFieldInfoSidebar(chatState.currentFieldInfo);
-          if (sidebar) sidebar.classList.add('visible');
         }
+      }
+      if (chatHeaderInfo) {
+        chatHeaderInfo.title = chatState.currentFieldInfo ? 'Click name or avatar to show field info' : '';
       }
     }
 
@@ -887,6 +998,13 @@
       const uid = chatState.currentConversation.userId;
       chatState.currentConversation.status = onlineUsers.has(uid) ? 'online' : 'offline';
       updateChatHeader(chatState.currentConversation);
+      if (VARIANT === 'owner' && chatState.currentPlayerSummary) {
+        applyPlayerSidebarPresence(chatState.currentConversation);
+      }
+      if (chatState.currentFieldInfo && chatState.currentFieldInfo.owner && chatState.currentConversation) {
+        chatState.currentFieldInfo.owner.status = chatState.currentConversation.status;
+        applyFieldOwnerSidebarPresence(chatState.currentFieldInfo.owner);
+      }
     }
     renderMessageList();
     document.querySelectorAll('.message-item').forEach((item) => {
@@ -1203,9 +1321,12 @@
     }
 
     const chatHeader = document.getElementById('chatHeader');
-    if (chatHeader) {
-      chatHeader.style.cursor = 'pointer';
-      chatHeader.addEventListener('click', () => {
+    const chatHeaderInfo = document.querySelector('#chatHeader .chat-header-info');
+    if (chatHeader && chatHeaderInfo) {
+      chatHeader.style.cursor = '';
+      chatHeaderInfo.style.cursor = 'pointer';
+      chatHeader.addEventListener('click', (e) => {
+        if (!e.target.closest('.chat-header-info')) return;
         if (VARIANT === 'owner') {
           const playerSb = document.getElementById('playerInfoSidebar');
           const fieldSb = document.getElementById('fieldInfoSidebar');
@@ -1234,12 +1355,19 @@
         } else showToast('No field information available', 'info');
       });
     }
-    const bookNowBtn = document.getElementById('bookNowBtn');
+    const bookNowBtn = getFieldBookNowButton();
     if (bookNowBtn) {
       bookNowBtn.addEventListener('click', () => {
         if (chatState.currentFieldInfo && chatState.currentFieldInfo.field) {
           window.location.href = getFieldInfoUrl(chatState.currentFieldInfo.field.id);
         } else showToast('No field information available', 'info');
+      });
+    }
+
+    const fieldAddFriendBtn = document.getElementById('fieldAddFriendBtn');
+    if (fieldAddFriendBtn) {
+      fieldAddFriendBtn.addEventListener('click', () => {
+        showToast('Friend list is not connected yet.', 'info');
       });
     }
 
