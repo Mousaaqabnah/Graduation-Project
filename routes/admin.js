@@ -251,15 +251,25 @@ router.get('/verifications', async (req, res) => {
 
 // Get notifications sent by admin (for Recent notifications)
 // Excludes Contact Us / Messages reply notifications - only shows broadcast notifications from Send notification
+// Excludes user-to-user chat alerts: those reuse the same collection with sentById = non-admin sender (see routes/messages.js)
 const REPLY_TITLE = 'Reply from MatchField Support';
 router.get('/notifications', async (req, res) => {
   try {
     const { limit = 20 } = req.query;
-    const all = await prisma.notification.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: (parseInt(limit) || 20) * 2
+    const take = parseInt(limit) || 20;
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: { id: true }
     });
-    const notifications = all.filter((n) => n.title !== REPLY_TITLE).slice(0, parseInt(limit) || 20);
+    const adminIds = admins.map((a) => a.id);
+    const notifications = await prisma.notification.findMany({
+      where: {
+        title: { not: REPLY_TITLE },
+        OR: [{ sentById: null }, { sentById: { in: adminIds } }]
+      },
+      orderBy: { createdAt: 'desc' },
+      take
+    });
     res.json({ notifications });
   } catch (error) {
     console.error('Get admin notifications error:', error);

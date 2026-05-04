@@ -150,7 +150,7 @@
                 <div class="page-header">
                     <div>
                         <h1 class="page-title">Messages</h1>
-                        <p class="page-subtitle">View and manage messages from users.</p>
+                        <p class="page-subtitle">Support inbox: Contact Us submissions and support chat threads. Refreshes automatically about every 45 seconds.</p>
                     </div>
                 </div>
 
@@ -189,6 +189,11 @@
                         <div id="loadingIndicator" style="text-align: center; padding: 40px; color: #6B7280;">
                             Loading messages...
                         </div>
+                    </div>
+                    <div class="messages-inbox-footer" id="messagesInboxFooter">
+                        <button type="button" class="btn-inbox-primary" id="refreshInboxBtn">Refresh now</button>
+                        <button type="button" class="btn-inbox-secondary" id="loadMoreInboxBtn">Load more</button>
+                        <p class="inbox-footer-hint">Load more increases how many threads and contact rows are fetched (up to caps).</p>
                     </div>
                 </div>
             </div>
