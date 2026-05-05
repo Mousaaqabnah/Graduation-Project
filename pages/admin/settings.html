@@ -286,13 +286,6 @@
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Session Management</h3>
-                                    <p class="settings-item-description">View and manage active admin sessions</p>
-                                </div>
-                                <button class="btn btn-secondary" id="manageSessionsBtn">Manage</button>
-                            </div>
-                            <div class="settings-item">
-                                <div class="settings-item-info">
                                     <h3 class="settings-item-title">Audit Log Access</h3>
                                     <p class="settings-item-description">Enable access to system audit logs</p>
                                 </div>
@@ -319,9 +312,7 @@
                                     <p class="settings-item-description">Choose your preferred language</p>
                                 </div>
                                 <select class="settings-select" id="language">
-                                    <option value="en" selected>English</option>
-                                    <option value="tr">Türkçe</option>
-                                    <option value="ar">العربية</option>
+                                    <option value="en">English</option>
                                 </select>
                             </div>
                             <div class="settings-item">
@@ -330,9 +321,7 @@
                                     <p class="settings-item-description">Set your time zone for system operations</p>
                                 </div>
                                 <select class="settings-select" id="timezone">
-                                    <option value="Europe/Istanbul" selected>Istanbul (GMT+3)</option>
-                                    <option value="UTC">UTC (GMT+0)</option>
-                                    <option value="America/New_York">New York (GMT-5)</option>
+                                    <option value="Europe/Istanbul">Istanbul (GMT+3)</option>
                                 </select>
                             </div>
                             <div class="settings-item">
@@ -372,23 +361,47 @@
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Reset Admin Password</h3>
-                                    <p class="settings-item-description">Reset your administrator password (requires verification)</p>
+                                    <h3 class="settings-item-title">Delete Account</h3>
+                                    <p class="settings-item-description">Permanently delete your admin account and data</p>
                                 </div>
-                                <button class="btn btn-warning" id="resetPasswordBtn">Reset Password</button>
-                            </div>
-                            <div class="settings-item">
-                                <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Deactivate Account</h3>
-                                    <p class="settings-item-description">Temporarily deactivate your admin account</p>
-                                </div>
-                                <button class="btn btn-danger" id="deactivateAccountBtn">Deactivate</button>
+                                <button class="btn btn-danger" id="deleteAccountBtn">Delete Account</button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="change-password-modal-overlay" id="changePasswordModal">
+        <div class="change-password-modal">
+            <div class="change-password-modal-header">
+                <h2>Change Password</h2>
+                <button type="button" class="change-password-modal-close" id="changePasswordModalClose" aria-label="Close">
+                    <i class="fi fi-rr-cross"></i>
+                </button>
+            </div>
+            <form id="changePasswordForm" class="change-password-modal-body">
+                <div class="form-group">
+                    <label for="currentPassword">Current Password</label>
+                    <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">New Password</label>
+                    <input type="password" id="newPassword" name="newPassword" placeholder="Enter new password (min 8 characters)" required minlength="8" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm New Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
+                </div>
+                <p class="change-password-error" id="changePasswordError"></p>
+                <div class="change-password-modal-footer">
+                    <button type="button" class="btn btn-secondary" id="changePasswordCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="changePasswordSubmit">Update Password</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="../../scripts/utils/runtime-api-port.js"></script>

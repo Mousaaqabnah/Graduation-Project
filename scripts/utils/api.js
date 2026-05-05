@@ -288,6 +288,13 @@ const authAPI = {
       method: 'PUT',
       body: { currentPassword, newPassword }
     });
+  },
+
+  deleteAccount: async (currentPassword) => {
+    return apiRequest('/auth/me', {
+      method: 'DELETE',
+      body: { currentPassword }
+    });
   }
 };
 

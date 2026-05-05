@@ -395,48 +395,6 @@
     font-weight: 500;
 }
 
-.favorite-fields-list {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-}
-
-.favorite-field-card {
-    border: 1px solid #E5E7EB;
-    border-radius: 14px;
-    padding: 14px;
-    background: #F9FAFB;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.favorite-field-card:hover {
-    border-color: #007BFF;
-    background: #F3F8FF;
-}
-
-.favorite-field-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #1F2937;
-    margin: 0;
-}
-
-.favorite-field-meta {
-    font-size: 13px;
-    color: #6B7280;
-    margin: 0;
-}
-
-.favorite-empty {
-    grid-column: 1 / -1;
-    color: #6B7280;
-    font-size: 14px;
-}
-
 /* Responsive Design */
 @media (max-width: 1024px) {
     .stats-grid {
@@ -486,10 +444,6 @@
         grid-template-columns: 1fr;
     }
 
-    .favorite-fields-list {
-        grid-template-columns: 1fr;
-    }
-    
     .profile-section {
         margin-bottom: 32px;
     }

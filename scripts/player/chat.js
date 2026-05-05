@@ -23,6 +23,15 @@ function getCurrentUserId() {
   return user ? user.id : null;
 }
 
+function getQueryParam(name) {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(name);
+  } catch (_) {
+    return null;
+  }
+}
+
 // Helper: Format role for display
 function formatRole(role) {
   if (!role) return 'User';
@@ -193,6 +202,28 @@ async function loadConversations(options = {}) {
     } else {
       showEmptyChatState();
       hideChatInput();
+    }
+
+    const requestedUserId = getQueryParam('userId');
+    if (requestedUserId) {
+      try {
+        const existing = chatState.conversations.find(c => String(c.userId) === String(requestedUserId));
+        if (existing) {
+          await selectConversation(existing.id);
+        } else if (API && API.messages && API.messages.getConversation) {
+          const resConv = await API.messages.getConversation(requestedUserId);
+          const conv = resConv && resConv.conversation ? resConv.conversation : null;
+          if (conv) {
+            const mapped = mapConversation(conv, getCurrentUserId());
+            const already = chatState.conversations.find(c => c.id === mapped.id);
+            if (!already) chatState.conversations.unshift(mapped);
+            renderMessageList();
+            await selectConversation(mapped.id);
+          }
+        }
+      } catch (openErr) {
+        console.error('Open requested chat error:', openErr);
+      }
     }
   } catch (err) {
     console.error('Load conversations error:', err);

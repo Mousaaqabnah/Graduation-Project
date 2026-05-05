@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate } = require('../middleware/auth');
 const { mongoUserSetFields } = require('../lib/mongoUserWrite');
 
@@ -48,6 +48,18 @@ async function createUserWithNativeMongo(data) {
       avatar: userDoc.avatar,
       createdAt: userDoc.created_at
     };
+  } finally {
+    await client.close();
+  }
+}
+
+async function deleteUserWithNativeMongo(userId) {
+  const client = new MongoClient(process.env.DATABASE_URL);
+  await client.connect();
+  try {
+    const db = client.db();
+    const result = await db.collection('users').deleteOne({ _id: new ObjectId(String(userId)) });
+    return result.deletedCount > 0;
   } finally {
     await client.close();
   }
@@ -206,6 +218,12 @@ router.put('/password', authenticate, [
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id;
 
+    if (String(currentPassword) === String(newPassword)) {
+      return res.status(400).json({
+        error: 'New password must be different from current password'
+      });
+    }
+
     // Get user with password
     const user = await prisma.user.findUnique({
       where: { id: userId }
@@ -233,6 +251,46 @@ router.put('/password', authenticate, [
   } catch (error) {
     console.error('Password update error:', error);
     res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
+// Delete current user account
+router.delete('/me', authenticate, [
+  body('currentPassword').notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { currentPassword } = req.body;
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
+      return res.status(400).json({
+        error: 'Account has no password on file. Unable to verify account deletion request.'
+      });
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const deleted = await deleteUserWithNativeMongo(userId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 

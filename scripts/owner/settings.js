@@ -1,9 +1,38 @@
-// Settings Page JavaScript
+// Owner Settings Page JavaScript (aligned with player settings patterns)
 
 var savePrefsTimer = null;
+var FIXED_OWNER_PREFS = {
+    language: 'en',
+    currency: 'TRY',
+    timezone: 'Europe/Istanbul'
+};
+var PRIVACY_VISIBILITY_ALLOWED = ['public', 'private'];
+var privacySecurityState = {
+    profileVisibility: 'public',
+    dataSharing: true,
+    isSaving: false
+};
+var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
+var accountSettingsState = {
+    emailNotifications: true,
+    twoFactorAuth: false,
+    isSaving: false
+};
+var OWNER_NOTIFICATION_PREF_KEYS = [
+    'bookingNotifications',
+    'paymentNotifications',
+    'fieldUpdates',
+    'marketingEmails'
+];
+var ownerNotificationPrefsState = {
+    bookingNotifications: true,
+    paymentNotifications: true,
+    fieldUpdates: true,
+    marketingEmails: false,
+    isSaving: false
+};
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
     const notificationPopup = document.getElementById('notificationPopup');
@@ -21,25 +50,30 @@ document.addEventListener('DOMContentLoaded', async function() {
             profilePopup.classList.remove('active');
         }
     });
-    
+
     await loadSettings();
-    
-    // Toggle switches event listeners
-    const toggles = document.querySelectorAll('.toggle-switch input');
-    toggles.forEach(toggle => {
+
+    const toggles = document.querySelectorAll(
+        '.toggle-switch input:not(#dataSharing):not(#emailNotifications):not(#twoFactorAuth)' +
+        ':not(#bookingNotifications):not(#paymentNotifications):not(#fieldUpdates):not(#marketingEmails)'
+    );
+    toggles.forEach(function(toggle) {
         toggle.addEventListener('change', function() {
             saveSettings();
         });
     });
-    
-    // Select dropdowns event listeners
-    const selects = document.querySelectorAll('.settings-select');
-    selects.forEach(select => {
+
+    const selects = document.querySelectorAll('.settings-select:not(#profileVisibility)');
+    selects.forEach(function(select) {
         select.addEventListener('change', function() {
             saveSettings();
         });
     });
-    
+
+    initializePrivacySecurityHandlers();
+    initializeAccountSettingsHandlers();
+    initializeOwnerNotificationPreferenceHandlers();
+
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     const changePasswordModal = document.getElementById('changePasswordModal');
     const changePasswordModalClose = document.getElementById('changePasswordModalClose');
@@ -137,6 +171,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
                 return;
             }
+            if (newPwd === currentPwd) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'New password must be different from current password.';
+                }
+                return;
+            }
 
             var submitBtn = document.getElementById('changePasswordSubmit');
             if (submitBtn) {
@@ -164,26 +204,40 @@ document.addEventListener('DOMContentLoaded', async function() {
                 });
         });
     }
-    
-    // Manage Sessions Button
-    const manageSessionsBtn = document.getElementById('manageSessionsBtn');
-    if (manageSessionsBtn) {
-        manageSessionsBtn.addEventListener('click', function() {
-            // TODO: Open session management modal
-            alert('Session management functionality will be implemented soon!');
-        });
-    }
-    
-    // Delete Account Button
+
     const deleteAccountBtn = document.getElementById('deleteAccountBtn');
     if (deleteAccountBtn) {
         deleteAccountBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                if (confirm('This will permanently delete all your data. Are you absolutely sure?')) {
-                    // TODO: Implement account deletion
-                    alert('Account deletion functionality will be implemented soon!');
-                }
+            if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) return;
+            if (!confirm('This will permanently delete all your data. Are you absolutely sure?')) return;
+
+            if (typeof API === 'undefined' || !API.auth || !API.auth.deleteAccount) {
+                alert('Account deletion service is unavailable. Please refresh the page.');
+                return;
             }
+
+            var currentPwd = prompt('Please enter your current password to confirm account deletion:');
+            if (currentPwd == null) return;
+            currentPwd = String(currentPwd).trim();
+            if (!currentPwd) {
+                alert('Current password is required to delete your account.');
+                return;
+            }
+
+            deleteAccountBtn.disabled = true;
+            deleteAccountBtn.textContent = 'Deleting...';
+            API.auth.deleteAccount(currentPwd)
+                .then(function() {
+                    alert('Your account has been deleted successfully.');
+                    API.auth.logout();
+                })
+                .catch(function(err) {
+                    alert((err && err.message) ? err.message : 'Failed to delete account.');
+                })
+                .finally(function() {
+                    deleteAccountBtn.disabled = false;
+                    deleteAccountBtn.textContent = 'Delete Account';
+                });
         });
     }
 });
@@ -201,7 +255,13 @@ async function loadSettings() {
     } catch (err) {
         console.warn('Owner settings: could not load from API', err);
     }
-    const settings = { ...local, ...remote };
+    const settings = {
+        ...local,
+        ...remote,
+        language: FIXED_OWNER_PREFS.language,
+        currency: FIXED_OWNER_PREFS.currency,
+        timezone: FIXED_OWNER_PREFS.timezone
+    };
     localStorage.setItem('ownerSettings', JSON.stringify(settings));
 
     if (settings.emailNotifications !== undefined) {
@@ -222,11 +282,14 @@ async function loadSettings() {
     if (settings.marketingEmails !== undefined) {
         document.getElementById('marketingEmails').checked = settings.marketingEmails;
     }
-    if (settings.dataSharing !== undefined) {
-        document.getElementById('dataSharing').checked = settings.dataSharing;
+    if (settings.dataSharing !== undefined && document.getElementById('dataSharing')) {
+        document.getElementById('dataSharing').checked = Boolean(settings.dataSharing);
     }
-    if (settings.profileVisibility) {
-        document.getElementById('profileVisibility').value = settings.profileVisibility;
+    if (document.getElementById('profileVisibility')) {
+        var visibility = PRIVACY_VISIBILITY_ALLOWED.indexOf(settings.profileVisibility) !== -1
+            ? settings.profileVisibility
+            : 'public';
+        document.getElementById('profileVisibility').value = visibility;
     }
     if (settings.language) {
         document.getElementById('language').value = settings.language;
@@ -237,9 +300,37 @@ async function loadSettings() {
     if (settings.timezone) {
         document.getElementById('timezone').value = settings.timezone;
     }
+
+    privacySecurityState.profileVisibility = document.getElementById('profileVisibility')
+        ? document.getElementById('profileVisibility').value
+        : 'public';
+    privacySecurityState.dataSharing = document.getElementById('dataSharing')
+        ? Boolean(document.getElementById('dataSharing').checked)
+        : true;
+
+    accountSettingsState.emailNotifications = document.getElementById('emailNotifications')
+        ? Boolean(document.getElementById('emailNotifications').checked)
+        : true;
+    accountSettingsState.twoFactorAuth = document.getElementById('twoFactorAuth')
+        ? Boolean(document.getElementById('twoFactorAuth').checked)
+        : false;
+
+    ownerNotificationPrefsState.bookingNotifications = document.getElementById('bookingNotifications')
+        ? Boolean(document.getElementById('bookingNotifications').checked)
+        : true;
+    ownerNotificationPrefsState.paymentNotifications = document.getElementById('paymentNotifications')
+        ? Boolean(document.getElementById('paymentNotifications').checked)
+        : true;
+    ownerNotificationPrefsState.fieldUpdates = document.getElementById('fieldUpdates')
+        ? Boolean(document.getElementById('fieldUpdates').checked)
+        : true;
+    ownerNotificationPrefsState.marketingEmails = document.getElementById('marketingEmails')
+        ? Boolean(document.getElementById('marketingEmails').checked)
+        : false;
 }
 
-function saveSettings() {
+function saveSettings(options) {
+    var opts = options || {};
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
         twoFactorAuth: document.getElementById('twoFactorAuth').checked,
@@ -249,31 +340,254 @@ function saveSettings() {
         marketingEmails: document.getElementById('marketingEmails').checked,
         dataSharing: document.getElementById('dataSharing').checked,
         profileVisibility: document.getElementById('profileVisibility').value,
-        language: document.getElementById('language').value,
-        currency: document.getElementById('currency').value,
-        timezone: document.getElementById('timezone').value
+        language: FIXED_OWNER_PREFS.language,
+        currency: FIXED_OWNER_PREFS.currency,
+        timezone: FIXED_OWNER_PREFS.timezone
     };
 
     localStorage.setItem('ownerSettings', JSON.stringify(settings));
 
-    if (savePrefsTimer) clearTimeout(savePrefsTimer);
-    savePrefsTimer = setTimeout(function () {
+    if (savePrefsTimer) {
+        clearTimeout(savePrefsTimer);
+        savePrefsTimer = null;
+    }
+    if (opts.skipRemote === true) {
+        return;
+    }
+
+    savePrefsTimer = setTimeout(function() {
         savePrefsTimer = null;
         if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
-            API.users.patchMyPreferences(settings).catch(function (err) {
+            API.users.patchMyPreferences(settings).catch(function(err) {
                 console.warn('Owner settings: API save failed', err);
             });
         }
     }, 400);
 }
 
+function initializePrivacySecurityHandlers() {
+    var profileVisibilityEl = document.getElementById('profileVisibility');
+    var dataSharingEl = document.getElementById('dataSharing');
 
+    if (profileVisibilityEl) {
+        profileVisibilityEl.addEventListener('change', function() {
+            var nextValue = profileVisibilityEl.value;
+            if (PRIVACY_VISIBILITY_ALLOWED.indexOf(nextValue) === -1) {
+                profileVisibilityEl.value = privacySecurityState.profileVisibility;
+                return;
+            }
+            saveOwnerPrivacySecuritySettings({
+                profileVisibility: nextValue,
+                dataSharing: dataSharingEl ? Boolean(dataSharingEl.checked) : privacySecurityState.dataSharing
+            });
+        });
+    }
 
+    if (dataSharingEl) {
+        dataSharingEl.addEventListener('change', function() {
+            saveOwnerPrivacySecuritySettings({
+                profileVisibility: profileVisibilityEl ? profileVisibilityEl.value : privacySecurityState.profileVisibility,
+                dataSharing: Boolean(dataSharingEl.checked)
+            });
+        });
+    }
+}
 
+function setOwnerPrivacyControlsDisabled(disabled) {
+    var profileVisibilityEl = document.getElementById('profileVisibility');
+    var dataSharingEl = document.getElementById('dataSharing');
+    if (profileVisibilityEl) profileVisibilityEl.disabled = disabled;
+    if (dataSharingEl) dataSharingEl.disabled = disabled;
+}
 
+function saveOwnerPrivacySecuritySettings(nextPrefs) {
+    var profileVisibilityEl = document.getElementById('profileVisibility');
+    var dataSharingEl = document.getElementById('dataSharing');
+    if (!profileVisibilityEl || !dataSharingEl) return;
+    if (privacySecurityState.isSaving) return;
 
+    var nextVisibility = PRIVACY_VISIBILITY_ALLOWED.indexOf(nextPrefs.profileVisibility) !== -1
+        ? nextPrefs.profileVisibility
+        : privacySecurityState.profileVisibility;
+    var nextDataSharing = Boolean(nextPrefs.dataSharing);
 
+    var prevState = {
+        profileVisibility: privacySecurityState.profileVisibility,
+        dataSharing: privacySecurityState.dataSharing
+    };
 
+    privacySecurityState.profileVisibility = nextVisibility;
+    privacySecurityState.dataSharing = nextDataSharing;
+    profileVisibilityEl.value = nextVisibility;
+    dataSharingEl.checked = nextDataSharing;
+    saveSettings({ skipRemote: true });
 
+    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
+        return;
+    }
 
+    privacySecurityState.isSaving = true;
+    setOwnerPrivacyControlsDisabled(true);
+    API.users.patchMyPreferences({
+        profileVisibility: nextVisibility,
+        dataSharing: nextDataSharing
+    })
+        .catch(function(err) {
+            privacySecurityState.profileVisibility = prevState.profileVisibility;
+            privacySecurityState.dataSharing = prevState.dataSharing;
+            profileVisibilityEl.value = prevState.profileVisibility;
+            dataSharingEl.checked = prevState.dataSharing;
+            saveSettings({ skipRemote: true });
+            alert((err && err.message) ? err.message : 'Failed to save privacy settings. Changes were reverted.');
+        })
+        .finally(function() {
+            privacySecurityState.isSaving = false;
+            setOwnerPrivacyControlsDisabled(false);
+        });
+}
 
+function initializeOwnerNotificationPreferenceHandlers() {
+    OWNER_NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.addEventListener('change', function() {
+            var nextState = getOwnerNotificationPrefsFromDom();
+            saveOwnerNotificationPreferences(nextState);
+        });
+    });
+}
+
+function getOwnerNotificationPrefsFromDom() {
+    return {
+        bookingNotifications: Boolean(document.getElementById('bookingNotifications') && document.getElementById('bookingNotifications').checked),
+        paymentNotifications: Boolean(document.getElementById('paymentNotifications') && document.getElementById('paymentNotifications').checked),
+        fieldUpdates: Boolean(document.getElementById('fieldUpdates') && document.getElementById('fieldUpdates').checked),
+        marketingEmails: Boolean(document.getElementById('marketingEmails') && document.getElementById('marketingEmails').checked)
+    };
+}
+
+function setOwnerNotificationControlsDisabled(disabled) {
+    OWNER_NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (el) el.disabled = disabled;
+    });
+}
+
+function applyOwnerNotificationPrefsToDom(prefs) {
+    OWNER_NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.checked = Boolean(prefs[key]);
+    });
+}
+
+function saveOwnerNotificationPreferences(nextPrefs) {
+    if (ownerNotificationPrefsState.isSaving) return;
+
+    var prev = {
+        bookingNotifications: ownerNotificationPrefsState.bookingNotifications,
+        paymentNotifications: ownerNotificationPrefsState.paymentNotifications,
+        fieldUpdates: ownerNotificationPrefsState.fieldUpdates,
+        marketingEmails: ownerNotificationPrefsState.marketingEmails
+    };
+
+    OWNER_NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        ownerNotificationPrefsState[key] = Boolean(nextPrefs[key]);
+    });
+    applyOwnerNotificationPrefsToDom(ownerNotificationPrefsState);
+    saveSettings({ skipRemote: true });
+
+    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
+        return;
+    }
+
+    ownerNotificationPrefsState.isSaving = true;
+    setOwnerNotificationControlsDisabled(true);
+    API.users.patchMyPreferences({
+        bookingNotifications: ownerNotificationPrefsState.bookingNotifications,
+        paymentNotifications: ownerNotificationPrefsState.paymentNotifications,
+        fieldUpdates: ownerNotificationPrefsState.fieldUpdates,
+        marketingEmails: ownerNotificationPrefsState.marketingEmails
+    })
+        .catch(function(err) {
+            OWNER_NOTIFICATION_PREF_KEYS.forEach(function(key) {
+                ownerNotificationPrefsState[key] = Boolean(prev[key]);
+            });
+            applyOwnerNotificationPrefsToDom(ownerNotificationPrefsState);
+            saveSettings({ skipRemote: true });
+            alert((err && err.message) ? err.message : 'Failed to save notification preferences. Changes were reverted.');
+        })
+        .finally(function() {
+            ownerNotificationPrefsState.isSaving = false;
+            setOwnerNotificationControlsDisabled(false);
+        });
+}
+
+function initializeAccountSettingsHandlers() {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.addEventListener('change', function() {
+            var next = getOwnerAccountSettingsFromDom();
+            saveOwnerAccountSettings(next);
+        });
+    });
+}
+
+function getOwnerAccountSettingsFromDom() {
+    return {
+        emailNotifications: Boolean(document.getElementById('emailNotifications') && document.getElementById('emailNotifications').checked),
+        twoFactorAuth: Boolean(document.getElementById('twoFactorAuth') && document.getElementById('twoFactorAuth').checked)
+    };
+}
+
+function applyOwnerAccountSettingsToDom(values) {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.checked = Boolean(values[key]);
+    });
+}
+
+function setOwnerAccountControlsDisabled(disabled) {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (el) el.disabled = disabled;
+    });
+}
+
+function saveOwnerAccountSettings(nextValues) {
+    if (accountSettingsState.isSaving) return;
+
+    var prev = {
+        emailNotifications: accountSettingsState.emailNotifications,
+        twoFactorAuth: accountSettingsState.twoFactorAuth
+    };
+
+    accountSettingsState.emailNotifications = Boolean(nextValues.emailNotifications);
+    accountSettingsState.twoFactorAuth = Boolean(nextValues.twoFactorAuth);
+    applyOwnerAccountSettingsToDom(accountSettingsState);
+    saveSettings({ skipRemote: true });
+
+    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
+        return;
+    }
+
+    accountSettingsState.isSaving = true;
+    setOwnerAccountControlsDisabled(true);
+    API.users.patchMyPreferences({
+        emailNotifications: accountSettingsState.emailNotifications,
+        twoFactorAuth: accountSettingsState.twoFactorAuth
+    })
+        .catch(function(err) {
+            accountSettingsState.emailNotifications = prev.emailNotifications;
+            accountSettingsState.twoFactorAuth = prev.twoFactorAuth;
+            applyOwnerAccountSettingsToDom(accountSettingsState);
+            saveSettings({ skipRemote: true });
+            alert((err && err.message) ? err.message : 'Failed to save account settings. Changes were reverted.');
+        })
+        .finally(function() {
+            accountSettingsState.isSaving = false;
+            setOwnerAccountControlsDisabled(false);
+        });
+}

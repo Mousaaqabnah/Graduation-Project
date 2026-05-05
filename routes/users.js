@@ -183,6 +183,32 @@ const PLAYER_PREF_KEYS = new Set([
   'timezone'
 ]);
 
+const ADMIN_PREF_KEYS = new Set([
+  'emailNotifications',
+  'twoFactorAuth',
+  'userRegistrationAlerts',
+  'verificationRequests',
+  'systemErrors',
+  'securityAlerts',
+  'sessionTimeout',
+  'ipWhitelist',
+  'auditLogAccess',
+  'language',
+  'timezone',
+  'dateFormat',
+  'itemsPerPage'
+]);
+
+const STRING_PREF_KEYS = new Set([
+  'profileVisibility',
+  'language',
+  'currency',
+  'timezone',
+  'sessionTimeout',
+  'dateFormat',
+  'itemsPerPage'
+]);
+
 function sanitizePrefsSlice(body, allowedKeys) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
   const out = {};
@@ -191,14 +217,14 @@ function sanitizePrefsSlice(body, allowedKeys) {
     const v = body[k];
     if (typeof v === 'boolean') {
       out[k] = v;
-    } else if (k === 'profileVisibility' || k === 'language' || k === 'currency' || k === 'timezone') {
+    } else if (STRING_PREF_KEYS.has(k)) {
       if (v != null && typeof v === 'string' && v.length < 200) out[k] = v;
     }
   }
   return out;
 }
 
-// Get current user's saved UI preferences (owner + player slices)
+// Get current user's saved UI preferences (owner, player, admin slices)
 router.get('/me/preferences', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -208,18 +234,29 @@ router.get('/me/preferences', authenticate, async (req, res) => {
     const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
     const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
     const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
-    res.json({ owner, player });
+    const admin = raw.admin && typeof raw.admin === 'object' && !Array.isArray(raw.admin) ? raw.admin : {};
+    res.json({ owner, player, admin });
   } catch (error) {
     console.error('Get preferences error:', error);
     res.status(500).json({ error: 'Failed to load preferences' });
   }
 });
 
-// Merge UI preferences for the current user's role (OWNER → owner slice, else player)
+// Merge UI preferences for the current user's role (ADMIN → admin, OWNER → owner, else player)
 router.patch('/me/preferences', authenticate, async (req, res) => {
   try {
-    const roleKey = req.user.role === 'OWNER' ? 'owner' : 'player';
-    const allowed = roleKey === 'owner' ? OWNER_PREF_KEYS : PLAYER_PREF_KEYS;
+    let roleKey;
+    let allowed;
+    if (req.user.role === 'ADMIN') {
+      roleKey = 'admin';
+      allowed = ADMIN_PREF_KEYS;
+    } else if (req.user.role === 'OWNER') {
+      roleKey = 'owner';
+      allowed = OWNER_PREF_KEYS;
+    } else {
+      roleKey = 'player';
+      allowed = PLAYER_PREF_KEYS;
+    }
     const slice = sanitizePrefsSlice(req.body, allowed);
     if (Object.keys(slice).length === 0) {
       return res.status(400).json({ error: 'No valid preference fields to save' });
@@ -232,9 +269,12 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
     const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
     const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
     const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
+    const admin = raw.admin && typeof raw.admin === 'object' && !Array.isArray(raw.admin) ? raw.admin : {};
     const next = {
       ...raw,
-      [roleKey]: { ...(roleKey === 'owner' ? owner : player), ...slice }
+      owner: roleKey === 'owner' ? { ...owner, ...slice } : owner,
+      player: roleKey === 'player' ? { ...player, ...slice } : player,
+      admin: roleKey === 'admin' ? { ...admin, ...slice } : admin
     };
 
     const matched = await mongoUserSetFields(req.user.id, { preferences: next });
@@ -250,7 +290,8 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
     res.json({
       preferences: {
         owner: p.owner && typeof p.owner === 'object' ? p.owner : {},
-        player: p.player && typeof p.player === 'object' ? p.player : {}
+        player: p.player && typeof p.player === 'object' ? p.player : {},
+        admin: p.admin && typeof p.admin === 'object' ? p.admin : {}
       }
     });
   } catch (error) {

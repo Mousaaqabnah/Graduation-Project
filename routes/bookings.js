@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { totalCostFromFieldPrice, totalHoursFromRanges } = require('../lib/bookingPricing');
-const { isMongoObjectIdString, mongoBookingSetFields } = require('../lib/mongoBookingWrite');
+const { isMongoObjectIdString, mongoBookingInsertOne, mongoBookingSetFields } = require('../lib/mongoBookingWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -311,10 +311,11 @@ router.post('/', [
     }
     const totalCost = totalCostFromFieldPrice(field.pricePerHour, ranges);
 
-    // Create booking (timeSlotStart/timeSlotEnd = first range for backward compat)
+    // Create booking via native driver (Prisma create uses transactions → replica set required on MongoDB)
     const firstRange = ranges[0];
-    const booking = await prisma.booking.create({
-      data: {
+    let bookingId;
+    try {
+      bookingId = await mongoBookingInsertOne({
         fieldId,
         organizerId: req.user.id,
         date: new Date(date),
@@ -325,9 +326,15 @@ router.post('/', [
         paymentMethod,
         teamSize: teamSize || 1,
         mixedPaymentDistribution: paymentMethod === 'MIXED' ? mixedPaymentDistribution : null,
-        status: 'PENDING',
         organizerPaymentStatus: paymentMethod === 'ORGANIZER' ? 'PENDING' : null
-      },
+      });
+    } catch (err) {
+      console.error('Create booking error (mongo insert):', err);
+      return res.status(500).json({ error: 'Failed to create booking' });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
       include: {
         field: {
           select: {
@@ -346,6 +353,10 @@ router.post('/', [
         }
       }
     });
+
+    if (!booking) {
+      return res.status(500).json({ error: 'Booking created but could not be loaded' });
+    }
 
     res.status(201).json({ message: 'Booking created successfully', booking });
   } catch (error) {

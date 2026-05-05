@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Save profile changes
     if (saveProfileBtn) {
-        saveProfileBtn.addEventListener('click', function() {
+        saveProfileBtn.addEventListener('click', async function() {
             const form = document.getElementById('editProfileForm');
             if (form && form.checkValidity()) {
                 const dateOfBirthInput = document.getElementById('editDateOfBirth');
@@ -136,17 +136,65 @@ document.addEventListener('DOMContentLoaded', function() {
                     country: document.getElementById('editCountry').value
                 };
                 
-                // Update profile display
-                updateProfileFromForm(formData);
-                
-                // TODO: Here you would typically send the data to your API
-                console.log('Profile updated:', formData);
-                
-                // Close modal
-                closeEditModal();
-                
-                // Show success message (optional)
-                alert('Profile updated successfully!');
+                const activeUser = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
+                const userId = activeUser && activeUser.id ? activeUser.id : null;
+                if (!userId) {
+                    alert('Unable to identify your account. Please log in again.');
+                    return;
+                }
+
+                const locationParts = [
+                    formData.streetAddress,
+                    formData.city,
+                    formData.state,
+                    formData.postalCode,
+                    formData.country
+                ].filter(function(part) {
+                    return part && String(part).trim();
+                });
+                const combinedLocation = locationParts.join(', ');
+
+                const payload = {
+                    fullName: formData.fullName,
+                    phone: formData.phone,
+                    dateOfBirth: dateOfBirthInput && dateOfBirthInput.value ? dateOfBirthInput.value : null,
+                    gender: formData.gender,
+                    location: combinedLocation
+                };
+
+                try {
+                    saveProfileBtn.disabled = true;
+                    saveProfileBtn.textContent = 'Saving...';
+
+                    // Persist supported profile fields to backend.
+                    const res = await API.users.update(userId, payload);
+                    if (res && res.user && API.setCurrentUser) {
+                        API.setCurrentUser(res.user);
+                    }
+
+                    // Persist detailed address fields locally per user to avoid losing UI fields not modeled in DB.
+                    saveAddressPartsForUser(userId, {
+                        streetAddress: formData.streetAddress,
+                        city: formData.city,
+                        state: formData.state,
+                        postalCode: formData.postalCode,
+                        country: formData.country
+                    });
+
+                    // Keep email display in sync with authenticated account (email update is not supported on this endpoint).
+                    if (res && res.user && res.user.email) {
+                        formData.email = res.user.email;
+                    }
+
+                    updateProfileFromForm(formData);
+                    closeEditModal();
+                    alert('Profile updated successfully!');
+                } catch (error) {
+                    alert(error && error.message ? error.message : 'Failed to update profile.');
+                } finally {
+                    saveProfileBtn.disabled = false;
+                    saveProfileBtn.textContent = 'Save Changes';
+                }
             } else {
                 form.reportValidity();
             }
@@ -377,7 +425,10 @@ function generatePlayerId() {
     // Generate a unique ID format: PLR-XXXXXXXX (8 alphanumeric characters)
     // In a real app, this would come from the server/database
     // For demo purposes, we'll generate one based on a stored value or create a new one
-    let playerId = localStorage.getItem('playerId');
+    var user = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
+    var userKey = user && user.id ? String(user.id) : 'anonymous';
+    var storageKey = 'playerId_' + userKey;
+    let playerId = localStorage.getItem(storageKey);
     if (!playerId) {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let id = 'PLR-';
@@ -385,9 +436,39 @@ function generatePlayerId() {
             id += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         playerId = id;
-        localStorage.setItem('playerId', playerId);
+        localStorage.setItem(storageKey, playerId);
     }
     return playerId;
+}
+
+function getAddressPartsForUser(userId) {
+    if (!userId) return null;
+    try {
+        var raw = localStorage.getItem('profileAddress_' + String(userId));
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        return {
+            streetAddress: parsed.streetAddress || '',
+            city: parsed.city || '',
+            state: parsed.state || '',
+            postalCode: parsed.postalCode || '',
+            country: parsed.country || ''
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function saveAddressPartsForUser(userId, addressData) {
+    if (!userId || !addressData) return;
+    localStorage.setItem('profileAddress_' + String(userId), JSON.stringify({
+        streetAddress: addressData.streetAddress || '',
+        city: addressData.city || '',
+        state: addressData.state || '',
+        postalCode: addressData.postalCode || '',
+        country: addressData.country || ''
+    }));
 }
 
 // Function to format full date (e.g., January 15, 1995)
@@ -459,6 +540,8 @@ async function loadProfileData() {
     var avatarUrl = user.avatar || (user.id && localStorage.getItem('userAvatar_' + user.id)) || null;
 
     // Map backend user → profile view model
+    const savedAddress = user && user.id ? getAddressPartsForUser(user.id) : null;
+
     const profileData = {
         fullName: user.fullName || 'Player',
         email: user.email || '',
@@ -468,11 +551,11 @@ async function loadProfileData() {
         dateOfBirth: formatFullDate(user.dateOfBirth),
         gender: user.gender || 'Not specified',
         memberSince: formatMonthYear(user.createdAt),
-        streetAddress: user.location || 'Not set',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: '',
+        streetAddress: (savedAddress && savedAddress.streetAddress) || user.location || 'Not set',
+        city: (savedAddress && savedAddress.city) || '',
+        state: (savedAddress && savedAddress.state) || '',
+        postalCode: (savedAddress && savedAddress.postalCode) || '',
+        country: (savedAddress && savedAddress.country) || '',
         totalBookings: 0,
         upcomingBookings: 0,
         averageRating: 0,
@@ -507,7 +590,6 @@ async function loadProfileData() {
     }
     
     updateProfileDisplay(profileData);
-    loadFavoriteFields();
 }
 
 // Build avatar URL from full name (e.g. "Mousa Aqabnah" → initials "MA")
@@ -593,53 +675,6 @@ function updateProfileDisplay(data) {
     if (upcomingBookingsEl) upcomingBookingsEl.textContent = data.upcomingBookings;
     if (averageRatingEl) averageRatingEl.textContent = data.averageRating;
     if (memberMonthsEl) memberMonthsEl.textContent = data.memberMonths;
-}
-
-async function loadFavoriteFields() {
-    const listEl = document.getElementById('favoriteFieldsList');
-    if (!listEl) return;
-
-    if (typeof API === 'undefined' || !API.favorites || !API.favorites.getAll) {
-        listEl.innerHTML = '<div class="favorite-empty">Favorites are unavailable right now.</div>';
-        return;
-    }
-
-    try {
-        const res = await API.favorites.getAll();
-        const favorites = (res && res.favorites) ? res.favorites : [];
-        if (!favorites.length) {
-            listEl.innerHTML = '<div class="favorite-empty">No favorite fields yet.</div>';
-            return;
-        }
-
-        listEl.innerHTML = favorites.map(function(item) {
-            const field = item.field || {};
-            const fieldId = item.fieldId || field.id;
-            const name = field.name || 'Field';
-            const location = field.location || 'Location not available';
-            const sport = field.sport || 'Sport';
-            const rating = field.rating != null ? field.rating : 0;
-            return (
-                '<article class="favorite-field-card" data-field-id="' + fieldId + '">' +
-                    '<p class="favorite-field-name">' + escapeHtml(name) + '</p>' +
-                    '<p class="favorite-field-meta">' + escapeHtml(sport) + ' • ★ ' + rating + '</p>' +
-                    '<p class="favorite-field-meta">' + escapeHtml(location) + '</p>' +
-                '</article>'
-            );
-        }).join('');
-
-        listEl.querySelectorAll('.favorite-field-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-                const fieldId = card.getAttribute('data-field-id');
-                if (fieldId) {
-                    window.location.href = 'field-info.html?id=' + encodeURIComponent(fieldId);
-                }
-            });
-        });
-    } catch (error) {
-        console.warn('Profile: failed to load favorites', error);
-        listEl.innerHTML = '<div class="favorite-empty">Failed to load favorite fields.</div>';
-    }
 }
 
 function escapeHtml(value) {

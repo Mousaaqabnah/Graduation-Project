@@ -263,6 +263,7 @@ function loadFieldFromAPI(fieldId) {
       latitude: field.latitude != null ? Number(field.latitude) : null,
       longitude: field.longitude != null ? Number(field.longitude) : null,
       phone: field.phone || '',
+      venueResponse: field.venueResponse || '',
       owner: field.owner || null,
       apiReviews: Array.isArray(field.reviews) ? field.reviews : []
     };
@@ -413,6 +414,9 @@ function renderFieldInfo(venue) {
       <img src="${img}" alt="${(venue.name || 'Field')} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport || 'Sport')}%3C/text%3E%3C/svg%3E'">
   `).join('');
 
+  const ownerAvatar = venue.owner && venue.owner.avatar
+    ? '<img src="' + venue.owner.avatar + '" alt="' + ((venue.owner && venue.owner.fullName) || 'Venue Manager') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+    : ((venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N'));
   const html = `
       <!-- Field Title and Metadata -->
       <div class="field-header-top">
@@ -594,13 +598,13 @@ function renderFieldInfo(venue) {
               <div class="venue-contact-card">
                   <h3 class="venue-contact-title">Venue contact</h3>
                   <div class="venue-contact-info">
-                      <div class="venue-avatar">${(venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N')}</div>
+                      <div class="venue-avatar">${ownerAvatar}</div>
                       <div class="venue-details">
                           <div class="venue-name">${(venue.owner && venue.owner.fullName) || 'Venue Manager'}</div>
-                          <div class="venue-response">${venue.phone ? 'Phone: ' + venue.phone : 'Responds within a few hours'}</div>
+                          <div class="venue-response">${venue.venueResponse ? venue.venueResponse : 'Responds within a few hours'}</div>
                       </div>
                   </div>
-                  <button class="venue-message-btn">Message venue</button>
+                  <button class="venue-message-btn" id="messageVenueBtn">Message venue</button>
               </div>
           </div>
       </div>
@@ -628,6 +632,18 @@ function renderFieldInfo(venue) {
   
   // Display reviews (pass apiReviews from field load, or fetch from API)
   displayReviews(venue.id, venue.apiReviews);
+
+  const messageVenueBtn = document.getElementById('messageVenueBtn');
+  if (messageVenueBtn) {
+    messageVenueBtn.addEventListener('click', function() {
+      const ownerId = venue && venue.owner && venue.owner.id ? String(venue.owner.id) : '';
+      if (!ownerId) {
+        alert('Venue contact is currently unavailable.');
+        return;
+      }
+      window.location.href = 'chat.html?userId=' + encodeURIComponent(ownerId) + '&fieldId=' + encodeURIComponent(String(venue.id));
+    });
+  }
 }
 
 function renderBookingLocationMap(venue) {

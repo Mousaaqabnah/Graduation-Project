@@ -619,6 +619,7 @@ async function submitFieldForm() {
         // Basic info
         fieldName: document.getElementById('fieldName').value,
         description: document.getElementById('fieldDescription').value,
+        venueResponse: document.getElementById('fieldVenueResponse') ? document.getElementById('fieldVenueResponse').value : '',
         highlights: highlights,
         fieldType: document.getElementById('fieldType').value,
         capacity: parseInt(document.getElementById('capacity').value),
@@ -720,6 +721,7 @@ async function submitFieldForm() {
         name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
         sport: sportLabel,
         description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
+        venueResponse: (document.getElementById('fieldVenueResponse') && document.getElementById('fieldVenueResponse').value.trim()) || '',
         capacity: parseInt(document.getElementById('capacity') && document.getElementById('capacity').value, 10) || null,
         type: isIndoor ? 'INDOOR' : 'OUTDOOR',
         location: locationLine,
@@ -1204,6 +1206,8 @@ async function loadFieldData(fieldId) {
 
         const descEl = document.getElementById('manageDescription');
         if (descEl) descEl.value = f.description || '';
+        const venueRespEl = document.getElementById('manageVenueResponse');
+        if (venueRespEl) venueRespEl.value = f.venueResponse || '';
 
         applyManageFeaturesFromField(f.features);
         applyManageScheduleFromField(f.schedule);
@@ -1786,6 +1790,7 @@ async function submitManageChanges() {
         payload.name = (document.getElementById('manageFieldName')?.value || '').trim() || 'Field';
         payload.sport = sport;
         payload.description = document.getElementById('manageDescription')?.value || '';
+        payload.venueResponse = document.getElementById('manageVenueResponse')?.value?.trim() || '';
         payload.capacity = parseInt(document.getElementById('manageCapacity')?.value, 10) || null;
         payload.type = typeEnum;
         payload.features = collectManageFeatureStrings();
