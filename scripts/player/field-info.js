@@ -203,6 +203,9 @@ function getVenueIdFromURL() {
 
 // Current field when loaded from API (so handleBooking can use it)
 var currentFieldFromAPI = null;
+var reviewsRequestToken = 0;
+var reviewsByFieldCache = {};
+var REVIEW_DIRTY_STORAGE_KEY_FIELDINFO = 'matchfieldReviewDirtyFields';
 
 function getFavoriteIdsSet() {
   try {
@@ -276,16 +279,21 @@ function loadFieldFromAPI(fieldId) {
 
 // Load favorites from localStorage
 function loadFavoritesFromStorage() {
-  const saved = localStorage.getItem('favoriteVenues');
-  if (saved) {
-      const favorites = JSON.parse(saved).map(String);
-      const allVenues = [...venuesData.popular, ...venuesData.nearby];
-      allVenues.forEach(v => {
-          v.isFavorite = favorites.includes(String(v.id));
-      });
-      if (currentFieldFromAPI) {
-        currentFieldFromAPI.isFavorite = favorites.includes(String(currentFieldFromAPI.id));
-      }
+  try {
+    const saved = localStorage.getItem('favoriteVenues');
+    const favorites = saved ? JSON.parse(saved) : [];
+    const favoriteIds = Array.isArray(favorites) ? favorites.map(String) : [];
+    const allVenues = [...venuesData.popular, ...venuesData.nearby];
+    allVenues.forEach(v => {
+        v.isFavorite = favoriteIds.includes(String(v.id));
+    });
+    if (currentFieldFromAPI) {
+      currentFieldFromAPI.isFavorite = favoriteIds.includes(String(currentFieldFromAPI.id));
+    }
+  } catch (_) {
+    const allVenues = [...venuesData.popular, ...venuesData.nearby];
+    allVenues.forEach(v => { v.isFavorite = false; });
+    if (currentFieldFromAPI) currentFieldFromAPI.isFavorite = false;
   }
 }
 
@@ -514,7 +522,7 @@ function renderFieldInfo(venue) {
                       <div class="reviews-summary-toggle">
                           <div class="reviews-summary">
                               <span class="field-star-yellow">★</span>
-                              <span>${venue.rating} • ${venue.reviews} total reviews</span>
+                              <span><span id="reviewsSummaryRating">${venue.rating}</span> • <span id="reviewsSummaryCount">${venue.reviews} total reviews</span></span>
                           </div>
                           <button class="toggle-reviews-btn" id="toggleReviewsBtn" onclick="toggleReviews()">
                               <span class="toggle-text">View reviews</span>
@@ -711,7 +719,12 @@ window.submitReview = submitReview;
 function loadReviews(venueId) {
   const saved = localStorage.getItem(`reviews_${venueId}`);
   if (saved) {
-      return JSON.parse(saved);
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
   }
   return [];
 }
@@ -721,6 +734,92 @@ function saveReviews(venueId, reviews) {
   localStorage.setItem(`reviews_${venueId}`, JSON.stringify(reviews));
 }
 
+function formatReviewDate(dateValue) {
+  if (!dateValue) return '';
+  var date = new Date(dateValue);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function normalizeReviewItem(r) {
+  if (!r) return null;
+  var name = (r.reviewerName || (r.user && r.user.fullName) || 'Anonymous').trim();
+  var ratingNum = parseInt(r.rating, 10);
+  if (!Number.isFinite(ratingNum) || ratingNum < 1) ratingNum = 1;
+  if (ratingNum > 5) ratingNum = 5;
+  return {
+    id: String(r.id || r._id || ('local_' + Date.now() + '_' + Math.random())),
+    userId: r.userId ? String(r.userId) : (r.user && r.user.id ? String(r.user.id) : ''),
+    reviewerName: name || 'Anonymous',
+    reviewerInitial: (r.reviewerInitial || name.charAt(0) || '?').toUpperCase(),
+    reviewerAvatar: (r.reviewerAvatar || (r.user && r.user.avatar) || '').trim(),
+    reviewText: String(r.reviewText || '').trim(),
+    rating: ratingNum,
+    context: String(r.context || 'Player'),
+    createdAt: r.createdAt || r.date || null,
+    dateLabel: formatReviewDate(r.createdAt || r.date)
+  };
+}
+
+function mergeReviewsByKey(preferred, secondary) {
+  var out = [];
+  var seen = new Set();
+  (preferred || []).forEach(function(r) {
+    var n = normalizeReviewItem(r);
+    if (!n) return;
+    var key = n.id || (n.userId + '|' + n.reviewText + '|' + n.rating);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(n);
+  });
+  (secondary || []).forEach(function(r) {
+    var n = normalizeReviewItem(r);
+    if (!n) return;
+    var key = n.id || (n.userId + '|' + n.reviewText + '|' + n.rating);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(n);
+  });
+  out.sort(function(a, b) {
+    var da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    var db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return db - da;
+  });
+  return out;
+}
+
+function updateReviewsSummaryUI(reviewsToShow, fallbackRating) {
+  var summaryRatingEl = document.getElementById('reviewsSummaryRating');
+  var summaryCountEl = document.getElementById('reviewsSummaryCount');
+  if (!summaryRatingEl || !summaryCountEl) return;
+  if (!reviewsToShow || !reviewsToShow.length) {
+    summaryRatingEl.textContent = Number(fallbackRating || 0).toFixed(1);
+    summaryCountEl.textContent = '0 total reviews';
+    return;
+  }
+  var sum = reviewsToShow.reduce(function(acc, r) { return acc + (r.rating || 0); }, 0);
+  var avg = sum / reviewsToShow.length;
+  summaryRatingEl.textContent = avg.toFixed(1);
+  summaryCountEl.textContent = reviewsToShow.length + ' total reviews';
+}
+
+function renderReviewsState(message, stateClass) {
+  var reviewsList = document.getElementById('reviewsList');
+  if (!reviewsList) return;
+  reviewsList.innerHTML = '<div class="' + stateClass + '">' + message + '</div>';
+}
+
+function markReviewFieldDirty(fieldId) {
+  try {
+    var raw = localStorage.getItem(REVIEW_DIRTY_STORAGE_KEY_FIELDINFO);
+    var list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) list = [];
+    var id = String(fieldId);
+    if (list.indexOf(id) === -1) list.push(id);
+    localStorage.setItem(REVIEW_DIRTY_STORAGE_KEY_FIELDINFO, JSON.stringify(list));
+  } catch (_) {}
+}
+
 // Submit review (API when logged in, else localStorage)
 function submitReview(venueId) {
   const textarea = document.getElementById('reviewTextarea');
@@ -728,14 +827,15 @@ function submitReview(venueId) {
   const reviewText = textarea.value.trim();
   const rating = parseInt(ratingValue.textContent, 10);
 
-  if (!reviewText) {
-      alert('Please write a review before submitting.');
-      return;
-  }
-
   if (rating === 0) {
       alert('Please select a rating before submitting.');
       return;
+  }
+  const submitBtn = document.querySelector('.submit-review-btn');
+  function setSubmitLoading(loading) {
+    if (!submitBtn) return;
+    submitBtn.disabled = !!loading;
+    submitBtn.textContent = loading ? 'Submitting...' : 'Submit Review';
   }
 
   function doLocalSubmit() {
@@ -746,30 +846,48 @@ function submitReview(venueId) {
       reviewerInitial: 'Y',
       reviewText: reviewText,
       rating: rating,
-      date: new Date().toLocaleDateString(),
+      date: new Date().toISOString(),
       context: 'Recent booking'
     };
     reviews.unshift(newReview);
     saveReviews(venueId, reviews);
+    markReviewFieldDirty(venueId);
     textarea.value = '';
     resetStarRating();
+    try {
+      window.dispatchEvent(new CustomEvent('matchfield:reviews-updated', { detail: { fieldId: String(venueId) } }));
+    } catch (_) {}
     displayReviews(venueId, null);
     alert('Thank you for your review!');
   }
 
   if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && API.reviews && API.reviews.create) {
+    setSubmitLoading(true);
     API.reviews.create({
       fieldId: venueId,
       rating: rating,
       reviewText: reviewText,
       context: 'Recent booking'
-    }).then(function() {
+    }).then(function(res) {
+      if (res && res.review) {
+        var localReviews = loadReviews(venueId).filter(function(r) {
+          return String(r.id || '') !== String(res.review.id || '');
+        });
+        localReviews.unshift(res.review);
+        saveReviews(venueId, localReviews);
+      }
+      markReviewFieldDirty(venueId);
       textarea.value = '';
       resetStarRating();
+      try {
+        window.dispatchEvent(new CustomEvent('matchfield:reviews-updated', { detail: { fieldId: String(venueId) } }));
+      } catch (_) {}
       displayReviews(venueId, null);
       alert('Thank you for your review!');
     }).catch(function(err) {
       alert(err.message || 'Failed to submit review.');
+    }).finally(function() {
+      setSubmitLoading(false);
     });
     return;
   }
@@ -778,69 +896,61 @@ function submitReview(venueId) {
 
 // Map API review to display format (handles both API { user, reviewText } and local { reviewerName, reviewerInitial })
 function mapApiReviewToDisplay(r) {
-  if (r.reviewerName && r.reviewerInitial) return r;
-  var name = (r.user && r.user.fullName) || 'Anonymous';
-  return {
-    reviewerName: name,
-    reviewerInitial: name.charAt(0).toUpperCase(),
-    reviewText: r.reviewText || '',
-    rating: r.rating || 0,
-    context: r.context || 'Player'
-  };
+  return normalizeReviewItem(r);
 }
 
 // Display reviews (fetches from API when available, uses preloaded or fallbacks)
 function displayReviews(venueId, preloadedApiReviews) {
   var reviewsList = document.getElementById('reviewsList');
   if (!reviewsList) return;
+  var venue = findVenueById(venueId);
+  var fallbackRating = venue && venue.rating ? venue.rating : 0;
+  var requestToken = ++reviewsRequestToken;
 
   function render(reviewsToShow) {
+    if (requestToken !== reviewsRequestToken) return;
     var emptyMsg = '<div class="reviews-empty">No reviews yet. Be the first to leave a review!</div>';
     reviewsList.innerHTML = reviewsToShow.length
       ? reviewsToShow.map(function(r) {
-          var rev = (r.user || r.reviewerName) ? mapApiReviewToDisplay(r) : r;
-          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + (rev.reviewerInitial || '?') + '</div><div><div class="reviewer-name">' + (rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + (rev.context || '') + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div><div class="review-text">' + (rev.reviewText || '') + '</div></div>';
+          var rev = normalizeReviewItem(r);
+          if (!rev) return '';
+          var avatarHtml = rev.reviewerAvatar
+            ? ('<img src="' + rev.reviewerAvatar + '" alt="' + (rev.reviewerName || 'User') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">')
+            : (rev.reviewerInitial || '?');
+          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + avatarHtml + '</div><div><div class="reviewer-name">' + (rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + ((rev.context || '') + (rev.dateLabel ? ' · ' + rev.dateLabel : '')) + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div>' + (rev.reviewText ? ('<div class="review-text">' + rev.reviewText + '</div>') : '') + '</div>';
         }).join('')
       : emptyMsg;
+    updateReviewsSummaryUI(reviewsToShow, fallbackRating);
+    reviewsByFieldCache[String(venueId)] = reviewsToShow.map(normalizeReviewItem).filter(Boolean);
   }
 
-  var localReviews = loadReviews(venueId);
-  var combined = [];
-
-  if (preloadedApiReviews && preloadedApiReviews.length) {
-    combined = preloadedApiReviews.map(mapApiReviewToDisplay);
-  }
+  var localReviews = (loadReviews(venueId) || []).map(normalizeReviewItem).filter(Boolean);
+  var preloadedReviews = (preloadedApiReviews || []).map(normalizeReviewItem).filter(Boolean);
+  var cached = reviewsByFieldCache[String(venueId)] || [];
+  var combined = mergeReviewsByKey(preloadedReviews, mergeReviewsByKey(localReviews, cached));
+  if (combined.length) render(combined);
+  else renderReviewsState('Loading reviews...', 'loading-state');
 
   if (typeof API !== 'undefined' && API.reviews && API.reviews.getByField) {
     API.reviews.getByField(venueId, { limit: 20 }).then(function(res) {
+      if (requestToken !== reviewsRequestToken) return;
       var apiReviews = (res && res.reviews) ? res.reviews : [];
-      combined = apiReviews.length ? apiReviews.map(mapApiReviewToDisplay) : combined;
-      if (localReviews.length && combined.length === 0) {
-        combined = localReviews;
-      } else if (localReviews.length) {
-        combined = combined.concat(localReviews.filter(function(lr) { return !combined.some(function(c) { return c.reviewText === lr.reviewText; }); }));
-      }
+      combined = mergeReviewsByKey(apiReviews, localReviews);
       render(combined.length ? combined : []);
     }).catch(function() {
-      combined = localReviews.length ? localReviews : [];
-      render(combined.length ? combined : []);
+      if (requestToken !== reviewsRequestToken) return;
+      var fallback = mergeReviewsByKey(localReviews, preloadedReviews);
+      if (fallback.length) {
+        render(fallback);
+        return;
+      }
+      renderReviewsState('Unable to load reviews right now. Please try again.', 'error-state');
+      updateReviewsSummaryUI([], fallbackRating);
     });
     return;
   }
 
-  combined = localReviews.length ? localReviews : [];
-  if (combined.length === 0 && preloadedApiReviews && preloadedApiReviews.length) {
-    combined = preloadedApiReviews.map(mapApiReviewToDisplay);
-  }
-  if (combined.length === 0) {
-    var defaultReviews = [
-      { reviewerName: 'Ahmed', reviewerInitial: 'A', reviewText: '"Great field quality, lights are strong and the staff were friendly. Booking was smooth."', rating: 5, context: 'Played 5v5 last week' },
-      { reviewerName: 'Sara', reviewerInitial: 'S', reviewText: '"Perfect location and easy to reach. Parking area helps a lot during busy hours."', rating: 5, context: 'Weekend booking' },
-      { reviewerName: 'Mohamed', reviewerInitial: 'M', reviewText: '"Excellent facilities and well-maintained field. Highly recommended for regular play."', rating: 5, context: 'Regular player' }
-    ];
-    combined = defaultReviews;
-  }
-  render(combined);
+  render(combined.length ? combined : []);
 }
 
 // Initialize gallery sliding
@@ -1085,6 +1195,12 @@ window.addEventListener('storage', function(e) {
   if (e.key !== 'favoriteVenues') return;
   loadFavoritesFromStorage();
   if (currentFieldFromAPI) updateSaveButton(!!currentFieldFromAPI.isFavorite);
+});
+
+window.addEventListener('matchfield:reviews-updated', function(e) {
+  var fieldId = e && e.detail && e.detail.fieldId ? String(e.detail.fieldId) : '';
+  if (!currentFieldFromAPI || String(currentFieldFromAPI.id) !== fieldId) return;
+  displayReviews(fieldId, null);
 });
 
 

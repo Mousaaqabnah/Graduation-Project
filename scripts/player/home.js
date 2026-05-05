@@ -7,6 +7,7 @@ const LOCATION_OPTIONS = [
 ];
 let activeLocation = null;
 let currentPageBySection = { nearby: 1, popular: 1 };
+const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
 function getFavoriteIdsSet() {
   try {
@@ -39,6 +40,42 @@ function syncFavoriteButtonsFromState() {
       || venues.nearby.find(function(v) { return String(v.id) === id; });
     btn.classList.toggle('active', !!(venue && venue.isFavorite));
   });
+}
+
+function updateReviewRowForCard(card, venue) {
+  const reviewSpan = card.querySelector('.venue-rating span:last-child');
+  if (!reviewSpan) return;
+  reviewSpan.textContent = venue.rating + ' (' + venue.reviews + ') . ' + venue.location + ' . ' + venue.distance;
+}
+
+async function refreshFieldReviewStats(fieldId) {
+  if (typeof API === 'undefined' || !API.fields || !API.fields.getById) return;
+  const idStr = String(fieldId);
+  try {
+    const res = await API.fields.getById(idStr);
+    const field = res && res.field ? res.field : null;
+    if (!field) return;
+    const rating = field.rating != null ? field.rating : 0;
+    const reviews = field.reviewCount != null ? field.reviewCount : 0;
+    venues.popular.forEach(function(v) { if (String(v.id) === idStr) { v.rating = rating; v.reviews = reviews; } });
+    venues.nearby.forEach(function(v) { if (String(v.id) === idStr) { v.rating = rating; v.reviews = reviews; } });
+    document.querySelectorAll('.venue-card[data-venue-id="' + idStr + '"]').forEach(function(card) {
+      const venue = venues.popular.find(function(v) { return String(v.id) === idStr; }) || venues.nearby.find(function(v) { return String(v.id) === idStr; });
+      if (venue) updateReviewRowForCard(card, venue);
+    });
+  } catch (_) {}
+}
+
+function consumeDirtyReviewFields() {
+  try {
+    const raw = localStorage.getItem(REVIEW_DIRTY_STORAGE_KEY);
+    const ids = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(ids) || !ids.length) return [];
+    localStorage.removeItem(REVIEW_DIRTY_STORAGE_KEY);
+    return ids.map(String);
+  } catch (_) {
+    return [];
+  }
 }
 
 function mapFieldToVenue(field, favoriteIds) {
@@ -190,6 +227,15 @@ function chooseLocationFromSelector(option) {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
+  const hasHomeSections = !!(document.getElementById('popularVenues') && document.getElementById('nearbyVenues'));
+  if (!hasHomeSections) {
+    // home.js is also loaded on other player pages for shared booking utilities.
+    setupEventListeners();
+    initializeBookingModal();
+    initializePaymentModal();
+    return;
+  }
+
   function initUI() {
     updateLocationLabel();
     renderVenues('popular', venues.popular);
@@ -2565,6 +2611,14 @@ window.addEventListener('storage', function(e) {
 
 window.addEventListener('pageshow', function() {
   loadFavoritesFromStorage();
+  const ids = consumeDirtyReviewFields();
+  ids.forEach(function(id) { refreshFieldReviewStats(id); });
+});
+
+window.addEventListener('matchfield:reviews-updated', function(e) {
+  const fieldId = e && e.detail && e.detail.fieldId ? String(e.detail.fieldId) : '';
+  if (!fieldId) return;
+  refreshFieldReviewStats(fieldId);
 });
 
 // Notifications are handled by shared notifications.js (loaded on all player pages)

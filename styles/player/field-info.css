@@ -545,6 +545,15 @@
     color: #4B5563;
 }
 
+.reviews-empty {
+    padding: 18px 12px;
+    text-align: center;
+    color: #6B7280;
+    border: 1px dashed #D1D5DB;
+    border-radius: 12px;
+    background: #FAFAFA;
+}
+
 .review-rating-display {
     display: flex;
     align-items: center;

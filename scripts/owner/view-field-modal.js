@@ -164,6 +164,7 @@
           .map(function (rv) {
             const u = rv.user || {};
             const name = u.fullName || 'Player';
+            const avatar = (u.avatar || '').trim();
             let r = parseInt(rv.rating, 10);
             if (isNaN(r)) r = 0;
             r = Math.max(0, Math.min(5, r));
@@ -171,12 +172,15 @@
             const text = rv.reviewText || '';
             const ctx = rv.context || '';
             const when = formatReviewDate(rv.createdAt);
+            const avatarHtml = avatar
+              ? '<img src="' + ownerFieldEsc(avatar) + '" alt="' + ownerFieldEsc(name) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+              : ownerFieldEsc(reviewerInitials(name));
             return (
               '<div class="view-review-card">' +
               '<div class="view-review-header">' +
               '<div class="view-reviewer-info">' +
               '<div class="view-reviewer-avatar">' +
-              ownerFieldEsc(reviewerInitials(name)) +
+              avatarHtml +
               '</div>' +
               '<div class="view-reviewer-details">' +
               '<div class="view-reviewer-name">' +

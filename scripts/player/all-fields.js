@@ -1,5 +1,6 @@
 // Fields loaded from API
 var allFields = [];
+const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
 function mapFieldToVenue(field, favoriteIds) {
   var id = field.id;
@@ -63,6 +64,17 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error loading fields:', err);
             initUI();
         });
+});
+
+window.addEventListener('pageshow', function() {
+    const ids = consumeDirtyReviewFields();
+    ids.forEach(function(id) { refreshFieldReviewStats(id); });
+});
+
+window.addEventListener('matchfield:reviews-updated', function(e) {
+    const fieldId = e && e.detail && e.detail.fieldId ? String(e.detail.fieldId) : '';
+    if (!fieldId) return;
+    refreshFieldReviewStats(fieldId);
 });
 
 // Initialize filter options - set "All" as active by default
@@ -279,6 +291,46 @@ function createVenueCard(venue) {
     });
     
     return card;
+}
+
+function updateReviewRowForCard(card, venue) {
+    const reviewSpan = card.querySelector('.venue-rating span:last-child');
+    if (!reviewSpan) return;
+    reviewSpan.textContent = `${venue.rating} (${venue.reviews}) . ${venue.location} . ${venue.distance}`;
+}
+
+async function refreshFieldReviewStats(fieldId) {
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getById) return;
+    const idStr = String(fieldId);
+    try {
+        const res = await API.fields.getById(idStr);
+        const field = res && res.field ? res.field : null;
+        if (!field) return;
+        const rating = field.rating != null ? field.rating : 0;
+        const reviews = field.reviewCount != null ? field.reviewCount : 0;
+        allFields.forEach(function(v) {
+            if (String(v.id) === idStr) {
+                v.rating = rating;
+                v.reviews = reviews;
+            }
+        });
+        document.querySelectorAll('.venue-card[data-venue-id="' + idStr + '"]').forEach(function(card) {
+            var venue = allFields.find(function(v) { return String(v.id) === idStr; });
+            if (venue) updateReviewRowForCard(card, venue);
+        });
+    } catch (_) {}
+}
+
+function consumeDirtyReviewFields() {
+    try {
+        const raw = localStorage.getItem(REVIEW_DIRTY_STORAGE_KEY);
+        const ids = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(ids) || !ids.length) return [];
+        localStorage.removeItem(REVIEW_DIRTY_STORAGE_KEY);
+        return ids.map(String);
+    } catch (_) {
+        return [];
+    }
 }
 
 // Toggle favorite status (API + local)
