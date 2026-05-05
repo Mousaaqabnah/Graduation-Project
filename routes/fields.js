@@ -65,6 +65,398 @@ function dayUtcRangeFromYmd(dateStr) {
   };
 }
 
+function parsePositiveIntOr(defaultValue, value, maxValue) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) return defaultValue;
+  return Math.min(n, maxValue);
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function toFiniteNumber(value) {
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) ? n : null;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function scheduleHoursForDate(schedule, dateUtc) {
+  if (!schedule || typeof schedule !== 'object') return 13;
+  const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dateUtc.getUTCDay()];
+  const dayCfg = schedule[dayName];
+  if (!dayCfg) return 13;
+  if (dayCfg.enabled === false) return 0;
+  const openMins = timeToMinutes(dayCfg.opening);
+  const closeMins = timeToMinutes(dayCfg.closing);
+  if (openMins == null || closeMins == null || closeMins <= openMins) return 0;
+  return Math.max(0, Math.floor(closeMins / 60) - Math.ceil(openMins / 60));
+}
+
+function bookingHoursFromRanges(booking) {
+  const ranges = booking.time_slot_ranges && Array.isArray(booking.time_slot_ranges)
+    ? booking.time_slot_ranges
+    : [{ start: booking.time_slot_start, end: booking.time_slot_end }];
+  return ranges.reduce((sum, r) => {
+    const startHour = parseInt(String(r.start || '').split(':')[0], 10);
+    const endHour = parseInt(String(r.end || '').split(':')[0], 10);
+    if (!Number.isFinite(startHour) || !Number.isFinite(endHour) || endHour <= startHour) return sum;
+    return sum + (endHour - startHour);
+  }, 0);
+}
+
+function composeFieldScore(field, metrics, requestLat, requestLng, maxPopularity) {
+  const lat = toFiniteNumber(field.latitude);
+  const lng = toFiniteNumber(field.longitude);
+  const distanceKm = (lat != null && lng != null && requestLat != null && requestLng != null)
+    ? haversineKm(requestLat, requestLng, lat, lng)
+    : null;
+
+  const rating = toFiniteNumber(field.rating) || 0;
+  const popularityRaw = metrics.popularityRaw || 0;
+  const popularityScore = maxPopularity > 0 ? popularityRaw / maxPopularity : 0;
+  const availabilityScore = clamp01(metrics.availabilityScore);
+  const distanceScore = distanceKm == null ? 0.35 : (1 / (1 + distanceKm / 5));
+  const ratingScore = clamp01(rating / 5);
+
+  const recommendationScore =
+    distanceScore * 0.45 +
+    popularityScore * 0.25 +
+    availabilityScore * 0.2 +
+    ratingScore * 0.1;
+
+  return {
+    distanceKm,
+    distanceMeters: distanceKm == null ? null : Math.round(distanceKm * 1000),
+    popularityScore: Number(popularityScore.toFixed(4)),
+    availabilityScore: Number(availabilityScore.toFixed(4)),
+    recommendationScore: Number(recommendationScore.toFixed(4)),
+    isAvailableSoon: availabilityScore > 0.15
+  };
+}
+
+async function getActiveFieldsWithDistance(lat, lng, radiusKm, sport) {
+  const client = new MongoClient(process.env.DATABASE_URL);
+  try {
+    await client.connect();
+    const db = client.db();
+    const fieldsCol = db.collection('fields');
+    await fieldsCol.updateMany(
+      {
+        geoPoint: { $exists: false },
+        latitude: { $type: 'number' },
+        longitude: { $type: 'number' }
+      },
+      [
+        {
+          $set: {
+            geoPoint: {
+              type: 'Point',
+              coordinates: ['$longitude', '$latitude']
+            }
+          }
+        }
+      ]
+    );
+    await fieldsCol.createIndex({ geoPoint: '2dsphere' });
+    const query = { is_active: true };
+    if (sport) query.sport = sport;
+    const docs = await fieldsCol.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [lng, lat] },
+          key: 'geoPoint',
+          distanceField: 'distanceMeters',
+          spherical: true,
+          maxDistance: Math.round(radiusKm * 1000),
+          query
+        }
+      },
+      { $limit: 300 }
+    ]).toArray();
+    return docs.map((d) => ({
+      id: String(d._id),
+      name: d.name,
+      sport: d.sport,
+      type: d.type,
+      location: d.location,
+      city: d.city,
+      district: d.district,
+      latitude: d.latitude,
+      longitude: d.longitude,
+      pricePerHour: d.price_per_hour,
+      rating: d.rating,
+      reviewCount: d.review_count || 0,
+      images: d.images || [],
+      features: d.features || [],
+      distanceMeters: d.distanceMeters,
+      schedule: d.schedule
+    }));
+  } catch (error) {
+    const fallback = await prisma.field.findMany({
+      where: {
+        isActive: true,
+        ...(sport ? { sport } : {})
+      },
+      take: 300
+    });
+    return fallback
+      .map((f) => {
+        const fieldLat = toFiniteNumber(f.latitude);
+        const fieldLng = toFiniteNumber(f.longitude);
+        if (fieldLat == null || fieldLng == null) return null;
+        const distanceKm = haversineKm(lat, lng, fieldLat, fieldLng);
+        if (distanceKm > radiusKm) return null;
+        return {
+          ...f,
+          distanceMeters: Math.round(distanceKm * 1000)
+        };
+      })
+      .filter(Boolean);
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+async function buildFieldMetrics(fieldIds, fieldById) {
+  if (!fieldIds.length) return { byFieldId: new Map(), maxPopularity: 0 };
+  const ids = fieldIds.map((id) => new ObjectId(id));
+  const now = new Date();
+  const recentFrom = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const horizonDays = 7;
+  const horizonTo = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000);
+
+  const client = new MongoClient(process.env.DATABASE_URL);
+  try {
+    await client.connect();
+    const db = client.db();
+    const [totalBookings, recentBookings, upcomingBookings, favoritesCounts, blockedDays] = await Promise.all([
+      db.collection('bookings').aggregate([
+        { $match: { field_id: { $in: ids }, status: { $ne: 'CANCELLED' } } },
+        { $group: { _id: '$field_id', count: { $sum: 1 } } }
+      ]).toArray(),
+      db.collection('bookings').aggregate([
+        { $match: { field_id: { $in: ids }, status: { $ne: 'CANCELLED' }, created_at: { $gte: recentFrom } } },
+        { $group: { _id: '$field_id', count: { $sum: 1 } } }
+      ]).toArray(),
+      db.collection('bookings').find({
+        field_id: { $in: ids },
+        status: { $ne: 'CANCELLED' },
+        date: { $gte: now, $lte: horizonTo }
+      }, {
+        projection: { field_id: 1, time_slot_start: 1, time_slot_end: 1, time_slot_ranges: 1 }
+      }).toArray(),
+      db.collection('favorites').aggregate([
+        { $match: { field_id: { $in: ids } } },
+        { $group: { _id: '$field_id', count: { $sum: 1 } } }
+      ]).toArray(),
+      db.collection('field_unavailable_dates').aggregate([
+        { $match: { field_id: { $in: ids }, date: { $gte: now, $lte: horizonTo } } },
+        { $group: { _id: '$field_id', count: { $sum: 1 } } }
+      ]).toArray()
+    ]);
+
+    const totals = new Map(totalBookings.map((r) => [String(r._id), r.count]));
+    const recent = new Map(recentBookings.map((r) => [String(r._id), r.count]));
+    const favorites = new Map(favoritesCounts.map((r) => [String(r._id), r.count]));
+    const unavailable = new Map(blockedDays.map((r) => [String(r._id), r.count]));
+
+    const upcomingBookedHoursByField = new Map();
+    upcomingBookings.forEach((b) => {
+      const id = String(b.field_id);
+      const prev = upcomingBookedHoursByField.get(id) || 0;
+      upcomingBookedHoursByField.set(id, prev + bookingHoursFromRanges(b));
+    });
+
+    const byFieldId = new Map();
+    let maxPopularity = 0;
+    fieldIds.forEach((id) => {
+      const field = fieldById.get(id);
+      const bookingCount = totals.get(id) || 0;
+      const recentActivityCount = recent.get(id) || 0;
+      const favoriteCount = favorites.get(id) || 0;
+      const reviewCount = field.reviewCount || 0;
+      const rating = toFiniteNumber(field.rating) || 0;
+      const blockedCount = unavailable.get(id) || 0;
+      const bookedHours = upcomingBookedHoursByField.get(id) || 0;
+
+      let possibleHours = 0;
+      for (let i = 0; i < horizonDays; i++) {
+        const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+        possibleHours += scheduleHoursForDate(field.schedule, d);
+      }
+      const blockedPenalty = blockedCount >= 3 ? 0.55 : (blockedCount > 0 ? 0.8 : 1);
+      const availabilityScore = possibleHours <= 0 ? 0 : clamp01(((possibleHours - bookedHours) / possibleHours) * blockedPenalty);
+      const popularityRaw =
+        bookingCount * 0.5 +
+        recentActivityCount * 1.2 +
+        favoriteCount * 0.8 +
+        reviewCount * 0.35 +
+        rating * 2;
+      if (popularityRaw > maxPopularity) maxPopularity = popularityRaw;
+      byFieldId.set(id, {
+        bookingCount,
+        recentActivityCount,
+        favoriteCount,
+        reviewCount,
+        rating,
+        popularityRaw,
+        availabilityScore
+      });
+    });
+    return { byFieldId, maxPopularity };
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+// Coordinate-aware nearby fields with relevance scoring.
+router.get('/nearby', async (req, res) => {
+  try {
+    const lat = toFiniteNumber(req.query.lat);
+    const lng = toFiniteNumber(req.query.lng);
+    if (lat == null || lng == null) {
+      return res.status(400).json({ error: 'lat and lng are required numbers' });
+    }
+    const page = parsePositiveIntOr(1, req.query.page, 1000);
+    const limit = parsePositiveIntOr(12, req.query.limit, 48);
+    const radiusKm = Math.min(parseFloat(req.query.radiusKm) || 30, 120);
+    const sport = req.query.sport ? String(req.query.sport) : undefined;
+
+    const nearbyFields = await getActiveFieldsWithDistance(lat, lng, radiusKm, sport);
+    const fieldIds = nearbyFields.map((f) => String(f.id));
+    const fieldById = new Map(nearbyFields.map((f) => [String(f.id), f]));
+    const { byFieldId, maxPopularity } = await buildFieldMetrics(fieldIds, fieldById);
+
+    const ranked = nearbyFields
+      .map((field) => {
+        const fieldId = String(field.id);
+        const metrics = byFieldId.get(fieldId) || { popularityRaw: 0, availabilityScore: 0.4 };
+        const score = composeFieldScore(field, metrics, lat, lng, maxPopularity);
+        return {
+          ...field,
+          ...score,
+          bookingCount: metrics.bookingCount || 0,
+          recentActivityCount: metrics.recentActivityCount || 0,
+          favoriteCount: metrics.favoriteCount || 0
+        };
+      })
+      .sort((a, b) => a.distanceMeters - b.distanceMeters || b.recommendationScore - a.recommendationScore);
+
+    const start = (page - 1) * limit;
+    const paged = ranked.slice(start, start + limit);
+    res.json({
+      fields: paged,
+      pagination: { page, limit, total: ranked.length, pages: Math.ceil(ranked.length / limit) }
+    });
+  } catch (error) {
+    console.error('Get nearby fields error:', error);
+    res.status(500).json({ error: 'Failed to fetch nearby fields' });
+  }
+});
+
+router.get('/popular-now', async (req, res) => {
+  try {
+    const page = parsePositiveIntOr(1, req.query.page, 1000);
+    const limit = parsePositiveIntOr(12, req.query.limit, 48);
+    const lat = toFiniteNumber(req.query.lat);
+    const lng = toFiniteNumber(req.query.lng);
+    const sport = req.query.sport ? String(req.query.sport) : undefined;
+
+    const candidates = await prisma.field.findMany({
+      where: { isActive: true, ...(sport ? { sport } : {}) },
+      take: 250
+    });
+    const fieldById = new Map(candidates.map((f) => [String(f.id), f]));
+    const { byFieldId, maxPopularity } = await buildFieldMetrics(candidates.map((f) => String(f.id)), fieldById);
+
+    const ranked = candidates
+      .map((field) => {
+        const fieldId = String(field.id);
+        const metrics = byFieldId.get(fieldId) || { popularityRaw: 0, availabilityScore: 0.4 };
+        const score = composeFieldScore(field, metrics, lat, lng, maxPopularity);
+        return {
+          ...field,
+          ...score,
+          bookingCount: metrics.bookingCount || 0,
+          recentActivityCount: metrics.recentActivityCount || 0,
+          favoriteCount: metrics.favoriteCount || 0
+        };
+      })
+      .sort((a, b) => {
+        if (b.popularityScore !== a.popularityScore) return b.popularityScore - a.popularityScore;
+        if (b.availabilityScore !== a.availabilityScore) return b.availabilityScore - a.availabilityScore;
+        return b.recommendationScore - a.recommendationScore;
+      });
+
+    const start = (page - 1) * limit;
+    const fields = ranked.slice(start, start + limit);
+    res.json({
+      fields,
+      pagination: { page, limit, total: ranked.length, pages: Math.ceil(ranked.length / limit) }
+    });
+  } catch (error) {
+    console.error('Get popular now fields error:', error);
+    res.status(500).json({ error: 'Failed to fetch popular fields' });
+  }
+});
+
+router.get('/recommendations', async (req, res) => {
+  try {
+    const lat = toFiniteNumber(req.query.lat);
+    const lng = toFiniteNumber(req.query.lng);
+    if (lat == null || lng == null) {
+      return res.status(400).json({ error: 'lat and lng are required numbers' });
+    }
+    const page = parsePositiveIntOr(1, req.query.page, 1000);
+    const limit = parsePositiveIntOr(12, req.query.limit, 48);
+    const radiusKm = Math.min(parseFloat(req.query.radiusKm) || 45, 160);
+
+    const candidates = await getActiveFieldsWithDistance(lat, lng, radiusKm);
+    const fieldIds = candidates.map((f) => String(f.id));
+    const fieldById = new Map(candidates.map((f) => [String(f.id), f]));
+    const { byFieldId, maxPopularity } = await buildFieldMetrics(fieldIds, fieldById);
+    const ranked = candidates
+      .map((field) => {
+        const fieldId = String(field.id);
+        const metrics = byFieldId.get(fieldId) || { popularityRaw: 0, availabilityScore: 0.4 };
+        return {
+          ...field,
+          ...composeFieldScore(field, metrics, lat, lng, maxPopularity),
+          bookingCount: metrics.bookingCount || 0,
+          recentActivityCount: metrics.recentActivityCount || 0,
+          favoriteCount: metrics.favoriteCount || 0
+        };
+      })
+      .sort((a, b) => b.recommendationScore - a.recommendationScore);
+
+    const start = (page - 1) * limit;
+    const fields = ranked.slice(start, start + limit);
+    res.json({
+      fields,
+      pagination: { page, limit, total: ranked.length, pages: Math.ceil(ranked.length / limit) }
+    });
+  } catch (error) {
+    console.error('Get recommendations error:', error);
+    res.status(500).json({ error: 'Failed to fetch recommendations' });
+  }
+});
+
 // Get all fields
 router.get('/', async (req, res) => {
   try {

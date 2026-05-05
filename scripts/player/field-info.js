@@ -204,6 +204,24 @@ function getVenueIdFromURL() {
 // Current field when loaded from API (so handleBooking can use it)
 var currentFieldFromAPI = null;
 
+function getFavoriteIdsSet() {
+  try {
+    const saved = localStorage.getItem('favoriteVenues');
+    const parsed = saved ? JSON.parse(saved) : [];
+    return new Set((Array.isArray(parsed) ? parsed : []).map(String));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function persistFavoriteIdsSet(set) {
+  const favorites = Array.from(set);
+  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  try {
+    window.dispatchEvent(new CustomEvent('matchfield:favorites-updated', { detail: { favorites: favorites } }));
+  } catch (_) {}
+}
+
 // Find venue by ID (supports string or number for fallback data)
 function findVenueById(venueId) {
   if (currentFieldFromAPI && String(currentFieldFromAPI.id) === String(venueId))
@@ -260,41 +278,89 @@ function loadFieldFromAPI(fieldId) {
 function loadFavoritesFromStorage() {
   const saved = localStorage.getItem('favoriteVenues');
   if (saved) {
-      const favorites = JSON.parse(saved);
+      const favorites = JSON.parse(saved).map(String);
       const allVenues = [...venuesData.popular, ...venuesData.nearby];
       allVenues.forEach(v => {
-          v.isFavorite = favorites.includes(v.id);
+          v.isFavorite = favorites.includes(String(v.id));
       });
+      if (currentFieldFromAPI) {
+        currentFieldFromAPI.isFavorite = favorites.includes(String(currentFieldFromAPI.id));
+      }
   }
 }
 
 // Toggle favorite (API or local)
 function toggleFavorite(venueId) {
+  const saveBtn = document.getElementById('saveBtn');
+  function setSaveLoading(isLoading) {
+    if (!saveBtn) return;
+    saveBtn.disabled = !!isLoading;
+    saveBtn.classList.toggle('is-loading', !!isLoading);
+    const textEl = saveBtn.querySelector('span');
+    if (textEl && isLoading) textEl.textContent = 'Saving...';
+  }
+
   if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
     var venue = findVenueById(venueId);
     if (!venue) return;
     var isFav = venue.isFavorite;
-    var promise = isFav ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+    var venueIdStr = String(venueId);
+    setSaveLoading(true);
+    var promise = isFav ? API.favorites.remove(venueIdStr) : API.favorites.add(venueIdStr);
     promise.then(function() {
-      venue.isFavorite = !venue.isFavorite;
-      saveFavoritesToStorage();
+      venue.isFavorite = !isFav;
+      const set = getFavoriteIdsSet();
+      if (venue.isFavorite) set.add(venueIdStr);
+      else set.delete(venueIdStr);
+      persistFavoriteIdsSet(set);
       updateSaveButton(venue.isFavorite);
-    }).catch(function(err) { alert(err.message || 'Failed to update favorite.'); });
+    }).catch(function(err) {
+      var message = (err && err.message ? String(err.message) : '').toLowerCase();
+      // Keep UI state correct if backend indicates existing/missing favorite.
+      if (!isFav && message.indexOf('already in favorites') !== -1) {
+        venue.isFavorite = true;
+        const set = getFavoriteIdsSet();
+        set.add(venueIdStr);
+        persistFavoriteIdsSet(set);
+        updateSaveButton(true);
+        return;
+      }
+      if (isFav && message.indexOf('favorite not found') !== -1) {
+        venue.isFavorite = false;
+        const set = getFavoriteIdsSet();
+        set.delete(venueIdStr);
+        persistFavoriteIdsSet(set);
+        updateSaveButton(false);
+        return;
+      }
+      alert(err.message || 'Failed to update favorite.');
+    }).finally(function() {
+      setSaveLoading(false);
+      updateSaveButton(venue.isFavorite);
+    });
     return;
   }
   var venue = findVenueById(venueId);
   if (venue) {
     venue.isFavorite = !venue.isFavorite;
-    saveFavoritesToStorage();
+    const set = getFavoriteIdsSet();
+    const venueIdStr = String(venueId);
+    if (venue.isFavorite) set.add(venueIdStr);
+    else set.delete(venueIdStr);
+    persistFavoriteIdsSet(set);
     updateSaveButton(venue.isFavorite);
   }
 }
 
 // Save favorites to localStorage
 function saveFavoritesToStorage() {
-  const allVenues = [...venuesData.popular, ...venuesData.nearby];
-  const favorites = allVenues.filter(v => v.isFavorite).map(v => v.id);
-  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  const set = getFavoriteIdsSet();
+  if (currentFieldFromAPI) {
+    const currentId = String(currentFieldFromAPI.id);
+    if (currentFieldFromAPI.isFavorite) set.add(currentId);
+    else set.delete(currentId);
+  }
+  persistFavoriteIdsSet(set);
 }
 
 
@@ -350,7 +416,7 @@ function renderFieldInfo(venue) {
                       <span>Share</span>
                   </button>
                   <button class="action-btn save-btn" id="saveBtn">
-                      <i class="fi fi-rr-bookmark"></i>
+                      <i class="fi fi-rr-heart"></i>
                       <span>Save</span>
                   </button>
               </div>
@@ -587,10 +653,14 @@ function renderBookingLocationMap(venue) {
 function updateSaveButton(isFavorite) {
   const saveBtn = document.getElementById('saveBtn');
   if (saveBtn) {
+      const textEl = saveBtn.querySelector('span');
+      saveBtn.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
       if (isFavorite) {
           saveBtn.classList.add('active');
+          if (textEl) textEl.textContent = 'Saved';
       } else {
           saveBtn.classList.remove('active');
+          if (textEl) textEl.textContent = 'Save';
       }
   }
 }
@@ -992,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadFieldFromAPI(venueId).then(function(venue) {
       if (venue) {
         currentFieldFromAPI = venue;
+        loadFavoritesFromStorage();
         renderFieldInfo(venue);
         return;
       }
@@ -1008,6 +1079,12 @@ document.addEventListener('DOMContentLoaded', function() {
     console.error('Error loading field info:', error);
     showError('An error occurred while loading the field details.', 'Error loading field information');
   }
+});
+
+window.addEventListener('storage', function(e) {
+  if (e.key !== 'favoriteVenues') return;
+  loadFavoritesFromStorage();
+  if (currentFieldFromAPI) updateSaveButton(!!currentFieldFromAPI.isFavorite);
 });
 
 

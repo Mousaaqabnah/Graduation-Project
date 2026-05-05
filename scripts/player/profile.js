@@ -507,6 +507,7 @@ async function loadProfileData() {
     }
     
     updateProfileDisplay(profileData);
+    loadFavoriteFields();
 }
 
 // Build avatar URL from full name (e.g. "Mousa Aqabnah" → initials "MA")
@@ -592,5 +593,58 @@ function updateProfileDisplay(data) {
     if (upcomingBookingsEl) upcomingBookingsEl.textContent = data.upcomingBookings;
     if (averageRatingEl) averageRatingEl.textContent = data.averageRating;
     if (memberMonthsEl) memberMonthsEl.textContent = data.memberMonths;
+}
+
+async function loadFavoriteFields() {
+    const listEl = document.getElementById('favoriteFieldsList');
+    if (!listEl) return;
+
+    if (typeof API === 'undefined' || !API.favorites || !API.favorites.getAll) {
+        listEl.innerHTML = '<div class="favorite-empty">Favorites are unavailable right now.</div>';
+        return;
+    }
+
+    try {
+        const res = await API.favorites.getAll();
+        const favorites = (res && res.favorites) ? res.favorites : [];
+        if (!favorites.length) {
+            listEl.innerHTML = '<div class="favorite-empty">No favorite fields yet.</div>';
+            return;
+        }
+
+        listEl.innerHTML = favorites.map(function(item) {
+            const field = item.field || {};
+            const fieldId = item.fieldId || field.id;
+            const name = field.name || 'Field';
+            const location = field.location || 'Location not available';
+            const sport = field.sport || 'Sport';
+            const rating = field.rating != null ? field.rating : 0;
+            return (
+                '<article class="favorite-field-card" data-field-id="' + fieldId + '">' +
+                    '<p class="favorite-field-name">' + escapeHtml(name) + '</p>' +
+                    '<p class="favorite-field-meta">' + escapeHtml(sport) + ' • ★ ' + rating + '</p>' +
+                    '<p class="favorite-field-meta">' + escapeHtml(location) + '</p>' +
+                '</article>'
+            );
+        }).join('');
+
+        listEl.querySelectorAll('.favorite-field-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                const fieldId = card.getAttribute('data-field-id');
+                if (fieldId) {
+                    window.location.href = 'field-info.html?id=' + encodeURIComponent(fieldId);
+                }
+            });
+        });
+    } catch (error) {
+        console.warn('Profile: failed to load favorites', error);
+        listEl.innerHTML = '<div class="favorite-empty">Failed to load favorite fields.</div>';
+    }
+}
+
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
 }
 

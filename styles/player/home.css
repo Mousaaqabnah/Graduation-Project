@@ -201,6 +201,10 @@ body {
     margin-right: 0;
 }
 
+.location-selector-wrapper {
+    position: relative;
+}
+
 .location-selector {
     display: flex;
     align-items: center;
@@ -214,6 +218,7 @@ body {
     font-size: 15px;
     font-weight: 500;
     color: #1F2937;
+    appearance: none;
 }
 
 .location-selector:hover {
@@ -231,6 +236,40 @@ body {
     width: 16px;
     height: 16px;
     color: #6B7280;
+}
+
+.location-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
+    padding: 6px;
+    display: none;
+    z-index: 30;
+}
+
+.location-menu.active {
+    display: block;
+}
+
+.location-menu-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 10px 12px;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #1F2937;
+    cursor: pointer;
+}
+
+.location-menu-item:hover {
+    background: #F3F4F6;
 }
 
 .icon-btn {
@@ -754,6 +793,115 @@ body {
 .favorite-btn:not(.active) svg {
     fill: white;
     stroke: white;
+}
+
+.favorite-fields-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+}
+
+.favorite-fields-modal.active {
+    display: flex;
+}
+
+.favorite-fields-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.favorite-fields-modal-content {
+    position: relative;
+    width: min(760px, 92vw);
+    max-height: 82vh;
+    background: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
+}
+
+.favorite-fields-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.favorite-fields-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.favorite-fields-modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+}
+
+.favorite-field-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    margin-bottom: 10px;
+}
+
+.favorite-field-item img {
+    width: 72px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+.favorite-field-item-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.favorite-field-item-title {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.favorite-field-item-meta {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.favorite-field-item-action {
+    border: none;
+    background: #eef6ff;
+    color: #007bff;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.favorite-field-item-action:hover {
+    background: #dcecff;
+}
+
+.favorite-empty-state {
+    text-align: center;
+    color: #6b7280;
+    padding: 26px 8px;
 }
 
 .venue-card-content {

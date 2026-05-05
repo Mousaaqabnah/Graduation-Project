@@ -64,6 +64,12 @@
     color: #007BFF;
 }
 
+.save-btn.active {
+    background: #fef2f2;
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
 .back-btn {
     display: flex;
     align-items: center;

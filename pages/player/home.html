@@ -75,15 +75,21 @@
                     </svg>
                 </div>
                 
-                    <div class="location-selector">
-                        <svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                        <span>Istanbul</span>
-                        <svg class="dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
+                    <div class="location-selector-wrapper">
+                        <button class="location-selector" type="button" aria-haspopup="true" aria-expanded="false">
+                            <svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span>Istanbul</span>
+                            <svg class="dropdown-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="location-menu" id="locationMenu">
+                            <button class="location-menu-item" type="button" data-location-option="istanbul">Istanbul</button>
+                            <button class="location-menu-item" type="button" data-location-option="my-location">My location</button>
+                        </div>
                     </div>
                     
                 <div class="header-actions">
@@ -172,6 +178,13 @@
                                         <span>My Bookings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
+                                    <a href="#" class="profile-menu-item" id="favoriteFieldsMenuItem">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-heart"></i>
+                                        </div>
+                                        <span>Favorite Fields</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -224,6 +237,25 @@
                 </section>
             </div>
         </main>
+    </div>
+
+    <!-- Favorite Fields Modal -->
+    <div class="favorite-fields-modal" id="favoriteFieldsModal">
+        <div class="favorite-fields-modal-overlay"></div>
+        <div class="favorite-fields-modal-content">
+            <div class="favorite-fields-modal-header">
+                <h2>Favorite Fields</h2>
+                <button class="modal-close" id="closeFavoriteFieldsModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="favorite-fields-modal-body" id="favoriteFieldsModalBody">
+                <!-- Favorite fields list -->
+            </div>
+        </div>
     </div>
 
     <!-- Booking Modal -->

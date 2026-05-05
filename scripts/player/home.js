@@ -1,8 +1,48 @@
 // Venue data loaded from API
 const venues = { popular: [], nearby: [] };
+const DEFAULT_LOCATION = { name: 'Istanbul', lat: 41.0082, lng: 28.9784, source: 'default' };
+const LOCATION_STORAGE_KEY = 'playerSelectedLocation';
+const LOCATION_OPTIONS = [
+  { name: 'Istanbul', lat: 41.0082, lng: 28.9784 }
+];
+let activeLocation = null;
+let currentPageBySection = { nearby: 1, popular: 1 };
+
+function getFavoriteIdsSet() {
+  try {
+    const saved = localStorage.getItem('favoriteVenues');
+    const parsed = saved ? JSON.parse(saved) : [];
+    return new Set((Array.isArray(parsed) ? parsed : []).map(String));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function persistFavoriteIdsSet(set) {
+  const favorites = Array.from(set);
+  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  try {
+    window.dispatchEvent(new CustomEvent('matchfield:favorites-updated', { detail: { favorites: favorites } }));
+  } catch (_) {}
+}
+
+function applyFavoriteIdsToVenueState(favoriteIds) {
+  const set = new Set((favoriteIds || []).map(String));
+  venues.popular.forEach(function(v) { v.isFavorite = set.has(String(v.id)); });
+  venues.nearby.forEach(function(v) { v.isFavorite = set.has(String(v.id)); });
+}
+
+function syncFavoriteButtonsFromState() {
+  document.querySelectorAll('.favorite-btn').forEach(function(btn) {
+    const id = String(btn.getAttribute('data-venue-id') || '');
+    const venue = venues.popular.find(function(v) { return String(v.id) === id; })
+      || venues.nearby.find(function(v) { return String(v.id) === id; });
+    btn.classList.toggle('active', !!(venue && venue.isFavorite));
+  });
+}
 
 function mapFieldToVenue(field, favoriteIds) {
-  var id = field.id;
+  var id = String(field.id);
   var images = field.images && field.images.length ? field.images : [];
   var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
   return {
@@ -13,32 +53,145 @@ function mapFieldToVenue(field, favoriteIds) {
     rating: field.rating != null ? field.rating : 0,
     reviews: field.reviewCount != null ? field.reviewCount : 0,
     location: field.location || '',
-    distance: 'N/A',
+    distance: field.distanceKm != null ? field.distanceKm.toFixed(1) + ' km' : 'N/A',
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
-    isFavorite: favoriteIds.indexOf(id) !== -1
+    isFavorite: favoriteIds.map(String).indexOf(id) !== -1
   };
 }
 
-function loadVenuesFromAPI() {
-  return Promise.all([
-    typeof API !== 'undefined' ? API.fields.getAll({ limit: 24 }) : Promise.resolve({ fields: [] }),
-    typeof API !== 'undefined' && API.getAuthToken() ? API.favorites.getAll().catch(function() { return { favorites: [] }; }) : Promise.resolve({ favorites: [] })
-  ]).then(function(results) {
-    var fieldsRes = results[0];
-    var favRes = results[1];
-    var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
-    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
-    var list = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
-    venues.popular = list.slice(0, 6);
-    venues.nearby = list.slice(6, 15);
-    return venues;
+function saveSelectedLocation(loc) {
+  try {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(loc));
+  } catch (_) {}
+}
+
+function readSelectedLocation() {
+  try {
+    const raw = localStorage.getItem(LOCATION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) return parsed;
+  } catch (_) {}
+  return null;
+}
+
+function updateLocationLabel() {
+  var label = document.querySelector('.location-selector span');
+  if (label && activeLocation) label.textContent = activeLocation.name || 'Selected location';
+}
+
+function getCurrentCoords() {
+  if (!activeLocation) return null;
+  return { lat: activeLocation.lat, lng: activeLocation.lng };
+}
+
+function resolveActiveLocation() {
+  const saved = readSelectedLocation();
+  if (saved) {
+    activeLocation = { ...saved, source: 'selected' };
+    return Promise.resolve(activeLocation);
+  }
+  return new Promise(function(resolve) {
+    if (!navigator.geolocation) {
+      activeLocation = { ...DEFAULT_LOCATION };
+      return resolve(activeLocation);
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        activeLocation = {
+          name: 'My Location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          source: 'geolocation'
+        };
+        resolve(activeLocation);
+      },
+      function() {
+        activeLocation = { ...DEFAULT_LOCATION };
+        resolve(activeLocation);
+      },
+      { timeout: 6000, enableHighAccuracy: true }
+    );
   });
+}
+
+function getFavoriteIdsFromResponse(favRes) {
+  return (favRes && favRes.favorites)
+    ? favRes.favorites
+      .map(function(f) { return f.fieldId || (f.field && f.field.id); })
+      .filter(Boolean)
+    : [];
+}
+
+function loadSectionDataWithLocation(section, favoriteIds, page) {
+  if (typeof API === 'undefined' || !API.fields || !activeLocation) return Promise.resolve([]);
+  const baseParams = {
+    lat: activeLocation.lat,
+    lng: activeLocation.lng,
+    page: page || 1,
+    limit: 9
+  };
+  const req = section === 'nearby'
+    ? API.fields.getNearby({ ...baseParams, radiusKm: 35 })
+    : API.fields.getRecommendations({ ...baseParams, radiusKm: 45 });
+  return req.then(function(res) {
+    const fields = (res && res.fields) ? res.fields : [];
+    return fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
+  });
+}
+
+function loadVenuesFromAPI() {
+  const favoritesReq = typeof API !== 'undefined' && API.getAuthToken()
+    ? API.favorites.getAll().catch(function() { return { favorites: [] }; })
+    : Promise.resolve({ favorites: [] });
+  return favoritesReq.then(function(favRes) {
+    const favoriteIds = getFavoriteIdsFromResponse(favRes);
+    return Promise.all([
+      loadSectionDataWithLocation('popular', favoriteIds, currentPageBySection.popular),
+      loadSectionDataWithLocation('nearby', favoriteIds, currentPageBySection.nearby)
+    ]).then(function(results) {
+      venues.popular = results[0];
+      venues.nearby = results[1];
+      return venues;
+    });
+  });
+}
+
+function refreshHomepageByLocation() {
+  currentPageBySection = { nearby: 1, popular: 1 };
+  return loadVenuesFromAPI().then(function() {
+    updateLocationLabel();
+    renderVenues('popular', venues.popular);
+    renderVenues('nearby', venues.nearby);
+  });
+}
+
+function chooseLocationFromSelector(option) {
+  if (option === 'my-location') {
+    return new Promise(function(resolve) {
+      if (!navigator.geolocation) return resolve();
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        activeLocation = {
+          name: 'My Location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          source: 'selected'
+        };
+        saveSelectedLocation(activeLocation);
+        refreshHomepageByLocation().finally(resolve);
+      }, function() { resolve(); }, { timeout: 6000, enableHighAccuracy: true });
+    });
+  }
+  activeLocation = { ...LOCATION_OPTIONS[0], source: 'selected' };
+  saveSelectedLocation(activeLocation);
+  return refreshHomepageByLocation();
 }
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
   function initUI() {
+    updateLocationLabel();
     renderVenues('popular', venues.popular);
     renderVenues('nearby', venues.nearby);
     setupEventListeners();
@@ -48,7 +201,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var allCards = document.querySelectorAll('.venue-card');
     allCards.forEach(function(card) { card.style.display = 'block'; });
   }
-  loadVenuesFromAPI()
+  resolveActiveLocation()
+    .then(function() { return loadVenuesFromAPI(); })
     .then(function() {
       loadFavoritesFromStorage();
       initUI();
@@ -173,16 +327,20 @@ function toggleFavorite(venueId) {
     alert('Please log in to add favorites.');
     return;
   }
-  var popularVenue = venues.popular.find(function(v) { return v.id === venueId; });
-  var nearbyVenue = venues.nearby.find(function(v) { return v.id === venueId; });
+  var venueIdStr = String(venueId);
+  var popularVenue = venues.popular.find(function(v) { return String(v.id) === venueIdStr; });
+  var nearbyVenue = venues.nearby.find(function(v) { return String(v.id) === venueIdStr; });
   var isCurrentlyFavorite = (popularVenue && popularVenue.isFavorite) || (nearbyVenue && nearbyVenue.isFavorite);
-  var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+  var promise = isCurrentlyFavorite ? API.favorites.remove(venueIdStr) : API.favorites.add(venueIdStr);
   promise.then(function() {
-    if (popularVenue) popularVenue.isFavorite = !popularVenue.isFavorite;
-    if (nearbyVenue) nearbyVenue.isFavorite = !nearbyVenue.isFavorite;
-    var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
-    if (favoriteBtn) favoriteBtn.classList.toggle('active');
-    saveFavoritesToStorage();
+    venues.popular.forEach(function(v) { if (String(v.id) === venueIdStr) v.isFavorite = !isCurrentlyFavorite; });
+    venues.nearby.forEach(function(v) { if (String(v.id) === venueIdStr) v.isFavorite = !isCurrentlyFavorite; });
+    var favoriteButtons = document.querySelectorAll('.favorite-btn[data-venue-id="' + venueIdStr + '"]');
+    favoriteButtons.forEach(function(btn) { btn.classList.toggle('active', !isCurrentlyFavorite); });
+    const set = getFavoriteIdsSet();
+    if (!isCurrentlyFavorite) set.add(venueIdStr);
+    else set.delete(venueIdStr);
+    persistFavoriteIdsSet(set);
   }).catch(function(err) {
     alert(err.message || 'Failed to update favorite.');
   });
@@ -2174,10 +2332,30 @@ function setupEventListeners() {
   
   // Location selector
   const locationSelector = document.querySelector('.location-selector');
-  if (locationSelector) {
-      locationSelector.addEventListener('click', () => {
-          // Show location selection modal (to be implemented)
-          console.log('Select location');
+  const locationMenu = document.getElementById('locationMenu');
+  if (locationSelector && locationMenu) {
+      locationSelector.addEventListener('click', (e) => {
+          e.stopPropagation();
+          locationMenu.classList.toggle('active');
+          locationSelector.setAttribute('aria-expanded', locationMenu.classList.contains('active') ? 'true' : 'false');
+      });
+      locationMenu.addEventListener('click', function(e) {
+        const btn = e.target.closest('[data-location-option]');
+        if (!btn) return;
+        const option = btn.getAttribute('data-location-option');
+        chooseLocationFromSelector(option).catch(function(err) {
+          console.warn('Failed to switch location:', err);
+        }).finally(function() {
+          locationMenu.classList.remove('active');
+          locationSelector.setAttribute('aria-expanded', 'false');
+        });
+      });
+      document.addEventListener('click', function(e) {
+        if (!locationMenu.classList.contains('active')) return;
+        if (!locationMenu.contains(e.target) && !locationSelector.contains(e.target)) {
+          locationMenu.classList.remove('active');
+          locationSelector.setAttribute('aria-expanded', 'false');
+        }
       });
   }
   
@@ -2213,6 +2391,30 @@ function setupEventListeners() {
               }
           });
       }
+
+      const favoriteFieldsMenuItem = document.getElementById('favoriteFieldsMenuItem');
+      const favoriteFieldsModal = document.getElementById('favoriteFieldsModal');
+      const closeFavoriteFieldsModalBtn = document.getElementById('closeFavoriteFieldsModal');
+      const favoriteFieldsModalOverlay = document.querySelector('.favorite-fields-modal-overlay');
+      if (favoriteFieldsMenuItem) {
+          favoriteFieldsMenuItem.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (profilePopup) profilePopup.classList.remove('active');
+              openFavoriteFieldsModal();
+          });
+      }
+      if (closeFavoriteFieldsModalBtn) {
+          closeFavoriteFieldsModalBtn.addEventListener('click', closeFavoriteFieldsModal);
+      }
+      if (favoriteFieldsModalOverlay) {
+          favoriteFieldsModalOverlay.addEventListener('click', closeFavoriteFieldsModal);
+      }
+      document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape' && favoriteFieldsModal && favoriteFieldsModal.classList.contains('active')) {
+              closeFavoriteFieldsModal();
+          }
+      });
   }
 }
 
@@ -2261,31 +2463,109 @@ function filterVenuesBySearch(query) {
   });
 }
 
-// Save favorites to localStorage
-function saveFavoritesToStorage() {
+function getUnifiedFavoriteIds() {
   const favorites = [];
   venues.popular.forEach(v => {
-      if (v.isFavorite) favorites.push(v.id);
+      const id = String(v.id);
+      if (v.isFavorite && !favorites.includes(id)) favorites.push(id);
   });
   venues.nearby.forEach(v => {
-      if (v.isFavorite && !favorites.includes(v.id)) favorites.push(v.id);
+      const id = String(v.id);
+      if (v.isFavorite && !favorites.includes(id)) favorites.push(id);
   });
-  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  return favorites;
+}
+
+async function openFavoriteFieldsModal() {
+  const modal = document.getElementById('favoriteFieldsModal');
+  const body = document.getElementById('favoriteFieldsModalBody');
+  if (!modal || !body) return;
+  body.innerHTML = '<div class="favorite-empty-state">Loading favorites...</div>';
+  modal.classList.add('active');
+
+  try {
+    let favoriteEntries = [];
+    if (typeof API !== 'undefined' && API.getAuthToken()) {
+      const favRes = await API.favorites.getAll().catch(function() { return { favorites: [] }; });
+      favoriteEntries = (favRes && favRes.favorites) ? favRes.favorites : [];
+    }
+    let ids = favoriteEntries
+      .map(function(f) { return String(f.fieldId || (f.field && f.field.id) || ''); })
+      .filter(Boolean);
+    if (!ids.length) ids = getUnifiedFavoriteIds();
+
+    const loadedMap = new Map([...venues.popular, ...venues.nearby].map(function(v) { return [String(v.id), v]; }));
+    const favoriteFields = await Promise.all(ids.map(async function(id) {
+      if (loadedMap.has(id)) return loadedMap.get(id);
+      if (typeof API !== 'undefined' && API.fields && API.fields.getById) {
+        const res = await API.fields.getById(id).catch(function() { return null; });
+        if (res && res.field) return mapFieldToVenue(res.field, [id]);
+      }
+      return null;
+    }));
+
+    const list = favoriteFields.filter(Boolean);
+    if (!list.length) {
+      body.innerHTML = '<div class="favorite-empty-state">No favorite fields yet.</div>';
+      return;
+    }
+
+    body.innerHTML = list.map(function(field) {
+      return `
+        <div class="favorite-field-item">
+          <img src="${field.image}" alt="${field.name}">
+          <div class="favorite-field-item-details">
+            <p class="favorite-field-item-title">${field.name}</p>
+            <p class="favorite-field-item-meta">${field.location} · ${field.distance}</p>
+          </div>
+          <button class="favorite-field-item-action" data-favorite-view-id="${field.id}">View</button>
+        </div>
+      `;
+    }).join('');
+
+    body.querySelectorAll('[data-favorite-view-id]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = btn.getAttribute('data-favorite-view-id');
+        window.location.href = 'field-info.html?id=' + encodeURIComponent(id);
+      });
+    });
+  } catch (_) {
+    body.innerHTML = '<div class="favorite-empty-state">Failed to load favorite fields.</div>';
+  }
+}
+
+function closeFavoriteFieldsModal() {
+  const modal = document.getElementById('favoriteFieldsModal');
+  if (modal) modal.classList.remove('active');
+}
+
+// Save favorites to localStorage
+function saveFavoritesToStorage() {
+  const favorites = getUnifiedFavoriteIds();
+  persistFavoriteIdsSet(new Set(favorites.map(String)));
 }
 
 // Load favorites from localStorage
 function loadFavoritesFromStorage() {
-  const saved = localStorage.getItem('favoriteVenues');
-  if (saved) {
-      const favorites = JSON.parse(saved);
-      venues.popular.forEach(v => {
-          v.isFavorite = favorites.includes(v.id);
-      });
-      venues.nearby.forEach(v => {
-          v.isFavorite = favorites.includes(v.id);
-      });
-  }
+  const favorites = Array.from(getFavoriteIdsSet());
+  applyFavoriteIdsToVenueState(favorites);
+  syncFavoriteButtonsFromState();
 }
+
+window.addEventListener('matchfield:favorites-updated', function(e) {
+  const favorites = e && e.detail && Array.isArray(e.detail.favorites) ? e.detail.favorites : Array.from(getFavoriteIdsSet());
+  applyFavoriteIdsToVenueState(favorites);
+  syncFavoriteButtonsFromState();
+});
+
+window.addEventListener('storage', function(e) {
+  if (e.key !== 'favoriteVenues') return;
+  loadFavoritesFromStorage();
+});
+
+window.addEventListener('pageshow', function() {
+  loadFavoritesFromStorage();
+});
 
 // Notifications are handled by shared notifications.js (loaded on all player pages)
 

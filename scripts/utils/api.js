@@ -409,6 +409,21 @@ const fieldsAPI = {
     return apiRequest(
       `/fields/${encodeURIComponent(fieldId)}/availability?date=${encodeURIComponent(date)}`
     );
+  },
+
+  getNearby: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/fields/nearby?${queryString}`);
+  },
+
+  getPopularNow: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/fields/popular-now?${queryString}`);
+  },
+
+  getRecommendations: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/fields/recommendations?${queryString}`);
   }
 };
 

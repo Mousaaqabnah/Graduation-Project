@@ -3,6 +3,7 @@ var allFields = [];
 
 function mapFieldToVenue(field, favoriteIds) {
   var id = field.id;
+  var idStr = String(id);
   var images = field.images && field.images.length ? field.images : [];
   var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
   return {
@@ -16,7 +17,7 @@ function mapFieldToVenue(field, favoriteIds) {
     distance: 'N/A',
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
-    isFavorite: favoriteIds.indexOf(id) !== -1
+    isFavorite: favoriteIds.indexOf(idStr) !== -1
   };
 }
 
@@ -28,7 +29,9 @@ function loadAllFieldsFromAPI() {
     var fieldsRes = results[0];
     var favRes = results[1];
     var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
-    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
+    var favoriteIds = (favRes && favRes.favorites)
+      ? favRes.favorites.map(function(f) { return String(f.fieldId || (f.field && f.field.id)); }).filter(Boolean)
+      : [];
     allFields = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
     return allFields;
   });
@@ -284,14 +287,15 @@ function toggleFavorite(venueId) {
         alert('Please log in to add favorites.');
         return;
     }
-    var field = allFields.find(function(v) { return v.id === venueId; });
+    var venueIdStr = String(venueId);
+    var field = allFields.find(function(v) { return String(v.id) === venueIdStr; });
     if (!field) return;
     var isCurrentlyFavorite = field.isFavorite;
     var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
     promise.then(function() {
         field.isFavorite = !field.isFavorite;
-        var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
-        if (favoriteBtn) favoriteBtn.classList.toggle('active');
+        var favoriteBtns = document.querySelectorAll('.favorite-btn[data-venue-id="' + venueId + '"]');
+        favoriteBtns.forEach(function(btn) { btn.classList.toggle('active'); });
         saveFavoritesToStorage();
     }).catch(function(err) {
         alert(err.message || 'Failed to update favorite.');
@@ -516,7 +520,7 @@ function loadFavoritesFromStorage() {
     if (saved) {
         const favorites = JSON.parse(saved);
         allFields.forEach(v => {
-            v.isFavorite = favorites.includes(v.id);
+            v.isFavorite = favorites.includes(String(v.id));
         });
     }
 }
