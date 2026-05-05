@@ -4,6 +4,9 @@
  */
 (function () {
   'use strict';
+  let viewGalleryImages = [];
+  let viewGalleryIndex = 0;
+  let viewTouchStartX = null;
 
   function ownerFieldEsc(s) {
     return String(s == null ? '' : s)
@@ -38,9 +41,9 @@
     if (!f) return;
     if (!document.getElementById('viewFieldModal')) return;
 
-    const img =
-      (f.images && f.images[0]) ||
-      'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=500&fit=crop';
+    const images = Array.isArray(f.images) && f.images.length
+      ? f.images.slice()
+      : ['https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=500&fit=crop'];
     const typeLabel = String(f.type || '').toUpperCase() === 'INDOOR' ? 'Indoor' : 'Outdoor';
     const sport = f.sport || 'Sport';
     const ratingNum = f.rating != null ? Number(f.rating).toFixed(1) : '—';
@@ -48,7 +51,10 @@
     const loc = f.location || '—';
 
     const imageEl = document.getElementById('viewFieldImage');
-    if (imageEl) imageEl.src = img;
+    viewGalleryImages = images;
+    viewGalleryIndex = 0;
+    if (imageEl) imageEl.src = images[0];
+    renderViewGalleryControls();
 
     const titleEl = document.getElementById('viewFieldName');
     if (titleEl) titleEl.textContent = f.name || 'Field';
@@ -196,6 +202,76 @@
     }
   }
 
+  function renderViewGalleryControls() {
+    const gallery = document.querySelector('.view-field-gallery');
+    if (!gallery) return;
+    const existing = gallery.querySelector('.view-gallery-controls');
+    if (existing) existing.remove();
+    if (!Array.isArray(viewGalleryImages) || viewGalleryImages.length <= 1) return;
+
+    const controls = document.createElement('div');
+    controls.className = 'view-gallery-controls';
+    controls.innerHTML =
+      '<button type="button" class="gallery-nav-btn gallery-nav-left" aria-label="Previous image"><i class="fi fi-rr-angle-left"></i></button>' +
+      '<div class="view-gallery-dots" aria-label="Image indicators"></div>' +
+      '<button type="button" class="gallery-nav-btn gallery-nav-right" aria-label="Next image"><i class="fi fi-rr-angle-right"></i></button>';
+    gallery.appendChild(controls);
+
+    controls.querySelector('.gallery-nav-left').addEventListener('click', function () {
+      setViewGalleryIndex(viewGalleryIndex - 1);
+    });
+    controls.querySelector('.gallery-nav-right').addEventListener('click', function () {
+      setViewGalleryIndex(viewGalleryIndex + 1);
+    });
+    updateViewGalleryUi();
+  }
+
+  function setViewGalleryIndex(index) {
+    if (!viewGalleryImages.length) return;
+    const next = (index + viewGalleryImages.length) % viewGalleryImages.length;
+    viewGalleryIndex = next;
+    const imageEl = document.getElementById('viewFieldImage');
+    if (imageEl) imageEl.src = viewGalleryImages[next];
+    updateViewGalleryUi();
+  }
+
+  function updateViewGalleryUi() {
+    const dotsWrap = document.querySelector('.view-gallery-dots');
+    if (!dotsWrap || viewGalleryImages.length <= 1) return;
+    dotsWrap.innerHTML = viewGalleryImages
+      .map(function (_img, idx) {
+        return '<button type="button" class="view-gallery-dot ' + (idx === viewGalleryIndex ? 'active' : '') + '" data-idx="' + idx + '" aria-label="Go to image ' + (idx + 1) + '"></button>';
+      })
+      .join('');
+    dotsWrap.querySelectorAll('.view-gallery-dot').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        if (!isNaN(idx)) setViewGalleryIndex(idx);
+      });
+    });
+  }
+
+  function bindViewGallerySwipe() {
+    const gallery = document.querySelector('.view-field-gallery');
+    if (!gallery || gallery.dataset.swipeBound === '1') return;
+    gallery.dataset.swipeBound = '1';
+
+    gallery.addEventListener('touchstart', function (e) {
+      if (!e.touches || !e.touches.length) return;
+      viewTouchStartX = e.touches[0].clientX;
+    }, { passive: true });
+
+    gallery.addEventListener('touchend', function (e) {
+      if (viewTouchStartX == null || !e.changedTouches || !e.changedTouches.length) return;
+      const endX = e.changedTouches[0].clientX;
+      const delta = endX - viewTouchStartX;
+      viewTouchStartX = null;
+      if (Math.abs(delta) < 35) return;
+      if (delta < 0) setViewGalleryIndex(viewGalleryIndex + 1);
+      else setViewGalleryIndex(viewGalleryIndex - 1);
+    }, { passive: true });
+  }
+
   async function openViewFieldModalForFieldId(fieldId) {
     const viewFieldModal = document.getElementById('viewFieldModal');
     if (!viewFieldModal || !fieldId) return;
@@ -283,6 +359,7 @@
         if (e.target === viewFieldModal) closeViewModal();
       });
     }
+    bindViewGallerySwipe();
   });
 
   window.ownerFieldEsc = ownerFieldEsc;

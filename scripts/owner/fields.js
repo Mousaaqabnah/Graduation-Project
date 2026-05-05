@@ -168,6 +168,8 @@ const totalSteps = 8;
 let fieldImages = [];
 let highlights = [];
 let unavailableDates = [];
+let addFieldMapPicker = null;
+let manageFieldMapPicker = null;
 
 if (addFieldBtn) {
     addFieldBtn.addEventListener('click', () => {
@@ -191,6 +193,10 @@ function closeAddFieldModal() {
     if (addFieldModal) {
         addFieldModal.classList.remove('active');
         document.body.style.overflow = '';
+        if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+            addFieldMapPicker.destroy();
+            addFieldMapPicker = null;
+        }
     }
 }
 
@@ -203,11 +209,18 @@ function resetAddFieldForm() {
     document.getElementById('fieldImagesGrid').innerHTML = '';
     document.getElementById('highlightsList').innerHTML = '';
     document.getElementById('unavailableDatesList').innerHTML = '';
+    document.getElementById('latitude').textContent = '-';
+    document.getElementById('longitude').textContent = '-';
     updateStepButtons();
+    if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+        addFieldMapPicker.destroy();
+        addFieldMapPicker = null;
+    }
     // Reinitialize day schedules after reset
     setTimeout(() => {
         initializeDaySchedules();
         updateRadioLabels();
+        initializeAddFieldMap();
     }, 100);
 }
 
@@ -237,6 +250,12 @@ function showStep(step) {
     
     currentStep = step;
     updateStepButtons();
+    if (step === 5) {
+        initializeAddFieldMap();
+        if (addFieldMapPicker && typeof addFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { addFieldMapPicker.invalidateSize(); }, 60);
+        }
+    }
 }
 
 // Update step navigation buttons
@@ -309,9 +328,9 @@ function validateCurrentStep() {
             isValid = false;
         }
     } else if (currentStep === 5) {
-        // Map validation would go here
-        const latitude = document.getElementById('latitude').textContent;
-        if (latitude === '-') {
+        const latitude = parseFloat(document.getElementById('latitude').textContent);
+        const longitude = parseFloat(document.getElementById('longitude').textContent);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
             alert('Please select location on the map');
             isValid = false;
         }
@@ -420,6 +439,90 @@ function fileToDataUrl(file) {
         reader.onerror = () => reject(new Error('Failed to read file.'));
         reader.readAsDataURL(file);
     });
+}
+
+function applyCoordinatesToDom(lat, lng, mode) {
+    const latId = mode === 'manage' ? 'manageLatitude' : 'latitude';
+    const lngId = mode === 'manage' ? 'manageLongitude' : 'longitude';
+    const latEl = document.getElementById(latId);
+    const lngEl = document.getElementById(lngId);
+    if (latEl) latEl.textContent = Number(lat).toFixed(6);
+    if (lngEl) lngEl.textContent = Number(lng).toFixed(6);
+}
+
+function getAddressFieldIds(mode) {
+    if (mode === 'manage') {
+        return { addressId: 'manageFieldAddress', cityId: 'manageFieldCity', districtId: 'manageFieldDistrict' };
+    }
+    return { addressId: 'fieldAddress', cityId: 'fieldCity', districtId: 'fieldDistrict' };
+}
+
+async function applyReverseGeocodedMetadata(lat, lng, mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return;
+    try {
+        const meta = await GeocodingService.reverseGeocode(lat, lng);
+        if (!meta) return;
+        const ids = getAddressFieldIds(mode);
+        const addressInput = document.getElementById(ids.addressId);
+        const cityInput = document.getElementById(ids.cityId);
+        const districtInput = document.getElementById(ids.districtId);
+        if (addressInput && meta.address) addressInput.value = meta.address;
+        if (cityInput && meta.city) cityInput.value = meta.city;
+        if (districtInput && meta.district) districtInput.value = meta.district;
+    } catch (e) {
+        console.warn('reverse geocoding failed', e);
+    }
+}
+
+async function geocodeAddressAndSetMarker(mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.geocodeAddress) return;
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || !addressInput.value.trim()) return;
+    try {
+        const result = await GeocodingService.geocodeAddress(addressInput.value.trim());
+        if (!result) return;
+        const picker = mode === 'manage' ? manageFieldMapPicker : addFieldMapPicker;
+        if (!picker) return;
+        picker.setPosition(result.lat, result.lng, 'search');
+        const cityInput = document.getElementById(ids.cityId);
+        const districtInput = document.getElementById(ids.districtId);
+        if (cityInput && result.metadata && result.metadata.city) cityInput.value = result.metadata.city;
+        if (districtInput && result.metadata && result.metadata.district) districtInput.value = result.metadata.district;
+    } catch (e) {
+        console.warn('address geocoding failed', e);
+    }
+}
+
+function bindAddressSearch(mode) {
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || addressInput.dataset.geocodeBound === '1') return;
+    addressInput.dataset.geocodeBound = '1';
+    addressInput.addEventListener('change', function () {
+        geocodeAddressAndSetMarker(mode);
+    });
+    addressInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            geocodeAddressAndSetMarker(mode);
+        }
+    });
+}
+
+function initializeAddFieldMap() {
+    if (addFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    addFieldMapPicker = MapPickerService.create({
+        containerId: 'locationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position) {
+            applyCoordinatesToDom(position.lat, position.lng, 'add');
+            await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
+        }
+    });
+    bindAddressSearch('add');
 }
 
 
@@ -606,6 +709,10 @@ async function submitFieldForm() {
     const lngStr = lngEl ? lngEl.textContent.trim() : '';
     const latNum = latStr && latStr !== '-' ? parseFloat(latStr) : NaN;
     const lngNum = lngStr && lngStr !== '-' ? parseFloat(lngStr) : NaN;
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+        alert('Please select a valid map location before saving.');
+        return;
+    }
     const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
     const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
 
@@ -629,8 +736,8 @@ async function submitFieldForm() {
         advanceBooking: formData.advanceBooking,
         cancellationPolicy: formData.cancellationPolicy,
         visibilityRequested: !!formData.visibility,
-        latitude: Number.isFinite(latNum) ? latNum : undefined,
-        longitude: Number.isFinite(lngNum) ? lngNum : undefined,
+        latitude: latNum,
+        longitude: lngNum,
         isActive: document.getElementById('fieldVisibilityToggle') ? document.getElementById('fieldVisibilityToggle').classList.contains('active') : true
     };
 
@@ -725,24 +832,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Map click handler (placeholder)
-    const mapPicker = document.getElementById('locationMap');
-    if (mapPicker) {
-        mapPicker.addEventListener('click', (e) => {
-            // Placeholder for map integration
-            // In a real implementation, this would use a map library like Leaflet or Google Maps
-            const rect = mapPicker.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            document.getElementById('mapPin').style.left = x + 'px';
-            document.getElementById('mapPin').style.top = y + 'px';
-            
-            // Placeholder coordinates
-            document.getElementById('latitude').textContent = (41.0082 + (Math.random() - 0.5) * 0.01).toFixed(6);
-            document.getElementById('longitude').textContent = (28.9784 + (Math.random() - 0.5) * 0.01).toFixed(6);
-        });
-    }
 });
 
 // Modal Functions
@@ -953,6 +1042,10 @@ function closeModal() {
         document.body.style.overflow = '';
         showManageMenu();
         ownerManagingFieldId = null;
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.destroy === 'function') {
+            manageFieldMapPicker.destroy();
+            manageFieldMapPicker = null;
+        }
     }
 }
 
@@ -1023,10 +1116,18 @@ function openManageSection(sectionName) {
     }
     
     // Initialize section-specific features
-    if (sectionName === 'schedule') {
-        initializeManageDaySchedules();
-    } else if (sectionName === 'location') {
+    if (sectionName === 'location') {
         initializeManageMap();
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { manageFieldMapPicker.invalidateSize(); }, 60);
+        }
+    }
+
+    const submitBtn = document.getElementById('manageSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = (sectionName === 'documents' || sectionName === 'location')
+            ? 'Submit Update for Approval'
+            : 'Save Changes';
     }
 }
 
@@ -1135,6 +1236,10 @@ async function loadFieldData(fieldId) {
         const lngEl = document.getElementById('manageLongitude');
         if (latEl && f.latitude != null) latEl.textContent = String(f.latitude);
         if (lngEl && f.longitude != null) lngEl.textContent = String(f.longitude);
+        initializeManageMap();
+        if (manageFieldMapPicker && Number.isFinite(Number(f.latitude)) && Number.isFinite(Number(f.longitude))) {
+            manageFieldMapPicker.setPosition(Number(f.latitude), Number(f.longitude), 'init');
+        }
 
         const visToggle = document.getElementById('manageVisibilityToggle');
         if (visToggle) {
@@ -1559,28 +1664,18 @@ function handleManageImageUpload(event) {
 }
 
 function initializeManageMap() {
-    const mapPicker = document.getElementById('manageLocationMap');
-    if (mapPicker) {
-        mapPicker.addEventListener('click', function(e) {
-            updateManageMapLocation(e);
-        });
-    }
-}
-
-function updateManageMapLocation(event) {
-    const pin = document.getElementById('manageMapPin');
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    if (pin) {
-        pin.style.left = `${x}px`;
-        pin.style.top = `${y}px`;
-        pin.style.display = 'block';
-    }
-    
-    document.getElementById('manageLatitude').textContent = '41.0082';
-    document.getElementById('manageLongitude').textContent = '28.9784';
+    if (manageFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    manageFieldMapPicker = MapPickerService.create({
+        containerId: 'manageLocationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position) {
+            applyCoordinatesToDom(position.lat, position.lng, 'manage');
+            await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
+        }
+    });
+    bindAddressSearch('manage');
 }
 
 function toggleManageSetting(setting) {
@@ -1676,50 +1771,60 @@ async function submitManageChanges() {
         return;
     }
 
-    const typeSel = document.getElementById('manageFieldType');
-    const typeLabel = (typeSel && typeSel.value) || 'Outdoor';
-    const typeEnum = String(typeLabel).toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
+    const payload = {};
 
-    const city = document.getElementById('manageFieldCity')?.value?.trim() || '';
-    const dist = document.getElementById('manageFieldDistrict')?.value?.trim() || '';
-    const addr = document.getElementById('manageFieldAddress')?.value?.trim() || '';
-    const locationLine = [city, dist].filter(Boolean).join(', ') || addr || '—';
+    if (currentManageSection === 'edit-info') {
+        const typeSel = document.getElementById('manageFieldType');
+        const typeLabel = (typeSel && typeSel.value) || 'Outdoor';
+        const typeEnum = String(typeLabel).toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
+        const sportSel = document.getElementById('manageSportCategory');
+        const sport =
+            sportSel && sportSel.options[sportSel.selectedIndex]
+                ? sportSel.options[sportSel.selectedIndex].text.trim()
+                : 'Football';
 
-    const sportSel = document.getElementById('manageSportCategory');
-    const sport =
-        sportSel && sportSel.options[sportSel.selectedIndex]
-            ? sportSel.options[sportSel.selectedIndex].text.trim()
-            : 'Football';
-
-    const latTxt = document.getElementById('manageLatitude')?.textContent?.trim();
-    const lngTxt = document.getElementById('manageLongitude')?.textContent?.trim();
-
-    const visOn = document.getElementById('manageVisibilityToggle')?.classList.contains('active');
-    const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
-
-    const payload = {
-        name: (document.getElementById('manageFieldName')?.value || '').trim() || 'Field',
-        sport,
-        description: document.getElementById('manageDescription')?.value || '',
-        capacity: parseInt(document.getElementById('manageCapacity')?.value, 10) || null,
-        type: typeEnum,
-        location: locationLine,
-        address: addr || undefined,
-        city: city || undefined,
-        district: dist || undefined,
-        pricePerHour: Math.round(parseFloat(document.getElementById('managePricePerHour')?.value) || 0),
-        features: collectManageFeatureStrings(),
-        images: collectManageImagesFromDom(),
-        schedule: collectManageSchedule(),
-        bookingType: document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant',
-        advanceBooking: document.getElementById('manageAdvanceBooking')?.value || '3',
-        cancellationPolicy: document.getElementById('manageCancellationPolicy')?.value || 'moderate',
-        visibilityRequested: !!visOn,
-        isActive: !!visOn && !maintOn
-    };
-
-    if (latTxt && !isNaN(parseFloat(latTxt))) payload.latitude = parseFloat(latTxt);
-    if (lngTxt && !isNaN(parseFloat(lngTxt))) payload.longitude = parseFloat(lngTxt);
+        payload.name = (document.getElementById('manageFieldName')?.value || '').trim() || 'Field';
+        payload.sport = sport;
+        payload.description = document.getElementById('manageDescription')?.value || '';
+        payload.capacity = parseInt(document.getElementById('manageCapacity')?.value, 10) || null;
+        payload.type = typeEnum;
+        payload.features = collectManageFeatureStrings();
+        payload.images = collectManageImagesFromDom();
+    } else if (currentManageSection === 'schedule') {
+        payload.schedule = collectManageSchedule();
+    } else if (currentManageSection === 'location') {
+        const city = document.getElementById('manageFieldCity')?.value?.trim() || '';
+        const dist = document.getElementById('manageFieldDistrict')?.value?.trim() || '';
+        const addr = document.getElementById('manageFieldAddress')?.value?.trim() || '';
+        const locationLine = [city, dist].filter(Boolean).join(', ') || addr || '—';
+        const latTxt = document.getElementById('manageLatitude')?.textContent?.trim();
+        const lngTxt = document.getElementById('manageLongitude')?.textContent?.trim();
+        const latNum = parseFloat(latTxt);
+        const lngNum = parseFloat(lngTxt);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+            alert('Please set a valid location on the map before saving.');
+            return;
+        }
+        payload.location = locationLine;
+        payload.address = addr || undefined;
+        payload.city = city || undefined;
+        payload.district = dist || undefined;
+        payload.latitude = latNum;
+        payload.longitude = lngNum;
+    } else if (currentManageSection === 'pricing') {
+        payload.pricePerHour = Math.round(parseFloat(document.getElementById('managePricePerHour')?.value) || 0);
+    } else if (currentManageSection === 'documents') {
+        // Documents are handled as an approval request by backend moderation rules.
+    } else if (currentManageSection === 'settings') {
+        const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
+        payload.bookingType = document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant';
+        payload.advanceBooking = document.getElementById('manageAdvanceBooking')?.value || '3';
+        payload.cancellationPolicy = document.getElementById('manageCancellationPolicy')?.value || 'moderate';
+        payload.isActive = !maintOn;
+    } else {
+        alert('Please choose a section first.');
+        return;
+    }
     const ownRemoved = document.getElementById('manageOwnershipPreview')?.dataset.removed === '1';
     const licRemoved = document.getElementById('manageLicensePreview')?.dataset.removed === '1';
     const ownDocFile = document.getElementById('manageOwnershipDoc')?.files?.[0];
@@ -1767,7 +1872,9 @@ async function submitManageChanges() {
             }
         }
 
-        alert('Field updated successfully.');
+        alert((currentManageSection === 'documents' || currentManageSection === 'location')
+            ? 'Changes submitted for admin approval.'
+            : 'Field updated successfully.');
         closeModal();
         loadOwnerFieldsFromApi();
     } catch (e) {

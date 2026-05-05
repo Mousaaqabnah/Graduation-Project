@@ -237,6 +237,10 @@ function loadFieldFromAPI(fieldId) {
       description: field.description || '',
       features: Array.isArray(field.features) ? field.features : [],
       address: field.address || '',
+      city: field.city || '',
+      district: field.district || '',
+      latitude: field.latitude != null ? Number(field.latitude) : null,
+      longitude: field.longitude != null ? Number(field.longitude) : null,
       phone: field.phone || '',
       owner: field.owner || null,
       apiReviews: Array.isArray(field.reviews) ? field.reviews : []
@@ -374,6 +378,7 @@ function renderFieldInfo(venue) {
                   <button class="gallery-nav-btn gallery-nav-left" id="galleryNavLeft">
                       <i class="fi fi-rr-angle-left"></i>
                   </button>
+                  <div class="gallery-dots" id="galleryDots"></div>
                   <button class="gallery-nav-btn gallery-nav-right" id="galleryNavRight">
                       <i class="fi fi-rr-angle-right"></i>
                   </button>
@@ -394,9 +399,7 @@ function renderFieldInfo(venue) {
               <div class="booking-location-section">
                   <h3 class="booking-section-title">Location</h3>
                   <p class="booking-location-text">Istanbul, ${venue.location} • Approx. ${venue.distance} from your current location.</p>
-                  <div class="booking-map-placeholder">
-                      Map placeholder (Google Maps / Leaflet later)
-                  </div>
+                  <div class="booking-map-placeholder" id="bookingFieldMap"></div>
               </div>
 
               <button class="booking-btn" onclick="handleBooking('${String(venue.id).replace(/'/g, "\\'")}')">Book now</button>
@@ -544,12 +547,40 @@ function renderFieldInfo(venue) {
 
   // Initialize gallery sliding
   initializeGallerySliding(images.length);
+  renderBookingLocationMap(venue);
 
   // Initialize star rating
   initializeStarRating();
   
   // Display reviews (pass apiReviews from field load, or fetch from API)
   displayReviews(venue.id, venue.apiReviews);
+}
+
+function renderBookingLocationMap(venue) {
+  const mapEl = document.getElementById('bookingFieldMap');
+  if (!mapEl) return;
+  const lat = Number(venue && venue.latitude);
+  const lng = Number(venue && venue.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || typeof MapService === 'undefined') {
+    mapEl.innerHTML = '<span class="booking-map-empty">Location not available for this field.</span>';
+    return;
+  }
+  const map = MapService.init('bookingFieldMap', { center: [lat, lng], zoom: 15 });
+  if (!map) {
+    mapEl.innerHTML = '<span class="booking-map-empty">Unable to load map.</span>';
+    return;
+  }
+  MapService.clearMarkers();
+  MapService.addMarker(lat, lng, {
+    name: venue.name,
+    city: venue.city,
+    district: venue.district,
+    location: venue.location,
+    price: venue.price
+  });
+  setTimeout(function() {
+    if (typeof map.invalidateSize === 'function') map.invalidateSize();
+  }, 40);
 }
 
 // Update save button state
@@ -749,7 +780,9 @@ function initializeGallerySliding(totalImages) {
   const gallery = document.getElementById('fieldGallery');
   const navLeft = document.getElementById('galleryNavLeft');
   const navRight = document.getElementById('galleryNavRight');
+  const dotsWrap = document.getElementById('galleryDots');
   const images = gallery.querySelectorAll('.field-main-image');
+  let touchStartX = null;
   
   let currentIndex = 0;
 
@@ -763,6 +796,20 @@ function initializeGallerySliding(totalImages) {
     });
     currentIndex = index;
     gallery.setAttribute('data-current-index', index);
+    updateDots();
+  }
+
+  function updateDots() {
+    if (!dotsWrap) return;
+    dotsWrap.innerHTML = Array.from({ length: totalImages }).map(function(_, idx) {
+      return '<button type="button" class="gallery-dot ' + (idx === currentIndex ? 'active' : '') + '" data-idx="' + idx + '" aria-label="Go to image ' + (idx + 1) + '"></button>';
+    }).join('');
+    dotsWrap.querySelectorAll('.gallery-dot').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        if (!isNaN(idx)) showImage(idx);
+      });
+    });
   }
 
   function nextImage() {
@@ -788,6 +835,24 @@ function initializeGallerySliding(totalImages) {
       nextImage();
     });
   }
+
+  if (gallery) {
+    gallery.addEventListener('touchstart', function (e) {
+      if (!e.touches || !e.touches.length) return;
+      touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    gallery.addEventListener('touchend', function (e) {
+      if (touchStartX == null || !e.changedTouches || !e.changedTouches.length) return;
+      const endX = e.changedTouches[0].clientX;
+      const delta = endX - touchStartX;
+      touchStartX = null;
+      if (Math.abs(delta) < 35) return;
+      if (delta < 0) nextImage();
+      else prevImage();
+    }, { passive: true });
+  }
+
+  updateDots();
 
   // Optional: Add keyboard navigation
   document.addEventListener('keydown', (e) => {

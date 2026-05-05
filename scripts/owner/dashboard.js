@@ -30,7 +30,14 @@ function formatOwnerTry(amount) {
     return '₺' + n.toLocaleString('tr-TR');
 }
 
+function dashboardLocationLine(field) {
+    const cityDistrict = [field && field.city, field && field.district].filter(Boolean).join(', ');
+    return cityDistrict || (field && field.address) || (field && field.location) || '—';
+}
+
 let ownerDashboardFieldsById = new Map();
+let addFieldMapPicker = null;
+let manageFieldMapPicker = null;
 
 function ownerFieldModerationUi(f) {
     const mod = String((f && f.moderationStatus) || '').toUpperCase();
@@ -235,11 +242,11 @@ async function loadOwnerDashboard() {
                 const rating = f.rating != null ? f.rating : '—';
                 const rc = f.reviewCount != null ? f.reviewCount : 0;
                 return (
-                    '<div class="field-list-card" data-field-name="' + String(f.name || '').replace(/"/g, '&quot;') + '">' +
+                    '<div class="field-list-card" data-field-name="' + String(f.name || '').replace(/"/g, '&quot;') + '" data-field-id="' + ownerBookingId(f) + '">' +
                     '<div class="field-list-image"><img src="' + img + '" alt=""></div>' +
                     '<div class="field-list-content"><div class="field-list-info">' +
                     '<h3 class="field-list-name">' + (f.name || '') + '</h3>' +
-                    '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + (f.location || '') + '</p>' +
+                    '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + dashboardLocationLine(f) + '</p>' +
                     '<div class="field-list-rating"><span class="field-star-yellow">★</span> ' +
                     '<span class="field-rating-value">' + rating + '</span> <span class="field-reviews-count">(' + rc + ')</span></div>' +
                     '<div class="field-list-tags">' +
@@ -409,6 +416,10 @@ function closeModal() {
         editFieldModal.dataset.fieldId = '';
         // Reset to menu view
         showManageMenu();
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.destroy === 'function') {
+            manageFieldMapPicker.destroy();
+            manageFieldMapPicker = null;
+        }
     }
 }
 
@@ -485,6 +496,9 @@ function openManageSection(sectionName) {
         initializeManageDaySchedules();
     } else if (sectionName === 'location') {
         initializeManageMap();
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { manageFieldMapPicker.invalidateSize(); }, 60);
+        }
     }
 }
 
@@ -546,6 +560,10 @@ async function loadFieldData(fieldId) {
 
     const lngEl = document.getElementById('manageLongitude');
     if (lngEl) lngEl.textContent = f.longitude != null ? String(f.longitude) : '-';
+    initializeManageMap();
+    if (manageFieldMapPicker && Number.isFinite(Number(f.latitude)) && Number.isFinite(Number(f.longitude))) {
+        manageFieldMapPicker.setPosition(Number(f.latitude), Number(f.longitude), 'init');
+    }
 
     const visibilityToggle = document.getElementById('manageVisibilityToggle');
     if (visibilityToggle) visibilityToggle.classList.toggle('active', f.isActive !== false);
@@ -576,173 +594,13 @@ async function loadFieldData(fieldId) {
 }
 
 // View Field Details
-function viewFieldDetails(button) {
+async function viewFieldDetails(button) {
     try {
         const fieldCard = button.closest('.field-list-card');
-        if (!fieldCard) return;
-        
-        const fieldImage = fieldCard.querySelector('.field-list-image img')?.src;
-        const fieldName = fieldCard.querySelector('.field-list-name')?.textContent;
-        const fieldLocation = fieldCard.querySelector('.field-list-location')?.textContent.trim();
-        const fieldPrice = fieldCard.querySelector('.field-list-price')?.textContent;
-        const fieldTags = Array.from(fieldCard.querySelectorAll('.field-tag')).map(tag => tag.textContent);
-        
-        if (!fieldImage || !fieldName) return;
-        
-        // Populate view modal
-        if (viewFieldModal) {
-            // Set main image
-            const imageEl = document.getElementById('viewFieldImage');
-            if (imageEl) imageEl.src = fieldImage;
-        
-            // Set title
-            const titleEl = document.getElementById('viewFieldName');
-            if (titleEl) titleEl.textContent = fieldName;
-            
-            // Set meta line with rating and reviews
-            const metaLine = document.getElementById('viewFieldMeta');
-            const headerRating = '4.8';
-            const headerReviewsCount = '98';
-            if (metaLine) {
-                metaLine.innerHTML = `
-                    <i class="fi fi-rr-marker field-meta-icon"></i>
-                    <span id="viewFieldLocation">${fieldLocation}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldCategory">${fieldTags[1] || 'Sport'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldType">${fieldTags[0] || 'Type'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span class="field-star-yellow">★</span>
-                    <span id="viewFieldHeaderRating">${headerRating}</span>
-                    <span> (<span id="viewFieldHeaderReviewsCount">${headerReviewsCount}</span>)</span>
-                `;
-            }
-            
-            // Set price
-            const priceElement = document.getElementById('viewFieldPrice');
-            if (priceElement) {
-                priceElement.innerHTML = fieldPrice.replace('/h', '<span class="view-field-price-unit">/h</span>');
-            }
-            
-            // Set feature tags
-            const tagsContainer = document.getElementById('viewFieldTags');
-            if (tagsContainer && fieldTags.length > 0) {
-                tagsContainer.innerHTML = fieldTags.map(tag => 
-                    `<span class="view-field-feature-tag">${tag}</span>`
-                ).join('');
-            }
-            
-            // Set field details
-            const locationFullEl = document.getElementById('viewFieldLocationFull');
-            const categoryFullEl = document.getElementById('viewFieldCategoryFull');
-            const typeFullEl = document.getElementById('viewFieldTypeFull');
-            const capacityEl = document.getElementById('viewFieldCapacity');
-            const descriptionEl = document.getElementById('viewFieldDescription');
-            
-            if (locationFullEl) locationFullEl.textContent = fieldLocation;
-            if (categoryFullEl) categoryFullEl.textContent = fieldTags[1] || '-';
-            if (typeFullEl) typeFullEl.textContent = fieldTags[0] || '-';
-            if (capacityEl) capacityEl.textContent = '22 players';
-            
-            // Set description
-            if (descriptionEl) {
-                descriptionEl.textContent = 'Professional sports field with high-quality facilities. Perfect for both casual matches and professional training sessions. The field features high-quality artificial turf, excellent lighting, and modern facilities.';
-            }
-            
-            // Set highlights
-            const highlightsList = document.getElementById('viewFieldHighlights');
-            if (highlightsList) {
-                highlightsList.innerHTML = `
-                    <li>Easy access by car and public transport</li>
-                    <li>High-quality lighting for night games</li>
-                    <li>Clean changing rooms and showers</li>
-                    <li>Snacks and drinks available on site</li>
-                `;
-            }
-            
-            // Set amenities
-            const amenitiesGrid = document.getElementById('viewFieldAmenities');
-            if (amenitiesGrid) {
-                const amenities = ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi'];
-                amenitiesGrid.innerHTML = amenities.map(amenity => `
-                    <div class="view-amenity-item">
-                        <i class="fi fi-rr-check view-amenity-icon"></i>
-                        <span>${amenity}</span>
-                    </div>
-                `).join('');
-            }
-            
-            // Set reviews summary (also update header if needed)
-            const reviewsRating = '4.8';
-            const reviewsCount = '98';
-            const ratingElement = document.getElementById('viewFieldRating');
-            const reviewsCountElement = document.getElementById('viewFieldReviewsCount');
-            if (ratingElement) ratingElement.textContent = reviewsRating;
-            if (reviewsCountElement) reviewsCountElement.textContent = reviewsCount;
-            
-            // Populate reviews list
-            const reviewsList = document.getElementById('viewReviewsList');
-            if (reviewsList) {
-            const reviews = [
-                {
-                    name: 'Ahmed',
-                    initial: 'A',
-                    rating: 5,
-                    text: 'Great field quality, lights are strong and the staff were friendly. Booking was smooth and easy.',
-                    context: 'Played 5v5 last week',
-                    date: '2 days ago'
-                },
-                {
-                    name: 'Sara',
-                    initial: 'S',
-                    rating: 5,
-                    text: 'Perfect location and easy to reach. Parking area helps a lot during busy hours. Highly recommend!',
-                    context: 'Weekend booking',
-                    date: '1 week ago'
-                },
-                {
-                    name: 'Mohamed',
-                    initial: 'M',
-                    rating: 4,
-                    text: 'Good facilities overall. The field is well-maintained. Only minor issue was the changing room could be cleaner.',
-                    context: 'Regular player',
-                    date: '2 weeks ago'
-                },
-                {
-                    name: 'Layla',
-                    initial: 'L',
-                    rating: 5,
-                    text: 'Excellent experience! The booking system is user-friendly and the field exceeded our expectations. Will definitely book again.',
-                    context: 'First time booking',
-                    date: '3 weeks ago'
-                }
-            ];
-                
-                reviewsList.innerHTML = reviews.map(review => {
-                    const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
-                    return `
-                        <div class="view-review-card">
-                            <div class="view-review-header">
-                                <div class="view-reviewer-info">
-                                    <div class="view-reviewer-avatar">${review.initial}</div>
-                                    <div class="view-reviewer-details">
-                                        <div class="view-reviewer-name">${review.name}</div>
-                                        <div class="view-review-context">${review.context}</div>
-                                    </div>
-                                </div>
-                                <div class="view-review-rating-display">
-                                    <span class="view-star-filled">${stars}</span>
-                                </div>
-                            </div>
-                            <p class="view-review-text">${review.text}</p>
-                            <div class="view-review-date">${review.date}</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            
-            viewFieldModal.classList.add('active');
-            document.body.style.overflow = 'hidden';
+        const fieldId = fieldCard ? fieldCard.getAttribute('data-field-id') : '';
+        if (!fieldId) return;
+        if (typeof openViewFieldModalForFieldId === 'function') {
+            await openViewFieldModalForFieldId(fieldId);
         }
     } catch (error) {
         console.error('Error opening view field modal:', error);
@@ -818,6 +676,10 @@ function closeAddFieldModal() {
     if (addFieldModal) {
         addFieldModal.classList.remove('active');
         document.body.style.overflow = '';
+        if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+            addFieldMapPicker.destroy();
+            addFieldMapPicker = null;
+        }
     }
 }
 
@@ -834,11 +696,20 @@ function resetAddFieldForm() {
     if (imagesGrid) imagesGrid.innerHTML = '';
     if (highlightsList) highlightsList.innerHTML = '';
     if (unavailableDatesList) unavailableDatesList.innerHTML = '';
+    const latEl = document.getElementById('latitude');
+    const lngEl = document.getElementById('longitude');
+    if (latEl) latEl.textContent = '-';
+    if (lngEl) lngEl.textContent = '-';
+    if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+        addFieldMapPicker.destroy();
+        addFieldMapPicker = null;
+    }
     updateStepButtons();
     // Reinitialize day schedules after reset
     setTimeout(() => {
         initializeDaySchedules();
         updateRadioLabels();
+        initializeAddFieldMap();
     }, 100);
 }
 
@@ -868,6 +739,12 @@ function showStep(step) {
     
     currentStep = step;
     updateStepButtons();
+    if (step === 5) {
+        initializeAddFieldMap();
+        if (addFieldMapPicker && typeof addFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { addFieldMapPicker.invalidateSize(); }, 60);
+        }
+    }
 }
 
 // Update step navigation buttons
@@ -940,9 +817,9 @@ function validateCurrentStep() {
             isValid = false;
         }
     } else if (currentStep === 5) {
-        // Map validation would go here
-        const latitude = document.getElementById('latitude');
-        if (latitude && latitude.textContent === '-') {
+        const latitude = parseFloat(document.getElementById('latitude')?.textContent || '');
+        const longitude = parseFloat(document.getElementById('longitude')?.textContent || '');
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
             alert('Please select location on the map');
             isValid = false;
         }
@@ -1115,6 +992,80 @@ function renderUnavailableDates() {
     }).join('');
 }
 
+function applyCoordinatesToDom(lat, lng, mode) {
+    const latId = mode === 'manage' ? 'manageLatitude' : 'latitude';
+    const lngId = mode === 'manage' ? 'manageLongitude' : 'longitude';
+    const latEl = document.getElementById(latId);
+    const lngEl = document.getElementById(lngId);
+    if (latEl) latEl.textContent = Number(lat).toFixed(6);
+    if (lngEl) lngEl.textContent = Number(lng).toFixed(6);
+}
+
+function getAddressFieldIds(mode) {
+    if (mode === 'manage') {
+        return { addressId: 'manageFieldAddress', cityId: 'manageFieldCity', districtId: 'manageFieldDistrict' };
+    }
+    return { addressId: 'fieldAddress', cityId: 'fieldCity', districtId: 'fieldDistrict' };
+}
+
+async function applyReverseGeocodedMetadata(lat, lng, mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return;
+    try {
+        const meta = await GeocodingService.reverseGeocode(lat, lng);
+        if (!meta) return;
+        const ids = getAddressFieldIds(mode);
+        const addressInput = document.getElementById(ids.addressId);
+        const cityInput = document.getElementById(ids.cityId);
+        const districtInput = document.getElementById(ids.districtId);
+        if (addressInput && meta.address) addressInput.value = meta.address;
+        if (cityInput && meta.city) cityInput.value = meta.city;
+        if (districtInput && meta.district) districtInput.value = meta.district;
+    } catch (_e) {}
+}
+
+async function geocodeAddressAndSetMarker(mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.geocodeAddress) return;
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || !addressInput.value.trim()) return;
+    try {
+        const result = await GeocodingService.geocodeAddress(addressInput.value.trim());
+        if (!result) return;
+        const picker = mode === 'manage' ? manageFieldMapPicker : addFieldMapPicker;
+        if (!picker) return;
+        picker.setPosition(result.lat, result.lng, 'search');
+    } catch (_e) {}
+}
+
+function bindAddressSearch(mode) {
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || addressInput.dataset.geocodeBound === '1') return;
+    addressInput.dataset.geocodeBound = '1';
+    addressInput.addEventListener('change', function () { geocodeAddressAndSetMarker(mode); });
+    addressInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            geocodeAddressAndSetMarker(mode);
+        }
+    });
+}
+
+function initializeAddFieldMap() {
+    if (addFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    addFieldMapPicker = MapPickerService.create({
+        containerId: 'locationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position) {
+            applyCoordinatesToDom(position.lat, position.lng, 'add');
+            await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
+        }
+    });
+    bindAddressSearch('add');
+}
+
 // Toggle field visibility
 function toggleFieldVisibility() {
     const toggle = document.getElementById('fieldVisibilityToggle');
@@ -1124,59 +1075,68 @@ function toggleFieldVisibility() {
 }
 
 // Submit field form
-function submitFieldForm() {
+async function submitFieldForm() {
     if (!validateCurrentStep()) {
         return;
     }
-    
-    // Collect all form data
-    const formData = {
-        // Documents
-        ownershipDoc: document.getElementById('ownershipDoc')?.files[0],
-        licensesDoc: document.getElementById('licensesDoc')?.files[0],
-        
-        // Basic info
-        fieldName: document.getElementById('fieldName')?.value,
-        description: document.getElementById('fieldDescription')?.value,
-        highlights: highlights,
-        fieldType: document.getElementById('fieldType')?.value,
-        capacity: parseInt(document.getElementById('capacity')?.value || '0'),
-        
-        // Amenities & Features
-        amenities: Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(cb => cb.value),
-        features: Array.from(document.querySelectorAll('input[name="features"]:checked')).map(cb => cb.value),
-        
-        // Media
-        images: fieldImages,
-        
-        // Location
-        address: document.getElementById('fieldAddress')?.value,
-        city: document.getElementById('fieldCity')?.value,
-        district: document.getElementById('fieldDistrict')?.value,
-        latitude: document.getElementById('latitude')?.textContent,
-        longitude: document.getElementById('longitude')?.textContent,
-        
-        // Pricing
-        pricePerHour: parseFloat(document.getElementById('pricePerHour')?.value || '0'),
-        
-        // Schedule
-        workingDays: Array.from(document.querySelectorAll('input[name="workingDays"]:checked')).map(cb => cb.value),
-        unavailableDates: unavailableDates,
-        
-        // Settings
-        bookingType: document.querySelector('input[name="bookingType"]:checked')?.value,
-        advanceBooking: document.getElementById('advanceBooking')?.value,
-        cancellationPolicy: document.getElementById('cancellationPolicy')?.value,
-        visibility: document.getElementById('fieldVisibilityToggle')?.classList.contains('active')
+    if (typeof API === 'undefined' || !API.fields || !API.fields.create) {
+        alert('API not available.');
+        return;
+    }
+
+    const latNum = parseFloat(document.getElementById('latitude')?.textContent || '');
+    const lngNum = parseFloat(document.getElementById('longitude')?.textContent || '');
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+        alert('Please select a valid map location before saving.');
+        return;
+    }
+
+    const city = (document.getElementById('fieldCity')?.value || '').trim();
+    const district = (document.getElementById('fieldDistrict')?.value || '').trim();
+    const address = (document.getElementById('fieldAddress')?.value || '').trim();
+    const locationLine = [city, district].filter(Boolean).join(', ') || address || '—';
+    const sportVal = document.getElementById('fieldType')?.value || 'other';
+    const sport = detectSportLabel(sportVal);
+    const isIndoor = !!document.querySelector('input[name="features"][value="indoor"]:checked') &&
+      !document.querySelector('input[name="features"][value="outdoor"]:checked');
+
+    const payload = {
+        name: (document.getElementById('fieldName')?.value || '').trim() || 'Field',
+        sport: sport,
+        description: document.getElementById('fieldDescription')?.value || '',
+        capacity: parseInt(document.getElementById('capacity')?.value || '', 10) || null,
+        type: isIndoor ? 'INDOOR' : 'OUTDOOR',
+        location: locationLine,
+        address: address || undefined,
+        city: city || undefined,
+        district: district || undefined,
+        pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour')?.value || '0') || 0),
+        amenities: Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(cb => cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value).filter(Boolean),
+        features: Array.from(document.querySelectorAll('input[name="features"]:checked')).map(cb => cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value).filter(Boolean),
+        highlights: highlights.slice(),
+        images: fieldImages.map(function(img) { return img && img.url ? img.url : ''; }).filter(Boolean),
+        bookingType: document.querySelector('input[name="bookingType"]:checked')?.value || 'instant',
+        advanceBooking: document.getElementById('advanceBooking')?.value || '3',
+        cancellationPolicy: document.getElementById('cancellationPolicy')?.value || 'moderate',
+        visibilityRequested: !!document.getElementById('fieldVisibilityToggle')?.classList.contains('active'),
+        latitude: latNum,
+        longitude: lngNum
     };
-    
-    console.log('Submitting field form:', formData);
-    
-    // Here you would typically send the data to your backend API
-    // For now, we'll show a success message
-    alert('Field submitted successfully! It will be reviewed and approved by the admin.');
-    
-    closeAddFieldModal();
+
+    try {
+        const res = await API.fields.create(payload);
+        const fieldId = res && res.field && res.field.id;
+        if (fieldId && Array.isArray(unavailableDates) && unavailableDates.length && API.fields.addUnavailableDate) {
+            for (let i = 0; i < unavailableDates.length; i++) {
+                try { await API.fields.addUnavailableDate(fieldId, unavailableDates[i]); } catch (_e) {}
+            }
+        }
+        alert('Field submitted successfully!');
+        closeAddFieldModal();
+        await loadOwnerDashboard();
+    } catch (err) {
+        alert((err && err.message) || 'Could not create field.');
+    }
 }
 
 // Close add field modal when clicking outside
@@ -1229,28 +1189,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Map click handler (placeholder)
-    const mapPicker = document.getElementById('locationMap');
-    if (mapPicker) {
-        mapPicker.addEventListener('click', (e) => {
-            // Placeholder for map integration
-            const rect = mapPicker.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            const mapPin = document.getElementById('mapPin');
-            if (mapPin) {
-                mapPin.style.left = x + 'px';
-                mapPin.style.top = y + 'px';
-            }
-            
-            // Placeholder coordinates
-            const latitude = document.getElementById('latitude');
-            const longitude = document.getElementById('longitude');
-            if (latitude) latitude.textContent = (41.0082 + (Math.random() - 0.5) * 0.01).toFixed(6);
-            if (longitude) longitude.textContent = (28.9784 + (Math.random() - 0.5) * 0.01).toFixed(6);
-        });
-    }
+    initializeAddFieldMap();
     
     // Initialize day schedules
     initializeDaySchedules();
@@ -1396,34 +1335,18 @@ function handleManageImageUpload(event) {
 }
 
 function initializeManageMap() {
-    const mapPicker = document.getElementById('manageLocationMap');
-    if (mapPicker) {
-        // Remove existing listeners to avoid duplicates
-        const newMapPicker = mapPicker.cloneNode(true);
-        mapPicker.parentNode.replaceChild(newMapPicker, mapPicker);
-        
-        newMapPicker.addEventListener('click', function(e) {
-            updateManageMapLocation(e);
-        });
-    }
-}
-
-function updateManageMapLocation(event) {
-    const pin = document.getElementById('manageMapPin');
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    if (pin) {
-        pin.style.left = `${x}px`;
-        pin.style.top = `${y}px`;
-        pin.style.display = 'block';
-    }
-    
-    const latitudeEl = document.getElementById('manageLatitude');
-    const longitudeEl = document.getElementById('manageLongitude');
-    if (latitudeEl) latitudeEl.textContent = '41.0082';
-    if (longitudeEl) longitudeEl.textContent = '28.9784';
+    if (manageFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    manageFieldMapPicker = MapPickerService.create({
+        containerId: 'manageLocationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position) {
+            applyCoordinatesToDom(position.lat, position.lng, 'manage');
+            await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
+        }
+    });
+    bindAddressSearch('manage');
 }
 
 function toggleManageSetting(setting) {
@@ -1522,8 +1445,20 @@ function submitManageChanges() {
         type: typeEnum,
         capacity: Number.isInteger(capacityNum) ? capacityNum : null,
         pricePerHour: Math.round(parseFloat(document.getElementById('managePricePerHour')?.value || '0') || 0),
-        location: (document.getElementById('manageFieldAddress')?.value || '').trim()
+        location: (document.getElementById('manageFieldAddress')?.value || '').trim(),
+        address: (document.getElementById('manageFieldAddress')?.value || '').trim() || undefined,
+        city: (document.getElementById('manageFieldCity')?.value || '').trim() || undefined,
+        district: (document.getElementById('manageFieldDistrict')?.value || '').trim() || undefined
     };
+
+    const latNum = parseFloat(document.getElementById('manageLatitude')?.textContent || '');
+    const lngNum = parseFloat(document.getElementById('manageLongitude')?.textContent || '');
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+        alert('Please set a valid location on the map before saving.');
+        return;
+    }
+    payload.latitude = latNum;
+    payload.longitude = lngNum;
 
     API.fields.update(activeCard, payload)
         .then(function() {

@@ -171,6 +171,8 @@ function updateMapMarkers(fields) {
       MapService.addMarker(field.lat, field.lng, {
         id: field.id,
         name: field.name,
+        city: field.city,
+        district: field.district,
         location: field.location,
         price: field.price
       });

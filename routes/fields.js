@@ -350,7 +350,7 @@ router.get('/:id/availability', async (req, res) => {
 
     const field = await prisma.field.findUnique({
       where: { id },
-      select: { id: true, isActive: true }
+      select: { id: true, isActive: true, schedule: true }
     });
 
     if (!field || !field.isActive) {
@@ -361,6 +361,51 @@ router.get('/:id/availability', async (req, res) => {
     const [year, month, day] = date.split('-').map(Number);
     const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
     const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+
+    const dayName = ymdToUtcDayName(date);
+    const schedule = field.schedule && typeof field.schedule === 'object' ? field.schedule : null;
+    const dayCfg = dayName && schedule ? schedule[dayName] : null;
+    const dayEnabled = dayCfg ? dayCfg.enabled !== false : true;
+    const openingMins = dayCfg ? timeToMinutes(dayCfg.opening) : null;
+    const closingMins = dayCfg ? timeToMinutes(dayCfg.closing) : null;
+    let workingSlots = [];
+
+    if (!dayEnabled) {
+      return res.json({
+        available: false,
+        lockedByOwner: false,
+        closedBySchedule: true,
+        bookedSlots: [],
+        workingSlots: [],
+        message: 'This field is closed on the selected day.'
+      });
+    }
+
+    if (dayCfg) {
+      if (openingMins == null || closingMins == null || closingMins <= openingMins) {
+        return res.status(400).json({ error: 'Field schedule is invalid for this day' });
+      }
+      const startHour = Math.ceil(openingMins / 60);
+      const endHour = Math.floor(closingMins / 60);
+      for (let hour = startHour; hour < endHour; hour++) {
+        workingSlots.push(`${String(hour).padStart(2, '0')}:00`);
+      }
+      if (workingSlots.length === 0) {
+        return res.json({
+          available: false,
+          lockedByOwner: false,
+          closedBySchedule: true,
+          bookedSlots: [],
+          workingSlots: [],
+          message: 'No bookable slots are configured for this day.'
+        });
+      }
+    } else {
+      // Fallback for old data with no explicit schedule.
+      for (let hour = 9; hour < 22; hour++) {
+        workingSlots.push(`${String(hour).padStart(2, '0')}:00`);
+      }
+    }
 
     // Check if the entire date is unavailable (locked by owner)
     const unavailableDate = await prisma.fieldUnavailableDate.findFirst({
@@ -377,7 +422,9 @@ router.get('/:id/availability', async (req, res) => {
       return res.json({
         available: false,
         lockedByOwner: true,
+        closedBySchedule: false,
         bookedSlots: [],
+        workingSlots,
         message: 'This field is not available on the selected date'
       });
     }
@@ -419,10 +466,13 @@ router.get('/:id/availability', async (req, res) => {
       });
     });
 
+    const bookedInWorkingSlots = bookedSlots.filter((s) => workingSlots.includes(s));
     res.json({
       available: true,
       lockedByOwner: false,
-      bookedSlots: bookedSlots,
+      closedBySchedule: false,
+      bookedSlots: bookedInWorkingSlots,
+      workingSlots,
       debug: { bookingsFound: bookings.length, dateRange: { start: startOfDay.toISOString(), end: endOfDay.toISOString() } }
     });
   } catch (error) {
@@ -489,6 +539,23 @@ function normalizeScheduleObject(value) {
   return value;
 }
 
+function timeToMinutes(value) {
+  if (typeof value !== 'string') return null;
+  const m = /^(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function ymdToUtcDayName(ymd) {
+  const parts = String(ymd || '').split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0));
+  return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][d.getUTCDay()] || null;
+}
+
 function normalizeUpdateFieldValue(field, value) {
   if (field === 'pricePerHour') return parseInt(value, 10);
   if (field === 'capacity') return parseIntOrNull(value);
@@ -512,7 +579,19 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
   body('sport').trim().notEmpty(),
   body('type').isIn(['INDOOR', 'OUTDOOR']),
   body('location').trim().notEmpty(),
-  body('pricePerHour').isInt({ min: 0 })
+  body('pricePerHour').isInt({ min: 0 }),
+  body('latitude')
+    .exists({ checkFalsy: true })
+    .withMessage('latitude is required')
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('latitude must be between -90 and 90'),
+  body('longitude')
+    .exists({ checkFalsy: true })
+    .withMessage('longitude is required')
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('longitude must be between -180 and 180')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -568,6 +647,12 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
     const isActive = isAdmin; // owner-created fields must be approved by admin first
 
     // Native insert — Prisma create() hits P2031 on standalone MongoDB (requires replica set for transactions).
+    const parsedLatitude = parseCoordOrNull(latitude);
+    const parsedLongitude = parseCoordOrNull(longitude);
+    if (parsedLatitude == null || parsedLongitude == null) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required' });
+    }
+
     const field = await mongoFieldCreateAndFetch({
       name,
       sport,
@@ -589,8 +674,8 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
       advanceBooking: advanceBooking != null ? String(advanceBooking).trim() || null : null,
       cancellationPolicy: cancellationPolicy != null ? String(cancellationPolicy).trim() || null : null,
       visibilityRequested: visibilityRequested === undefined ? null : !!visibilityRequested,
-      latitude: parseCoordOrNull(latitude),
-      longitude: parseCoordOrNull(longitude),
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
       ownershipDocumentUrl: optionalDocumentUrl(ownershipDocumentUrl),
       licensesDocumentUrl: optionalDocumentUrl(licensesDocumentUrl),
       ownerId: req.user.id,
@@ -688,17 +773,14 @@ router.put('/:id', authenticate, [
       'licensesDocumentUrl'
     ];
     const sensitiveFields = new Set([
-      'name',
-      'sport',
-      'type',
+      'ownershipDocumentUrl',
+      'licensesDocumentUrl',
       'location',
       'address',
       'city',
       'district',
       'latitude',
-      'longitude',
-      'ownershipDocumentUrl',
-      'licensesDocumentUrl'
+      'longitude'
     ]);
     
     allowedFields.forEach(f => {

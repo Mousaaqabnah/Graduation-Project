@@ -42,7 +42,9 @@
     if (!_map || !L) return null;
     var marker = L.marker([lat, lng]).addTo(_map);
     if (data && (data.name || data.price)) {
+      var cityDistrict = [data.city, data.district].filter(Boolean).join(' / ');
       var content = (data.name ? '<strong>' + escapeHtml(data.name) + '</strong><br>' : '') +
+        (cityDistrict ? escapeHtml(cityDistrict) + '<br>' : '') +
         (data.location ? escapeHtml(data.location) + '<br>' : '') +
         (data.price != null ? '₺' + data.price + '/h' : '');
       marker.bindPopup(content);

@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <link rel="stylesheet" href="../../styles/owner/dashboard.css">
     <link rel="stylesheet" href="../../styles/owner/fields.css">
 </head>
@@ -213,7 +214,7 @@
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
                 </button>
-                
+
                 <button class="manage-option-btn" onclick="openManageSection('schedule')">
                     <div class="manage-option-icon">
                         <i class="fi fi-rr-calendar"></i>
@@ -224,7 +225,7 @@
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
                 </button>
-                
+
                 <button class="manage-option-btn" onclick="openManageSection('pricing')">
                     <div class="manage-option-icon">
                         <i class="fi fi-rr-money"></i>
@@ -257,7 +258,7 @@
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
                 </button>
-                
+
                 <button class="manage-option-btn" onclick="openManageSection('settings')">
                     <div class="manage-option-icon">
                         <i class="fi fi-rr-settings"></i>
@@ -268,6 +269,7 @@
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
                 </button>
+                
             </div>
             
             <!-- Section Content -->
@@ -593,7 +595,7 @@
                                         <div class="map-placeholder">
                                             <i class="fi fi-rr-map-marker"></i>
                                             <p>Click to select location on map</p>
-                                            <small>Map integration will be implemented</small>
+                                            <small>Search an address or click the map</small>
                                         </div>
                                         <div class="map-pin" id="manageMapPin">📍</div>
                                     </div>
@@ -730,18 +732,6 @@
                                     <option value="strict">Strict (Full refund up to 7 days before)</option>
                                     <option value="no-refund">No Refund</option>
                                 </select>
-                            </div>
-                        </div>
-                        
-                        <div class="form-step-section">
-                            <div class="setting-item" style="margin-bottom: 0;">
-                                <div class="setting-info">
-                                    <h4>Show in Search Results</h4>
-                                    <p>Make your field visible to players when they search for fields</p>
-                                </div>
-                                <div class="toggle-switch active" id="manageVisibilityToggle" onclick="toggleManageFieldVisibility()">
-                                    <div class="toggle-slider"></div>
-                                </div>
                             </div>
                         </div>
                         
@@ -1130,34 +1120,34 @@
                 <!-- Step 5: Location -->
                 <div class="form-step" data-step="5">
                     <h3>Location</h3>
-                    <p class="step-description">Enter the address and select location on the map</p>
+                    <p class="step-description">Type a full address (street/building), then confirm the exact pin on map. City and district can be auto-filled from the selected pin.</p>
                     
                     <div class="form-step-content">
                         <div class="form-step-section">
                             <div class="form-group">
                                 <label>Address <span class="required">*</span></label>
-                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="Enter full address">
+                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="e.g. Barbaros Mah. Begonya Sok. No:8">
                             </div>
                             
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>City <span class="required">*</span></label>
-                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Istanbul">
+                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Istanbul (auto-filled from map)">
                                 </div>
                                 <div class="form-group">
                                     <label>District</label>
-                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Üsküdar">
+                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Uskudar (auto-filled from map)">
                                 </div>
                             </div>
                             
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label>Select Location on Map <span class="required">*</span></label>
+                                <label>Select Exact Pin on Map <span class="required">*</span></label>
                                 <div class="map-container">
                                     <div id="locationMap" class="map-picker">
                                         <div class="map-placeholder">
                                             <i class="fi fi-rr-map-marker"></i>
-                                            <p>Click to select location on map</p>
-                                            <small>Map integration will be implemented</small>
+                                            <p>Click map or drag pin to exact entrance/location</p>
+                                            <small>Pin location is required and used as source of truth</small>
                                         </div>
                                         <div class="map-pin" id="mapPin">📍</div>
                                     </div>
@@ -1378,8 +1368,11 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/geocodingService.js"></script>
+    <script src="../../scripts/utils/mapPickerService.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>
     <script src="../../scripts/player/header-user.js"></script>

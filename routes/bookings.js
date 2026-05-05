@@ -10,6 +10,108 @@ const prisma = new PrismaClient();
 
 router.use(authenticate);
 
+function timeToMinutes(value) {
+  if (typeof value !== 'string') return null;
+  const m = /^(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function ymdFromDateLike(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().split('T')[0];
+}
+
+function dayNameFromYmdUtc(ymd) {
+  const parts = String(ymd || '').split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0));
+  return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][d.getUTCDay()] || null;
+}
+
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+async function validateBookingWindow(field, dateValue, ranges, excludeBookingId) {
+  const ymd = ymdFromDateLike(dateValue);
+  if (!ymd) return 'Invalid booking date.';
+
+  const [year, month, day] = ymd.split('-').map(Number);
+  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+
+  const dayLocked = await prisma.fieldUnavailableDate.findFirst({
+    where: {
+      fieldId: field.id,
+      date: { gte: startOfDay, lte: endOfDay }
+    },
+    select: { id: true }
+  });
+  if (dayLocked) return 'This field is not available on the selected date.';
+
+  const dayName = dayNameFromYmdUtc(ymd);
+  const schedule = field.schedule && typeof field.schedule === 'object' ? field.schedule : null;
+  const dayCfg = dayName && schedule ? schedule[dayName] : null;
+  const dayEnabled = dayCfg ? dayCfg.enabled !== false : true;
+  if (!dayEnabled) return 'This field is closed on the selected day.';
+
+  let openingMins = 9 * 60;
+  let closingMins = 22 * 60;
+  if (dayCfg) {
+    openingMins = timeToMinutes(dayCfg.opening);
+    closingMins = timeToMinutes(dayCfg.closing);
+    if (openingMins == null || closingMins == null || closingMins <= openingMins) {
+      return 'Field schedule is invalid for this day.';
+    }
+  }
+
+  for (const r of ranges) {
+    const start = timeToMinutes(r && r.start);
+    const end = timeToMinutes(r && r.end);
+    if (start == null || end == null || end <= start) return 'Invalid time range.';
+    if (start < openingMins || end > closingMins) return 'Selected time is outside the field working schedule.';
+  }
+
+  const existingBookings = await prisma.booking.findMany({
+    where: {
+      fieldId: field.id,
+      date: { gte: startOfDay, lte: endOfDay },
+      status: { notIn: ['CANCELLED'] },
+      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {})
+    },
+    select: {
+      id: true,
+      timeSlotStart: true,
+      timeSlotEnd: true,
+      timeSlotRanges: true
+    }
+  });
+
+  for (const b of existingBookings) {
+    const bookingRanges = Array.isArray(b.timeSlotRanges) && b.timeSlotRanges.length
+      ? b.timeSlotRanges
+      : [{ start: b.timeSlotStart, end: b.timeSlotEnd }];
+    for (const nr of ranges) {
+      const nStart = timeToMinutes(nr.start);
+      const nEnd = timeToMinutes(nr.end);
+      for (const br of bookingRanges) {
+        const bStart = timeToMinutes(br.start);
+        const bEnd = timeToMinutes(br.end);
+        if (nStart != null && nEnd != null && bStart != null && bEnd != null && rangesOverlap(nStart, nEnd, bStart, bEnd)) {
+          return 'One or more selected slots are already booked.';
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 // Get all bookings (with filters)
 router.get('/', async (req, res) => {
   try {
@@ -189,7 +291,8 @@ router.post('/', [
 
     // Check if field exists and is active
     const field = await prisma.field.findUnique({
-      where: { id: fieldId }
+      where: { id: fieldId },
+      select: { id: true, isActive: true, pricePerHour: true, schedule: true }
     });
 
     if (!field || !field.isActive) {
@@ -201,6 +304,10 @@ router.post('/', [
     const totalHours = totalHoursFromRanges(ranges);
     if (totalHours <= 0) {
       return res.status(400).json({ error: 'End time must be after start time.' });
+    }
+    const bookingWindowError = await validateBookingWindow(field, date, ranges, null);
+    if (bookingWindowError) {
+      return res.status(400).json({ error: bookingWindowError });
     }
     const totalCost = totalCostFromFieldPrice(field.pricePerHour, ranges);
 
@@ -383,6 +490,10 @@ router.put('/:id/reschedule', [
     const totalHours = totalHoursFromRanges(ranges);
     if (totalHours <= 0) {
       return res.status(400).json({ error: 'End time must be after start time.' });
+    }
+    const rescheduleWindowError = await validateBookingWindow(booking.field, date, ranges, id);
+    if (rescheduleWindowError) {
+      return res.status(400).json({ error: rescheduleWindowError });
     }
     const totalCost = totalCostFromFieldPrice(booking.field.pricePerHour, ranges);
 

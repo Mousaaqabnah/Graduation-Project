@@ -485,20 +485,10 @@ async function loadTimeSlots() {
     return;
   }
 
-  // Generate time slots (9 AM to 10 PM, hourly)
-  const slots = [];
-  for (let hour = 9; hour < 22; hour++) {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
-    slots.push({
-      start: startTime,
-      end: endTime,
-      available: true // Default to available
-    });
-  }
-
   // Fetch real availability from API if a date is selected
+  const slots = [];
   let bookedSlots = [];
+  let workingSlots = [];
   let dayLocked = false;
   
   if (bookingState.selectedDate && typeof API !== 'undefined') {
@@ -519,14 +509,41 @@ async function loadTimeSlots() {
         `;
         return;
       }
+
+      if (!availability.available && availability.closedBySchedule) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: #dc3545;">
+            <i class="fi fi-rr-calendar" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+            <p>${availability.message || 'This field is closed on the selected day.'}</p>
+          </div>
+        `;
+        return;
+      }
       
       bookedSlots = availability.bookedSlots || [];
+      workingSlots = Array.isArray(availability.workingSlots) ? availability.workingSlots : [];
       console.log('Booked slots:', bookedSlots);
     } catch (error) {
       console.error('Failed to fetch availability:', error);
       // Continue with all slots available if API fails
     }
   }
+
+  const baseSlots = workingSlots.length
+    ? workingSlots
+    : Array.from({ length: 13 }, function (_, i) {
+        const hour = 9 + i;
+        return `${hour.toString().padStart(2, '0')}:00`;
+      });
+
+  baseSlots.forEach(function(startTime) {
+    const hour = parseInt(startTime.split(':')[0], 10);
+    slots.push({
+      start: startTime,
+      end: `${(hour + 1).toString().padStart(2, '0')}:00`,
+      available: true
+    });
+  });
 
   // Mark booked slots as unavailable
   slots.forEach(slot => {
