@@ -17,6 +17,8 @@ const selectedUserDisplay = document.getElementById('selectedUserDisplay');
 const removeUserBtn = document.getElementById('removeUserBtn');
 const notificationAudienceSelector = document.getElementById('notificationAudienceSelector');
 const notificationChannelSelector = document.getElementById('notificationChannelSelector');
+const notificationsAudienceChart = document.getElementById('notificationsAudienceChart');
+const bookingsRegionsChart = document.getElementById('bookingsRegionsChart');
 
 // Invite Admin Modal elements
 const inviteAdminModal = document.getElementById('inviteAdminModal');
@@ -97,6 +99,101 @@ async function loadDashboardStats() {
     }
 }
 loadDashboardStats();
+
+function renderSimpleBarChart(container, rows) {
+    if (!container) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+        container.innerHTML = '<div class="bar-chart-item"><div class="bar-chart-label">No data</div><div class="bar-chart-bar-wrapper"><div class="bar-chart-bar" style="width: 0%"></div></div><span class="bar-chart-value">0%</span></div>';
+        return;
+    }
+    container.innerHTML = rows.map((row) => {
+        const label = escapeHtml(String(row.label || 'Other'));
+        const value = Math.max(0, Math.min(100, Number(row.percent) || 0));
+        return `
+            <div class="bar-chart-item">
+                <div class="bar-chart-label">${label}</div>
+                <div class="bar-chart-bar-wrapper">
+                    <div class="bar-chart-bar" style="width: ${value}%"></div>
+                </div>
+                <span class="bar-chart-value">${value}%</span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadNotificationsAudienceChart() {
+    if (!notificationsAudienceChart || !API?.admin?.getNotifications) return;
+    try {
+        const res = await API.admin.getNotifications({ limit: 200 });
+        const list = res.notifications || [];
+        const counts = { players: 0, owners: 0, admins: 0 };
+        list.forEach((n) => {
+            const a = String(n.audience || '').toLowerCase();
+            if (a === 'players') counts.players += 1;
+            else if (a === 'owners' || a === 'field-owners') counts.owners += 1;
+            else if (a === 'admins') counts.admins += 1;
+            else if (a === 'all') {
+                counts.players += 1;
+                counts.owners += 1;
+                counts.admins += 1;
+            }
+        });
+        const total = counts.players + counts.owners + counts.admins;
+        const rows = total > 0 ? [
+            { label: 'Players', percent: Math.round((counts.players / total) * 100) },
+            { label: 'Field owners', percent: Math.round((counts.owners / total) * 100) },
+            { label: 'Admins', percent: Math.round((counts.admins / total) * 100) }
+        ] : [
+            { label: 'Players', percent: 0 },
+            { label: 'Field owners', percent: 0 },
+            { label: 'Admins', percent: 0 }
+        ];
+        renderSimpleBarChart(notificationsAudienceChart, rows);
+    } catch (err) {
+        console.warn('Notifications audience chart failed:', err);
+        renderSimpleBarChart(notificationsAudienceChart, []);
+    }
+}
+
+function pickRegionFromBooking(booking) {
+    const field = booking && booking.field ? booking.field : {};
+    const city = (field.city || '').trim();
+    if (city) return city;
+    const location = (field.location || booking.location || '').trim();
+    if (!location) return 'Other';
+    const firstPart = location.split(',')[0].trim();
+    return firstPart || 'Other';
+}
+
+async function loadBookingsRegionsChart() {
+    if (!bookingsRegionsChart || !API?.bookings?.getAll) return;
+    try {
+        const res = await API.bookings.getAll({ limit: 500 });
+        const bookings = res.bookings || [];
+        const counts = {};
+        bookings.forEach((b) => {
+            const region = pickRegionFromBooking(b);
+            counts[region] = (counts[region] || 0) + 1;
+        });
+        const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const total = entries.reduce((sum, [, c]) => sum + c, 0);
+        let rows = [];
+        if (total > 0) {
+            const top = entries.slice(0, 2);
+            const topTotal = top.reduce((sum, [, c]) => sum + c, 0);
+            const other = total - topTotal;
+            rows = top.map(([label, c]) => ({ label, percent: Math.round((c / total) * 100) }));
+            if (other > 0) rows.push({ label: 'Other', percent: Math.round((other / total) * 100) });
+        }
+        renderSimpleBarChart(bookingsRegionsChart, rows);
+    } catch (err) {
+        console.warn('Bookings regions chart failed:', err);
+        renderSimpleBarChart(bookingsRegionsChart, []);
+    }
+}
+
+loadNotificationsAudienceChart();
+loadBookingsRegionsChart();
 
 // Load recent notifications sent by admin (runs after DOM ready)
 async function loadRecentNotifications() {

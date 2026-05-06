@@ -821,7 +821,6 @@ function updatePlayersList() {
       </div>
       <div class="player-info" style="flex: 1;">
         <div style="font-weight: 500; color: #333;">${player.name}</div>
-        <div style="font-size: 12px; color: #666;">${player.email || ''}</div>
       </div>
       <div class="player-payment-status" style="margin-right: 12px; padding: 4px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px;">
         <i class="fi fi-rr-clock" style="font-size: 10px;"></i> Payment Pending
@@ -1188,11 +1187,26 @@ function initializeBookingModal() {
   }
 
   if (playerSearchInput) {
-    playerSearchInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addPlayer();
+    playerSearchInput.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+
+      const resultsContainer = document.getElementById('playerSearchResults');
+      const firstResult = resultsContainer
+        ? resultsContainer.querySelector('.search-result-item')
+        : null;
+
+      // Prefer selected dropdown result when available, then fallback to search/add flow.
+      if (firstResult) {
+        const userData = JSON.parse(firstResult.dataset.user);
+        addPlayerFromSearch(userData);
+        if (resultsContainer) resultsContainer.style.display = 'none';
+        playerSearchInput.value = '';
+        selectedSearchUser = null;
+        return;
       }
+
+      addPlayer();
     });
   }
   
@@ -1372,11 +1386,47 @@ function validatePaymentForm() {
 // Search timeout for debouncing
 let searchTimeout = null;
 let selectedSearchUser = null;
+let latestSearchRequestId = 0;
+
+function getOrCreatePlayerSearchResultsContainer() {
+  const input = document.getElementById('playerSearchInput');
+  if (!input) return null;
+
+  let resultsContainer = document.getElementById('playerSearchResults');
+  if (resultsContainer) return resultsContainer;
+
+  const parent = input.parentElement;
+  if (!parent) return null;
+
+  const parentStyle = window.getComputedStyle(parent);
+  if (parentStyle.position === 'static') {
+    parent.style.position = 'relative';
+  }
+
+  resultsContainer = document.createElement('div');
+  resultsContainer.id = 'playerSearchResults';
+  resultsContainer.className = 'search-results-dropdown';
+  resultsContainer.style.display = 'none';
+  resultsContainer.style.position = 'absolute';
+  resultsContainer.style.top = '100%';
+  resultsContainer.style.left = '0';
+  resultsContainer.style.right = '0';
+  resultsContainer.style.background = 'white';
+  resultsContainer.style.border = '1px solid #e0e0e0';
+  resultsContainer.style.borderRadius = '8px';
+  resultsContainer.style.maxHeight = '200px';
+  resultsContainer.style.overflowY = 'auto';
+  resultsContainer.style.zIndex = '1000';
+  resultsContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+
+  parent.appendChild(resultsContainer);
+  return resultsContainer;
+}
 
 // Search users as user types
 function setupPlayerSearch() {
   const input = document.getElementById('playerSearchInput');
-  const resultsContainer = document.getElementById('playerSearchResults');
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   
   if (!input || !resultsContainer) return;
   
@@ -1394,7 +1444,9 @@ function setupPlayerSearch() {
     }
     
     // Debounce search
-    searchTimeout = setTimeout(() => searchUsers(query), 300);
+    searchTimeout = setTimeout(() => {
+      searchUsers(query);
+    }, 300);
   });
   
   // Hide results when clicking outside
@@ -1407,14 +1459,25 @@ function setupPlayerSearch() {
 
 // Search users via API
 async function searchUsers(query) {
-  const resultsContainer = document.getElementById('playerSearchResults');
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   if (!resultsContainer) return;
+
+  if (typeof API === 'undefined' || !API.users || !API.users.search) {
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
+    resultsContainer.style.display = 'block';
+    return [];
+  }
+
+  const requestId = ++latestSearchRequestId;
   
   try {
     resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
     resultsContainer.style.display = 'block';
     
     const response = await API.users.search(query);
+    // Ignore stale responses from older debounced searches.
+    if (requestId !== latestSearchRequestId) return [];
+
     const users = response.users || [];
     
     // Filter out current user and already added players
@@ -1427,7 +1490,7 @@ async function searchUsers(query) {
     
     if (filteredUsers.length === 0) {
       resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No users found</div>';
-      return;
+      return [];
     }
     
     resultsContainer.innerHTML = filteredUsers.map(user => `
@@ -1441,7 +1504,6 @@ async function searchUsers(query) {
         </div>
         <div style="flex: 1;">
           <div style="font-weight: 500; color: #333;">${user.fullName}</div>
-          <div style="font-size: 12px; color: #666;">${user.email}</div>
         </div>
         <i class="fi fi-rr-plus" style="color: #007bff;"></i>
       </div>
@@ -1456,10 +1518,12 @@ async function searchUsers(query) {
         document.getElementById('playerSearchInput').value = '';
       });
     });
-    
+    return filteredUsers;
   } catch (error) {
     console.error('Search error:', error);
     resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+    resultsContainer.style.display = 'block';
+    return [];
   }
 }
 
@@ -1484,8 +1548,9 @@ function addPlayerFromSearch(user) {
 }
 
 // Add player (fallback for manual entry - now shows search prompt)
-function addPlayer() {
+async function addPlayer() {
   const input = document.getElementById('playerSearchInput');
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   if (!input) return;
 
   const searchValue = input.value.trim();
@@ -1499,12 +1564,26 @@ function addPlayer() {
     addPlayerFromSearch(selectedSearchUser);
     input.value = '';
     selectedSearchUser = null;
+    if (resultsContainer) resultsContainer.style.display = 'none';
     return;
   }
   
-  // Otherwise, trigger search
+  // Otherwise, perform search and guide next action.
   if (searchValue.length >= 2) {
-    searchUsers(searchValue);
+    const results = await searchUsers(searchValue);
+    if (!results || results.length === 0) {
+      alert('No players found. Try searching by full name or email.');
+      return;
+    }
+
+    if (results.length === 1) {
+      addPlayerFromSearch(results[0]);
+      input.value = '';
+      if (resultsContainer) resultsContainer.style.display = 'none';
+      return;
+    }
+
+    alert('Multiple players found. Please select one from the list.');
   } else {
     alert('Please enter at least 2 characters to search.');
   }
@@ -1696,6 +1775,10 @@ function createPaymentNotifications(booking, players) {
   const equalShare = Math.round(booking.totalCost / totalPlayers);
   const organizerName = bookingState.organizer?.name || 'The organizer';
   const fieldName = bookingState.field?.name || booking.field?.name || 'the field';
+  const fieldImage = bookingState.field?.image
+    || (booking.field && booking.field.images && booking.field.images[0])
+    || booking.fieldImage
+    || '';
   const isMixed = (bookingState.paymentMethod || booking.paymentMethod || '').toLowerCase() === 'mixed';
   const mixedDist = booking.mixedPaymentDistribution || bookingState.mixedPaymentDistribution || {};
   
@@ -1707,7 +1790,10 @@ function createPaymentNotifications(booking, players) {
       id: 'notif_' + Date.now() + '_' + player.id,
       type: 'booking_payment_request',
       playerId: player.id,
+      playerName: player.name || '',
       bookingId: booking.id,
+      fieldName: fieldName,
+      fieldImage: fieldImage,
       title: 'Payment Required',
       message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ₺${amount}.`,
       date: bookingState.selectedDate,

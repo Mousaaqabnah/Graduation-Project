@@ -187,8 +187,18 @@ function mergeAdminFieldRowWithDetail(row, detail) {
         longitude: detail.longitude,
         pricePerHour: pph,
         price: formatPriceTry(pph),
-        ownershipDocumentUrl: detail.ownershipDocumentUrl || row.ownershipDocumentUrl || '',
-        licensesDocumentUrl: detail.licensesDocumentUrl || row.licensesDocumentUrl || '',
+        ownershipDocumentUrl:
+            detail.ownershipDocumentUrl ||
+            (detail.pendingChanges && detail.pendingChanges.ownershipDocumentUrl) ||
+            row.ownershipDocumentUrl ||
+            (row.pendingChanges && row.pendingChanges.ownershipDocumentUrl) ||
+            '',
+        licensesDocumentUrl:
+            detail.licensesDocumentUrl ||
+            (detail.pendingChanges && detail.pendingChanges.licensesDocumentUrl) ||
+            row.licensesDocumentUrl ||
+            (row.pendingChanges && row.pendingChanges.licensesDocumentUrl) ||
+            '',
         pendingChanges:
             detail.pendingChanges && typeof detail.pendingChanges === 'object'
                 ? detail.pendingChanges
@@ -199,9 +209,18 @@ function mergeAdminFieldRowWithDetail(row, detail) {
     });
 }
 
+function resolveAdminFieldDocumentUrl(field, key) {
+    if (!field || !key) return '';
+    var direct = field[key];
+    if (direct != null && String(direct).trim()) return String(direct).trim();
+    var pending = field.pendingChanges && field.pendingChanges[key];
+    if (pending != null && String(pending).trim()) return String(pending).trim();
+    return '';
+}
+
 function buildAdminFieldDocumentsSection(field) {
-    const ownRaw = (field.ownershipDocumentUrl && String(field.ownershipDocumentUrl).trim()) || '';
-    const licRaw = (field.licensesDocumentUrl && String(field.licensesDocumentUrl).trim()) || '';
+    const ownRaw = resolveAdminFieldDocumentUrl(field, 'ownershipDocumentUrl');
+    const licRaw = resolveAdminFieldDocumentUrl(field, 'licensesDocumentUrl');
     const own = normalizeDataUrl(ownRaw);
     const lic = normalizeDataUrl(licRaw);
     if (!own && !lic) {

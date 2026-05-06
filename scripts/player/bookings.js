@@ -75,6 +75,258 @@ function getBookingId(b) {
     return id != null ? String(id) : null;
 }
 
+function normalizePaymentStatus(status) {
+    return String(status || '').toLowerCase() === 'paid' ? 'paid' : 'pending';
+}
+
+function getExpectedParticipantCount(booking) {
+    var teamSize = Number(booking && booking.teamSize);
+    if (!Number.isNaN(teamSize) && teamSize > 0) {
+        return Math.max(teamSize - 1, 0);
+    }
+    return null;
+}
+
+function normalizeBookingParticipants(booking) {
+    var list = (booking && (booking.players || booking.participants)) || [];
+    var byKey = {};
+    var normalized = [];
+
+    list.forEach(function(player) {
+        var pid = String(player.userId || player.id || '');
+        var pName = (player.user && player.user.fullName) || player.fullName || player.name || 'Player';
+        var key = pid || ('name:' + pName.toLowerCase());
+        if (!key || byKey[key]) return;
+        byKey[key] = true;
+        normalized.push({
+            id: pid,
+            name: pName,
+            paymentStatus: normalizePaymentStatus(player.paymentStatus)
+        });
+    });
+
+    return normalized;
+}
+
+function getInvitedPlayersFromNotifications(bookingId) {
+    if (!bookingId) return [];
+    var notifications = [];
+    try {
+        notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    } catch (e) {
+        notifications = [];
+    }
+    var seen = {};
+    return notifications
+        .filter(function(n) {
+            return String(n.bookingId || '') === String(bookingId) && n.playerId != null;
+        })
+        .map(function(n) {
+            var pid = String(n.playerId);
+            var rawName = n.playerName || n.recipientName || '';
+            var fallbackName = pid ? ('Player ' + pid.slice(-4)) : 'Player';
+            return {
+                id: pid,
+                name: rawName || fallbackName,
+                paymentStatus: 'pending'
+            };
+        })
+        .filter(function(p) {
+            var key = p.id || ('name:' + p.name.toLowerCase());
+            if (!key || seen[key]) return false;
+            seen[key] = true;
+            return true;
+        });
+}
+
+function getCurrentUserIdSafe() {
+    var user = getCurrentUserSafe() || {};
+    return String(user.id || user._id || '');
+}
+
+function getInvitedBookingIdsForUser(playerId) {
+    if (!playerId) return [];
+    var notifications = [];
+    try {
+        notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    } catch (e) {
+        notifications = [];
+    }
+    var seen = {};
+    return notifications
+        .filter(function(n) {
+            if (String(n.playerId || '') !== String(playerId)) return false;
+            if (!n.bookingId) return false;
+            // Keep booking invites/payment requests visible in My Bookings.
+            return n.type === 'booking_payment_request' || n.type === 'booking_invite' || n.type === 'booking_invitation';
+        })
+        .map(function(n) { return String(n.bookingId); })
+        .filter(function(id) {
+            if (!id || seen[id]) return false;
+            seen[id] = true;
+            return true;
+        });
+}
+
+function isCancelledStatusValue(status) {
+    var s = String(status || '').toLowerCase();
+    return s === 'cancelled';
+}
+
+function isCompletedStatusValue(status) {
+    var s = String(status || '').toLowerCase();
+    return s === 'completed';
+}
+
+function isUpcomingStatusValue(status) {
+    var s = String(status || '').toLowerCase();
+    // Treat any non-final state as upcoming so invited/unpaid bookings stay visible.
+    if (!s) return true;
+    return !isCancelledStatusValue(s) && !isCompletedStatusValue(s);
+}
+
+function findInviteNotificationForBooking(bookingId, playerId) {
+    if (!bookingId || !playerId) return null;
+    var notifications = [];
+    try {
+        notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    } catch (e) {
+        notifications = [];
+    }
+    for (var i = notifications.length - 1; i >= 0; i--) {
+        var n = notifications[i];
+        if (String(n.playerId || '') !== String(playerId)) continue;
+        if (String(n.bookingId || '') !== String(bookingId)) continue;
+        if (n.type === 'booking_payment_request' || n.type === 'booking_invite' || n.type === 'booking_invitation') {
+            return n;
+        }
+    }
+    return null;
+}
+
+function getOwnerDecisionForBooking(bookingId, playerId) {
+    if (!bookingId || !playerId) return '';
+    var notifications = [];
+    try {
+        notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    } catch (e) {
+        notifications = [];
+    }
+    for (var i = notifications.length - 1; i >= 0; i--) {
+        var n = notifications[i];
+        if (String(n.playerId || '') !== String(playerId)) continue;
+        if (String(n.bookingId || '') !== String(bookingId)) continue;
+        if (n.type === 'booking_approved') return 'Approved';
+        if (n.type === 'booking_rejected') return 'Rejected';
+    }
+    return '';
+}
+
+function buildInviteBookingPlaceholder(bookingId, playerId) {
+    var invite = findInviteNotificationForBooking(bookingId, playerId);
+    if (!invite) return null;
+    var rawSlots = String(invite.time || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var defaultDate = new Date().toISOString().split('T')[0];
+    return {
+        id: String(bookingId),
+        fieldName: invite.fieldName || 'Invited Booking',
+        fieldImage: invite.fieldImage || null,
+        date: invite.date || defaultDate,
+        timeSlots: rawSlots,
+        totalCost: Number(invite.totalCost || 0),
+        paymentMethod: 'split',
+        status: 'pending',
+        organizerId: invite.organizerId || '',
+        organizerName: invite.organizerName || 'Organizer',
+        participants: [
+            {
+                userId: String(playerId),
+                paymentStatus: 'pending',
+                paymentAmount: Number(invite.paymentAmount || 0)
+            }
+        ]
+    };
+}
+
+function normalizeImageSourceValue(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+        for (var i = 0; i < value.length; i++) {
+            var candidate = normalizeImageSourceValue(value[i]);
+            if (candidate) return candidate;
+        }
+        return '';
+    }
+    if (typeof value === 'object') {
+        return (
+            value.url ||
+            value.src ||
+            value.path ||
+            value.secure_url ||
+            value.imageUrl ||
+            ''
+        );
+    }
+    return '';
+}
+
+function resolveBookingImage(booking) {
+    if (!booking) return '';
+    var candidates = [
+        booking.field && booking.field.images,
+        booking.field && booking.field.image,
+        booking.fieldImage,
+        booking.image
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        var normalized = normalizeImageSourceValue(candidates[i]);
+        if (normalized) return normalized;
+    }
+    return '';
+}
+
+async function enrichMissingBookingImages(bookings) {
+    if (!Array.isArray(bookings) || bookings.length === 0) return bookings || [];
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getAll) return bookings;
+
+    var needsImage = bookings.some(function(b) { return !resolveBookingImage(b); });
+    if (!needsImage) return bookings;
+
+    try {
+        var fieldsRes = await API.fields.getAll({ limit: 300 });
+        var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+        if (!fields.length) return bookings;
+
+        var byId = {};
+        var byName = {};
+        fields.forEach(function(f) {
+            var fid = String((f && (f.id || f._id)) || '');
+            var fname = String((f && f.name) || '').trim().toLowerCase();
+            var fimg = normalizeImageSourceValue((f && f.images) || (f && f.image));
+            if (!fimg) return;
+            if (fid) byId[fid] = fimg;
+            if (fname && !byName[fname]) byName[fname] = fimg;
+        });
+
+        return bookings.map(function(b) {
+            if (resolveBookingImage(b)) return b;
+
+            var bookingFieldId = String((b && (b.fieldId || (b.field && (b.field.id || b.field._id)))) || '');
+            var bookingFieldName = String((b && ((b.field && b.field.name) || b.fieldName)) || '').trim().toLowerCase();
+
+            var resolved = (bookingFieldId && byId[bookingFieldId]) || (bookingFieldName && byName[bookingFieldName]) || '';
+            if (!resolved) return b;
+
+            var next = Object.assign({}, b);
+            next.fieldImage = resolved;
+            return next;
+        });
+    } catch (e) {
+        return bookings;
+    }
+}
+
 // Remove duplicates from an array of display bookings by id
 function dedupeById(arr) {
     var seen = {};
@@ -121,13 +373,13 @@ function loadBookingsFromStorage() {
 
         allBookingsCache = uniqueBookings;
         var isUpcomingStatus = function(b) {
-            return b.status === 'PENDING' || b.status === 'UPCOMING' || b.status === 'CONFIRMED' || b.status === 'pending' || b.status === 'upcoming' || b.status === 'confirmed';
+            return isUpcomingStatusValue(b && b.status);
         };
         var isCompletedStatus = function(b) {
-            return b.status === 'COMPLETED' || b.status === 'completed';
+            return isCompletedStatusValue(b && b.status);
         };
         var isCancelledStatus = function(b) {
-            return b.status === 'CANCELLED' || b.status === 'cancelled';
+            return isCancelledStatusValue(b && b.status);
         };
         // Cancelled stays cancelled
         var cancelled = uniqueBookings.filter(isCancelledStatus).map(convertBookingToDisplayFormat);
@@ -155,12 +407,50 @@ function loadBookingsFromStorage() {
         // Re-render UI after data arrives from API or storage
         renderBookings();
     }
+    var currentPlayerId = getCurrentUserIdSafe();
+    var invitedBookingIds = getInvitedBookingIdsForUser(currentPlayerId);
+
+    function keepBookingForCurrentUser(booking) {
+        var pid = currentPlayerId;
+        var bid = String(getBookingId(booking) || '');
+        var isOrganizer = String(booking.organizerId || (booking.organizer && booking.organizer.id) || '') === pid;
+        var list = booking.players || booking.participants || [];
+        var isParticipant = list.some(function(p) { return String(p.id || p.userId || '') === pid; });
+        var isInvited = bid && invitedBookingIds.indexOf(bid) !== -1;
+        return isOrganizer || isParticipant || isInvited;
+    }
+
     if (typeof API !== 'undefined' && API.getAuthToken()) {
         API.bookings.getAll()
-            .then(function(res) {
+            .then(async function(res) {
                 var list = (res && res.bookings) ? res.bookings : [];
                 list = mergePaymentStatusFromLocalStorage(list);
-                applyBookings(list);
+                // Include invited bookings not yet present in participant list.
+                var existingIds = {};
+                list.forEach(function(b) {
+                    var bid = String(getBookingId(b) || '');
+                    if (bid) existingIds[bid] = true;
+                });
+                var missingInvites = invitedBookingIds.filter(function(id) { return !existingIds[id]; });
+                if (missingInvites.length > 0) {
+                    var localBookingsForInvites = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+                    missingInvites.forEach(function(invitedId) {
+                        var localInvited = localBookingsForInvites.find(function(b) {
+                            return String(getBookingId(b)) === String(invitedId);
+                        });
+                        if (localInvited) {
+                            list.push(localInvited);
+                            return;
+                        }
+                        var placeholder = buildInviteBookingPlaceholder(invitedId, currentPlayerId);
+                        if (placeholder) {
+                            list.push(placeholder);
+                        }
+                    });
+                    list = mergePaymentStatusFromLocalStorage(list);
+                }
+                list = await enrichMissingBookingImages(list);
+                applyBookings(list.filter(keepBookingForCurrentUser));
             })
             .catch(function(err) {
                 console.error('Failed to load bookings:', err);
@@ -182,7 +472,8 @@ function mergePaymentStatusFromLocalStorage(apiBookings) {
         playerPaid = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
     } catch (e) {}
     return (apiBookings || []).map(function(b) {
-        var local = localBookings.find(function(lb) { return String(lb.id) === String(b.id); });
+        var bookingKey = getBookingId(b);
+        var local = localBookings.find(function(lb) { return getBookingId(lb) === bookingKey; });
         var merged = Object.assign({}, b);
         if (local) {
             if (local.organizerPaymentStatus) merged.organizerPaymentStatus = local.organizerPaymentStatus;
@@ -197,14 +488,16 @@ function mergePaymentStatusFromLocalStorage(apiBookings) {
             });
         }
         var apiParticipants2 = merged.participants || merged.players || [];
-        apiParticipants2.forEach(function(apiP) {
-            var pid = String(apiP.userId || apiP.id || '');
-            var key = String(merged.id) + '_' + pid;
-            if (playerPaid[key]) {
-                apiP.paymentStatus = 'paid';
-            }
-        });
-        if (organizerPaid[String(merged.id)]) merged.organizerPaymentStatus = 'paid';
+        if (bookingKey) {
+            apiParticipants2.forEach(function(apiP) {
+                var pid = String(apiP.userId || apiP.id || '');
+                var key = String(bookingKey) + '_' + pid;
+                if (playerPaid[key]) {
+                    apiP.paymentStatus = 'paid';
+                }
+            });
+            if (organizerPaid[String(bookingKey)]) merged.organizerPaymentStatus = 'paid';
+        }
         return merged;
     });
 }
@@ -214,11 +507,14 @@ function loadBookingsFromStorageFallback(applyBookings) {
     var playerData = getCurrentUserSafe() || {};
     var playerId = (playerData && (playerData.id || playerData._id)) || 'player_1';
     var pid = String(playerId || '');
+    var invitedBookingIds = getInvitedBookingIdsForUser(pid);
     var playerBookings = allBookings.filter(function(booking) {
+        var bookingId = String(getBookingId(booking) || '');
         var isOrganizer = String(booking.organizerId || '') === pid || String(booking.organizer && booking.organizer.id || '') === pid;
         var list = booking.players || booking.participants || [];
         var isParticipant = list.some(function(p) { return String(p.id || p.userId || '') === pid; });
-        return isOrganizer || isParticipant;
+        var isInvited = bookingId && invitedBookingIds.indexOf(bookingId) !== -1;
+        return isOrganizer || isParticipant || isInvited;
     });
     applyBookings(playerBookings);
 }
@@ -252,7 +548,7 @@ function convertBookingToDisplayFormat(booking) {
             : 'Not specified';
     }
     var fieldName = (booking.field && booking.field.name) || booking.fieldName;
-    var fieldImage = (booking.field && booking.field.images && booking.field.images[0]) || booking.fieldImage;
+    var fieldImage = resolveBookingImage(booking);
     var players = booking.participants ? booking.participants.map(function(p) { return { id: p.userId, name: (p.user && p.user.fullName) || 'Player' }; }) : (booking.players || []);
     var teamSize = players.length + 1;
     var displayStatus = booking.status || 'upcoming';
@@ -260,27 +556,66 @@ function convertBookingToDisplayFormat(booking) {
         displayStatus = 'completed';
     }
     var isConfirmed = booking.status === 'CONFIRMED' || booking.status === 'confirmed';
+    var currentUser = getCurrentUserSafe();
+    var currentUserId = currentUser ? String(currentUser.id || currentUser._id || '') : '';
+    var ownerDecisionLabel = getOwnerDecisionForBooking(String(getBookingId(booking) || ''), currentUserId);
+    if (!ownerDecisionLabel) {
+        var rawStatusForDecision = String(booking.status || '').toUpperCase();
+        if (rawStatusForDecision === 'CONFIRMED' || rawStatusForDecision === 'UPCOMING' || rawStatusForDecision === 'COMPLETED') {
+            ownerDecisionLabel = 'Approved';
+        } else if (rawStatusForDecision === 'CANCELLED') {
+            ownerDecisionLabel = 'Rejected';
+        }
+    }
 
     // Payment-based status label: "Paid" when you (and everyone in shared booking) have paid; else "Pending"
     var paymentStatusLabel = null;
     var displayStatusLower = (displayStatus || '').toLowerCase();
     if (displayStatusLower !== 'completed' && displayStatusLower !== 'cancelled') {
-        var currentUser = getCurrentUserSafe();
-        var currentUserId = currentUser ? String(currentUser.id || currentUser._id || '') : '';
         var participants = booking.participants || booking.players || [];
         var organizerId = String(booking.organizerId || (booking.organizer && booking.organizer.id) || '');
         var isOrganizer = organizerId === currentUserId;
         var organizerPaidBookingsMap = {};
+        var playerPaidBookingsMap = {};
         try { organizerPaidBookingsMap = JSON.parse(localStorage.getItem('organizerPaidBookings') || '{}'); } catch (e) {}
-        var organizerPaid = (booking.organizerPaymentStatus === 'paid' || booking.organizerPaymentStatus === 'PAID') || !!organizerPaidBookingsMap[String(booking.id)];
-        var allParticipantsPaid = participants.length === 0 || participants.every(function(p) {
-            return (p.paymentStatus === 'paid' || p.paymentStatus === 'PAID');
+        try { playerPaidBookingsMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}'); } catch (e) {}
+        var bookingKey = getBookingId(booking);
+        var organizerPaid = normalizePaymentStatus(booking.organizerPaymentStatus) === 'paid' || !!organizerPaidBookingsMap[String(bookingKey || '')];
+        var expectedParticipantCount = getExpectedParticipantCount(booking);
+        var participantById = {};
+        participants.forEach(function(p) {
+            var pid = String(p.userId || p.id || '');
+            if (pid) participantById[pid] = p;
         });
+        Object.keys(playerPaidBookingsMap || {}).forEach(function(key) {
+            if (!bookingKey || String(key).indexOf(String(bookingKey) + '_') !== 0) return;
+            var pid = String(key).slice(String(bookingKey).length + 1);
+            if (!pid || participantById[pid]) return;
+            participantById[pid] = { userId: pid, paymentStatus: 'paid' };
+        });
+        var normalizedParticipants = Object.keys(participantById).map(function(pid) { return participantById[pid]; });
+        var hasCompleteParticipantList = expectedParticipantCount == null || normalizedParticipants.length >= expectedParticipantCount;
+        var allParticipantsPaid = hasCompleteParticipantList && (
+            (expectedParticipantCount != null && expectedParticipantCount === 0) ||
+            normalizedParticipants.every(function(p) {
+                var pid = String(p.userId || p.id || '');
+                var paidByMap = bookingKey && pid ? !!playerPaidBookingsMap[String(bookingKey) + '_' + pid] : false;
+                return paidByMap || normalizePaymentStatus(p.paymentStatus) === 'paid';
+            })
+        );
+
+        if (booking.paymentMethod === 'organizer' || String(booking.paymentMethod || '').toUpperCase() === 'ORGANIZER') {
+            // Organizer-only payment flow is paid as soon as organizer payment is completed.
+            allParticipantsPaid = true;
+            hasCompleteParticipantList = true;
+        }
+
         if (isOrganizer) {
             paymentStatusLabel = (organizerPaid && allParticipantsPaid) ? 'Paid' : 'Pending';
         } else {
-            var me = participants.find(function(p) { return String(p.userId || p.id || '') === currentUserId; });
-            paymentStatusLabel = (me && (me.paymentStatus === 'paid' || me.paymentStatus === 'PAID')) ? 'Paid' : 'Pending';
+            var me = normalizedParticipants.find(function(p) { return String(p.userId || p.id || '') === currentUserId; });
+            var mePaidByMap = bookingKey && currentUserId ? !!playerPaidBookingsMap[String(bookingKey) + '_' + currentUserId] : false;
+            paymentStatusLabel = ((me && normalizePaymentStatus(me.paymentStatus) === 'paid') || mePaidByMap) ? 'Paid' : 'Pending';
         }
     }
 
@@ -319,7 +654,8 @@ function convertBookingToDisplayFormat(booking) {
         bookedDate: new Date(booking.createdAt || Date.now()).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
         status: isConfirmed ? 'confirmed' : displayStatus.toLowerCase(),
         isConfirmed: isConfirmed,
-        paymentStatusLabel: paymentStatusLabel
+        paymentStatusLabel: paymentStatusLabel,
+        ownerDecisionLabel: ownerDecisionLabel
     };
 }
 
@@ -427,6 +763,7 @@ function renderBookings() {
 }
 
 function hasPaidForBooking(bookingId, playerIdStr) {
+    if (!bookingId || !playerIdStr) return false;
     var paid = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
     return paid[String(bookingId) + '_' + playerIdStr] === true;
 }
@@ -463,6 +800,13 @@ function getPaymentButton(booking) {
         var costPerPlayer = fullBooking.totalCost && (participants.length + 1) ? Math.round(fullBooking.totalCost / (participants.length + 1)) : 0;
         var needsPayment = (fullBooking.paymentMethod === 'SPLIT' || fullBooking.paymentMethod === 'split') || (fullBooking.paymentMethod === 'MIXED' || fullBooking.paymentMethod === 'mixed');
         var alreadyPaid = hasPaidForBooking(booking.id, playerIdStr) || (player && (player.paymentStatus === 'paid' || player.paymentStatus === 'PAID'));
+        if (!player && !alreadyPaid && needsPayment) {
+            var invite = findInviteNotificationForBooking(booking.id, playerIdStr);
+            if (invite) {
+                var inviteAmount = invite.paymentAmount || costPerPlayer;
+                return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (₺' + inviteAmount + ')</button>';
+            }
+        }
         if (player && !alreadyPaid && (player.paymentStatus === 'PENDING' || player.paymentStatus === 'pending') && needsPayment) {
             var amount = player.paymentAmount || costPerPlayer;
             if (fullBooking.paymentMethod === 'MIXED' || fullBooking.paymentMethod === 'mixed') {
@@ -561,6 +905,18 @@ function createBookingCard(booking) {
     const cancelButtonText = isOrganizer ? 'Cancel Booking' : 'Leave Booking';
     const cancelAction = isOrganizer ? `cancelBooking('${booking.id}')` : `leaveBooking('${booking.id}')`;
     const showCancelOrLeave = isOrganizer ? true : !hasPaidAsParticipant;
+    const explicitDecision = booking.ownerDecisionLabel || '';
+    const rawStatus = String(booking.status || '').toLowerCase();
+    const statusLabel = explicitDecision
+        ? explicitDecision
+        : (rawStatus === 'cancelled'
+            ? 'Rejected'
+            : (rawStatus === 'confirmed' || rawStatus === 'upcoming' || rawStatus === 'completed' || booking.isConfirmed)
+                ? 'Approved'
+                : 'Pending');
+    const statusClass = explicitDecision
+        ? (explicitDecision === 'Approved' ? 'confirmed' : 'cancelled')
+        : (statusLabel === 'Approved' ? 'confirmed' : (statusLabel === 'Rejected' ? 'cancelled' : 'pending'));
     
     card.innerHTML = `
         <img src="${booking.image}" alt="${booking.fieldName}" class="booking-card-image">
@@ -604,9 +960,9 @@ function createBookingCard(booking) {
                 <div class="booking-card-actions">
                     <div class="booking-card-actions-top">
                         <div class="booking-status-row">
-                            <div class="booking-status ${(booking.status || '').toLowerCase() === 'cancelled' ? 'cancelled' : (booking.status || '').toLowerCase() === 'completed' ? 'completed' : booking.paymentStatusLabel ? (booking.paymentStatusLabel === 'Paid' ? 'paid' : 'pending') : (booking.isConfirmed || booking.status === 'confirmed' ? 'confirmed' : booking.status)}">
+                            <div class="booking-status ${statusClass}">
                                 <span class="booking-status-dot"></span>
-                                <span>${(booking.status || '').toLowerCase() === 'cancelled' ? 'Cancelled' : (booking.status || '').toLowerCase() === 'completed' ? 'Completed' : (booking.paymentStatusLabel || (booking.isConfirmed || booking.status === 'confirmed' ? 'Confirmed' : (booking.status && booking.status.charAt(0).toUpperCase() + booking.status.slice(1)) || 'Pending'))}</span>
+                                <span>${statusLabel}</span>
                             </div>
                             <button type="button" class="info-btn" data-booking-id="${String(booking.id || '').replace(/"/g, '&quot;')}" title="Booking details & payments">
                                 <i class="fi fi-rr-info"></i>
@@ -684,6 +1040,12 @@ function leaveBooking(bookingId) {
         alert('Booking not found.');
         return;
     }
+
+    var currentPlayerId = String((playerData && (playerData.id || playerData._id)) || '');
+    var participantsList = fullBooking.participants || fullBooking.players || [];
+    var isCurrentUserParticipant = participantsList.some(function(p) {
+        return String(p.userId || p.id || '') === currentPlayerId;
+    });
     
     // Create notification for organizer
     var notification = {
@@ -717,6 +1079,20 @@ function leaveBooking(bookingId) {
         alert('You have left the booking. The organizer has been notified.');
     }
     
+    // If user is only invited (not an actual participant yet), remove invite locally and exit.
+    if (!isCurrentUserParticipant) {
+        var inviteNotifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+        var filteredNotifications = inviteNotifications.filter(function(n) {
+            var sameBooking = String(n.bookingId || '') === String(bookingId);
+            var sameUser = String(n.playerId || '') === currentPlayerId;
+            var isInviteType = n.type === 'booking_payment_request' || n.type === 'booking_invite' || n.type === 'booking_invitation';
+            return !(sameBooking && sameUser && isInviteType);
+        });
+        localStorage.setItem('playerNotifications', JSON.stringify(filteredNotifications));
+        onLeftSuccess();
+        return;
+    }
+
     // Persist: call API or update localStorage
     if (typeof API !== 'undefined' && API.getAuthToken() && API.bookings && API.bookings.removeParticipant) {
         API.bookings.removeParticipant(bookingId)
@@ -763,13 +1139,13 @@ window.refreshBookingsAfterPayment = function(updatedBooking) {
     // Re-categorize and re-render
     var uniqueBookings = allBookingsCache;
     var isUpcomingStatus = function(b) {
-        return b.status === 'PENDING' || b.status === 'UPCOMING' || b.status === 'CONFIRMED' || b.status === 'pending' || b.status === 'upcoming' || b.status === 'confirmed';
+        return isUpcomingStatusValue(b && b.status);
     };
     var isCompletedStatus = function(b) {
-        return b.status === 'COMPLETED' || b.status === 'completed';
+        return isCompletedStatusValue(b && b.status);
     };
     var isCancelledStatus = function(b) {
-        return b.status === 'CANCELLED' || b.status === 'cancelled';
+        return isCancelledStatusValue(b && b.status);
     };
     bookingsData.cancelled = uniqueBookings.filter(isCancelledStatus).map(convertBookingToDisplayFormat);
     bookingsData.completed = uniqueBookings
@@ -1153,11 +1529,14 @@ async function showPaymentStatusInfo(bookingId) {
         });
     }
 
-    // Final fallback: fetch from API
-    if (!booking && typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && API.bookings && API.bookings.getById) {
+    // Always try to refresh from API by id to get complete participant/payment details.
+    if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && API.bookings && API.bookings.getById) {
         try {
             const res = await API.bookings.getById(bookingId);
-            booking = (res && (res.booking || res.data || res)) || null;
+            const apiBooking = (res && (res.booking || res.data || res)) || null;
+            if (apiBooking) {
+                booking = apiBooking;
+            }
         } catch (e) {
             console.error('Failed to load booking by id:', e);
         }
@@ -1173,12 +1552,52 @@ async function showPaymentStatusInfo(bookingId) {
         JSON.parse(localStorage.getItem('playerData') || '{}');
     const currentPlayerId = currentUser && (currentUser.id || currentUser._id);
 
-    const players = booking.players || booking.participants || [];
+    const organizerId = String(booking.organizerId || (booking.organizer && booking.organizer.id) || '');
+    var bookingKey = getBookingId(booking) || String(bookingId);
+    var participants = normalizeBookingParticipants(booking);
+    if (participants.length === 0) {
+        // Fallback: try local cache record if API/current object is missing participants.
+        var localBookingsFallback = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+        var localBooking = localBookingsFallback.find(function(b) {
+            return String(getBookingId(b)) === String(getBookingId(booking) || bookingId);
+        });
+        participants = normalizeBookingParticipants(localBooking || {});
+    }
+    // Merge invited players from notifications so popup shows all invited users.
+    var invitedPlayers = getInvitedPlayersFromNotifications(bookingKey);
+    var participantsById = {};
+    participants.forEach(function(player) {
+        var pid = String(player.id || '');
+        if (pid) participantsById[pid] = player;
+    });
+    invitedPlayers.forEach(function(invited) {
+        var pid = String(invited.id || '');
+        if (!pid || participantsById[pid]) return;
+        participants.push(invited);
+        participantsById[pid] = invited;
+    });
+
+    // Apply explicit paid markers from local storage map.
+    var playerPaidMap = {};
+    try {
+        playerPaidMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+    } catch (e) {}
+    participants = participants.map(function(player) {
+        var pid = String(player.id || '');
+        var paidKey = String(bookingKey) + '_' + pid;
+        return Object.assign({}, player, {
+            paymentStatus: playerPaidMap[paidKey] ? 'paid' : normalizePaymentStatus(player.paymentStatus)
+        });
+    });
+
+    const players = participants.filter(function(player) {
+        return String(player.id || '') !== organizerId;
+    });
     var organizerPaidBookings = {};
     try {
         organizerPaidBookings = JSON.parse(localStorage.getItem('organizerPaidBookings') || '{}');
     } catch (e) {}
-    var organizerIsPaid = (booking.organizerPaymentStatus === 'paid' || booking.organizerPaymentStatus === 'PAID') || !!organizerPaidBookings[String(booking.id)];
+    var organizerIsPaid = normalizePaymentStatus(booking.organizerPaymentStatus) === 'paid' || !!organizerPaidBookings[String(bookingKey || '')];
 
     // Calculate payment statistics
     const totalPlayers = players.length + 1; // +1 for organizer
@@ -1192,7 +1611,7 @@ async function showPaymentStatusInfo(bookingId) {
     }
     
     players.forEach(function(player) {
-        if (player.paymentStatus === 'paid' || player.paymentStatus === 'PAID') {
+        if (player.paymentStatus === 'paid') {
             playersPaid++;
         } else {
             playersPending++;
@@ -1230,7 +1649,7 @@ async function showPaymentStatusInfo(bookingId) {
     playersList.innerHTML = '';
     
     // Add organizer
-    const isOrganizer = booking.organizerId === currentPlayerId;
+    const isOrganizer = String(booking.organizerId || (booking.organizer && booking.organizer.id) || '') === String(currentPlayerId || '');
     const organizerAmount = booking.paymentMethod === 'organizer' ? booking.totalCost : 
                            booking.paymentMethod === 'split' ? booking.costPerPlayer :
                            booking.paymentMethod === 'mixed' ? (booking.mixedPaymentDistribution && booking.mixedPaymentDistribution[booking.organizerId] || 0) : 0;
@@ -1248,8 +1667,8 @@ async function showPaymentStatusInfo(bookingId) {
     
     // Add players (use players array - API may use participants)
     players.forEach(function(player) {
-        const pid = player.userId || player.id;
-        const pName = (player.user && player.user.fullName) || player.fullName || player.name || 'Player';
+        const pid = player.id;
+        const pName = player.name || 'Player';
         const isCurrentUser = String(pid) === String(currentPlayerId);
         const playerAmount = booking.paymentMethod === 'split' ? booking.costPerPlayer :
                             booking.paymentMethod === 'mixed' ? (booking.mixedPaymentDistribution && booking.mixedPaymentDistribution[pid] || 0) : 0;
@@ -1257,7 +1676,7 @@ async function showPaymentStatusInfo(bookingId) {
         const playerItem = createPlayerPaymentItem({
             id: pid,
             name: pName,
-            paymentStatus: player.paymentStatus || 'pending',
+            paymentStatus: player.paymentStatus,
             paymentAmount: playerAmount,
             isOrganizer: false,
             isCurrentUser: isCurrentUser
@@ -1278,11 +1697,12 @@ function createPlayerPaymentItem(player) {
     const item = document.createElement('div');
     item.className = `player-payment-item ${player.isCurrentUser ? 'current-user' : ''}`;
     
-    const statusIcon = player.paymentStatus === 'paid' 
+    const normalizedPaymentStatus = normalizePaymentStatus(player.paymentStatus);
+    const statusIcon = normalizedPaymentStatus === 'paid' 
         ? '<i class="fi fi-rr-check status-icon paid"></i>' 
         : '<i class="fi fi-rr-clock status-icon pending"></i>';
     
-    const statusText = player.paymentStatus === 'paid' ? 'Paid' : 'Pending';
+    const statusText = normalizedPaymentStatus === 'paid' ? 'Paid' : 'Pending';
     const amountDisplay = player.paymentAmount > 0 ? `₺${player.paymentAmount}` : '';
     const nameDisplay = player.isCurrentUser ? `${player.name} (You)` : player.name;
     const organizerBadge = player.isOrganizer ? '<span class="organizer-badge">Organizer</span>' : '';
@@ -1301,7 +1721,7 @@ function createPlayerPaymentItem(player) {
         </div>
         <div class="player-payment-info">
             ${amountDisplay ? `<span class="payment-amount">${amountDisplay}</span>` : ''}
-            <div class="payment-status ${player.paymentStatus}">
+            <div class="payment-status ${normalizedPaymentStatus}">
                 ${statusIcon}
                 <span>${statusText}</span>
             </div>

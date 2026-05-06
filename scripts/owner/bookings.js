@@ -56,18 +56,92 @@ function rowMatchesDateFilter(row, dateFilter) {
 function ownerStatusUiLabel(status) {
     var s = (status || '').toUpperCase();
     if (s === 'PENDING') return 'Pending';
-    if (s === 'CONFIRMED' || s === 'UPCOMING') return 'Confirmed';
-    if (s === 'COMPLETED') return 'Completed';
+    if (s === 'CONFIRMED' || s === 'UPCOMING' || s === 'COMPLETED') return 'Approved';
     if (s === 'CANCELLED') return 'Cancelled';
-    return s || '—';
+    return 'Pending';
+}
+
+function ownerNormalizePaymentStatus(status) {
+    return String(status || '').toUpperCase() === 'PAID' ? 'PAID' : 'PENDING';
+}
+
+function ownerAllPaymentsCompleted(booking) {
+    if (!booking) return false;
+    var bookingId = String(booking.id != null ? booking.id : booking._id || '');
+    var paymentMethod = String(booking.paymentMethod || '').toUpperCase();
+    var organizerPaidMap = {};
+    var playerPaidMap = {};
+    try { organizerPaidMap = JSON.parse(localStorage.getItem('organizerPaidBookings') || '{}'); } catch (_) {}
+    try { playerPaidMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}'); } catch (_) {}
+
+    var organizerPaid = ownerNormalizePaymentStatus(booking.organizerPaymentStatus) === 'PAID' || !!organizerPaidMap[bookingId];
+    if (!organizerPaid) return false;
+
+    if (paymentMethod === 'ORGANIZER') {
+        return true;
+    }
+
+    var participants = booking.participants || booking.players || [];
+    var expectedParticipants = Number(booking.teamSize) > 0 ? Math.max(Number(booking.teamSize) - 1, 0) : null;
+    var participantById = {};
+    participants.forEach(function(p) {
+        var pid = String(p.userId || p.id || '');
+        if (!pid) return;
+        participantById[pid] = p;
+    });
+    Object.keys(playerPaidMap || {}).forEach(function(k) {
+        if (!bookingId || k.indexOf(bookingId + '_') !== 0) return;
+        var pid = k.slice(bookingId.length + 1);
+        if (!pid) return;
+        if (!participantById[pid]) participantById[pid] = { userId: pid, paymentStatus: 'PAID' };
+    });
+    var mergedParticipants = Object.keys(participantById).map(function(pid) { return participantById[pid]; });
+    if (expectedParticipants != null && mergedParticipants.length < expectedParticipants) return false;
+    if (expectedParticipants === 0) return true;
+
+    return mergedParticipants.length > 0 && mergedParticipants.every(function(p) {
+        var pid = String(p.userId || p.id || '');
+        var byMap = bookingId && pid ? !!playerPaidMap[bookingId + '_' + pid] : false;
+        return byMap || ownerNormalizePaymentStatus(p.paymentStatus) === 'PAID';
+    });
 }
 
 function ownerPaymentUiLabel(b) {
-    if (b.paymentMethod === 'ORGANIZER') {
-        var o = (b.organizerPaymentStatus || '').toUpperCase();
-        return o === 'PAID' ? 'Paid' : 'Pending';
+    return ownerAllPaymentsCompleted(b) ? 'Paid' : 'Pending';
+}
+
+function ownerDecisionStorageKey() {
+    return 'ownerBookingDecisions';
+}
+
+function getOwnerDecisionMap() {
+    try {
+        return JSON.parse(localStorage.getItem(ownerDecisionStorageKey()) || '{}');
+    } catch (_) {
+        return {};
     }
-    return 'Split';
+}
+
+function setOwnerDecision(bookingId, decision) {
+    if (!bookingId) return;
+    var map = getOwnerDecisionMap();
+    map[String(bookingId)] = String(decision || '');
+    localStorage.setItem(ownerDecisionStorageKey(), JSON.stringify(map));
+}
+
+function ownerStatusDisplayLabel(booking) {
+    var statusRaw = String((booking && booking.status) || '').toUpperCase();
+    var bookingId = String(booking && (booking.id != null ? booking.id : booking._id || '') || '');
+    var decisionMap = getOwnerDecisionMap();
+    var decision = bookingId ? String(decisionMap[bookingId] || '').toLowerCase() : '';
+
+    if (statusRaw === 'PENDING') return 'Pending';
+    if (statusRaw === 'CANCELLED') {
+        if (decision === 'rejected') return 'Rejected';
+        return 'Cancelled';
+    }
+    if (statusRaw === 'CONFIRMED' || statusRaw === 'UPCOMING' || statusRaw === 'COMPLETED') return 'Approved';
+    return 'Pending';
 }
 
 function renderOwnerBookingsTable() {
@@ -89,7 +163,10 @@ function renderOwnerBookingsTable() {
         var dateStr = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         var timeStr = (b.timeSlotStart || '') + '-' + (b.timeSlotEnd || '');
         var st = (b.status || '').toUpperCase();
-        var statusClass = st === 'CANCELLED' ? 'badge-cancelled' : (st === 'PENDING' ? 'badge-pending' : 'badge-confirmed');
+        var statusLabel = ownerStatusDisplayLabel(b);
+        var statusClass = (statusLabel === 'Rejected' || statusLabel === 'Cancelled')
+            ? 'badge-cancelled'
+            : (statusLabel === 'Pending' ? 'badge-pending' : 'badge-confirmed');
         var payClass = ownerPaymentUiLabel(b) === 'Paid' ? 'badge-paid' : 'badge-pending-payment';
 
         var actions = '<div class="action-buttons">' +
@@ -100,13 +177,13 @@ function renderOwnerBookingsTable() {
         }
         actions += '</div>';
 
-        return '<tr data-booking-id="' + escHtml(id) + '" data-booking-date="' + escHtml(bookingDateKeyLocal(b.date)) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(ownerStatusUiLabel(b.status)) + '">' +
+        return '<tr data-booking-id="' + escHtml(id) + '" data-booking-date="' + escHtml(bookingDateKeyLocal(b.date)) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(statusLabel) + '">' +
             '<td><div class="customer-cell"><img src="' + escHtml(avatar) + '" alt="" class="customer-avatar"><span>' + escHtml(name) + '</span></div></td>' +
             '<td>' + escHtml(field.name || '') + '</td>' +
             '<td><div class="date-time-cell"><span class="date-text">' + escHtml(dateStr) + '</span><span class="time-text">' + escHtml(timeStr) + '</span></div></td>' +
             '<td>—</td>' +
             '<td><span class="badge ' + payClass + '">' + ownerPaymentUiLabel(b) + '</span></td>' +
-            '<td><span class="badge ' + statusClass + '">' + ownerStatusUiLabel(b.status) + '</span></td>' +
+            '<td><span class="badge ' + statusClass + '">' + statusLabel + '</span></td>' +
             '<td>' + actions + '</td></tr>';
     }).join('');
 }
@@ -180,6 +257,77 @@ function ownerBookingConfirmLabels(bookingId) {
     var customer = (b && b.organizer && b.organizer.fullName) || 'this customer';
     var field = (b && b.field && b.field.name) || 'your field';
     return { customer: customer, field: field };
+}
+
+async function resolveBookingParticipantsForNotification(booking, bookingId) {
+    var source = booking || null;
+    var participants = (source && (source.participants || source.players)) || [];
+    if (participants.length) return { booking: source, participants: participants };
+
+    if (typeof API !== 'undefined' && API.bookings && API.bookings.getById && bookingId) {
+        try {
+            var res = await API.bookings.getById(bookingId);
+            var fullBooking = (res && (res.booking || res.data || res)) || source;
+            var fullParticipants = (fullBooking && (fullBooking.participants || fullBooking.players)) || [];
+            return { booking: fullBooking, participants: fullParticipants };
+        } catch (_) {
+            // Fallback to whatever we had in cache.
+        }
+    }
+    return { booking: source, participants: participants };
+}
+
+async function notifyParticipantsBookingStatus(booking, bookingId, nextStatus) {
+    var resolved = await resolveBookingParticipantsForNotification(booking, bookingId);
+    var bookingData = resolved.booking || booking || {};
+    var participants = resolved.participants || [];
+
+    var ownerName = (bookingData.field && bookingData.field.owner && bookingData.field.owner.fullName) || 'Field owner';
+    var fieldName = (bookingData.field && bookingData.field.name) || bookingData.fieldName || 'your booking';
+    var isApproved = String(nextStatus || '').toUpperCase() === 'CONFIRMED';
+    var title = isApproved ? 'Booking Approved' : 'Booking Rejected';
+    var message = isApproved
+        ? (ownerName + ' approved your booking at ' + fieldName + '.')
+        : (ownerName + ' rejected your booking at ' + fieldName + '.');
+
+    var notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    var bookingIdStr = String((bookingData.id != null ? bookingData.id : bookingData._id) || bookingId || '');
+    var recipientMap = {};
+
+    // API participants/players
+    participants.forEach(function(p) {
+        var pid = String(p.userId || p.id || (p.user && p.user.id) || '');
+        if (!pid) return;
+        recipientMap[pid] = true;
+    });
+
+    // Also include invited users from existing booking invite/payment notifications.
+    notifications.forEach(function(n) {
+        var isSameBooking = String(n.bookingId || '') === bookingIdStr;
+        var isInviteType = n.type === 'booking_payment_request' || n.type === 'booking_invite' || n.type === 'booking_invitation';
+        var pid = String(n.playerId || '');
+        if (!isSameBooking || !isInviteType || !pid) return;
+        recipientMap[pid] = true;
+    });
+
+    var recipientIds = Object.keys(recipientMap);
+    if (!recipientIds.length) return;
+    var now = new Date().toISOString();
+    recipientIds.forEach(function(pid) {
+        notifications.push({
+            id: 'notif_' + Date.now() + '_' + pid + '_' + Math.random().toString(36).slice(2, 7),
+            type: isApproved ? 'booking_approved' : 'booking_rejected',
+            playerId: pid,
+            bookingId: bookingIdStr,
+            title: title,
+            message: message,
+            date: bookingData.date,
+            status: 'unread',
+            createdAt: now
+        });
+    });
+    localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
 }
 
 function setOwnerRowActionLoading(row, loading) {
@@ -601,7 +749,10 @@ async function approveBookingById(bookingId, row) {
     setOwnerRowActionLoading(row, true);
     setBookingDetailFooterBusy(true);
     try {
+        var cachedBeforeUpdate = findCachedOwnerBooking(bookingId);
         await API.bookings.updateStatus(bookingId, 'CONFIRMED');
+        setOwnerDecision(bookingId, 'approved');
+        await notifyParticipantsBookingStatus(cachedBeforeUpdate, bookingId, 'CONFIRMED');
         await loadOwnerBookingsFromApi();
         if (typeof renderCalendar === 'function') renderCalendar();
         closeBookingDetailModal();
@@ -623,7 +774,10 @@ async function declineBookingById(bookingId, row) {
     setOwnerRowActionLoading(row, true);
     setBookingDetailFooterBusy(true);
     try {
+        var cachedBeforeUpdate = findCachedOwnerBooking(bookingId);
         await API.bookings.updateStatus(bookingId, 'CANCELLED');
+        setOwnerDecision(bookingId, 'rejected');
+        await notifyParticipantsBookingStatus(cachedBeforeUpdate, bookingId, 'CANCELLED');
         await loadOwnerBookingsFromApi();
         if (typeof renderCalendar === 'function') renderCalendar();
         closeBookingDetailModal();
