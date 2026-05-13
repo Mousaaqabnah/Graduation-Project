@@ -25,10 +25,17 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
+const faviconPath = path.join(__dirname, 'assets', 'images', 'favicon.png');
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/png');
+  res.sendFile(faviconPath);
+});
+
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+// Field creation sends base64 documents + images; default 5mb truncates and ownership URLs never reach the DB.
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Uploaded chat files (local disk)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -47,6 +54,7 @@ app.use('/pages', express.static('pages'));
 app.use('/styles', express.static('styles'));
 app.use('/scripts', express.static('scripts'));
 app.use('/assets', express.static('assets'));
+app.use('/logo', express.static('logo'));
 
 // Root: redirect to login page (under /pages so CSS/JS paths work)
 app.get('/', (req, res) => {
@@ -59,6 +67,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes — chat upload routes must register before generic /messages routes
+app.use('/api/public', require('./routes/public'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/fields', require('./routes/fields'));

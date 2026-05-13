@@ -37,6 +37,22 @@
     }
   }
 
+  function mergedAmenitiesAndFeatures(f) {
+    var a = Array.isArray(f.amenities) ? f.amenities : [];
+    var feat = Array.isArray(f.features) ? f.features : [];
+    var seen = {};
+    var out = [];
+    [].concat(a, feat).forEach(function (x) {
+      var s = String(x || '').trim();
+      if (!s) return;
+      var k = s.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(s);
+    });
+    return out;
+  }
+
   function populateViewFieldModalFromApi(f) {
     if (!f) return;
     if (!document.getElementById('viewFieldModal')) return;
@@ -91,7 +107,8 @@
         '<span class="view-field-price-unit">/h</span>';
     }
 
-    const features = Array.isArray(f.features) ? f.features : [];
+    const features = mergedAmenitiesAndFeatures(f);
+    const highlightsOnly = Array.isArray(f.highlights) ? f.highlights.map(function (x) { return String(x || '').trim(); }).filter(Boolean) : [];
     const tagsContainer = document.getElementById('viewFieldTags');
     if (tagsContainer) {
       tagsContainer.innerHTML = features
@@ -118,8 +135,8 @@
 
     const highlightsList = document.getElementById('viewFieldHighlights');
     if (highlightsList) {
-      if (features.length) {
-        highlightsList.innerHTML = features
+      if (highlightsOnly.length) {
+        highlightsList.innerHTML = highlightsOnly
           .slice(0, 8)
           .map(function (h) {
             return '<li>' + ownerFieldEsc(h) + '</li>';

@@ -505,18 +505,46 @@ function calculateMemberMonths(isoDate) {
     return years * 12 + months + (now.getDate() >= start.getDate() ? 0 : -1);
 }
 
+// Map backend user + optional booking/review stats → profile view model
+function buildProfileDataFromUser(user, stats) {
+    if (!user) return null;
+    var avatarUrl = user.avatar || (user.id && localStorage.getItem('userAvatar_' + user.id)) || null;
+    const savedAddress = user.id ? getAddressPartsForUser(user.id) : null;
+    const s = stats || {};
+    return {
+        fullName: user.fullName || 'Player',
+        email: user.email || '',
+        avatar: avatarUrl,
+        playerId: generatePlayerId(),
+        phone: user.phone || 'Not provided',
+        dateOfBirth: formatFullDate(user.dateOfBirth),
+        gender: user.gender || 'Not specified',
+        memberSince: formatMonthYear(user.createdAt),
+        streetAddress: (savedAddress && savedAddress.streetAddress) || user.location || 'Not set',
+        city: (savedAddress && savedAddress.city) || '',
+        state: (savedAddress && savedAddress.state) || '',
+        postalCode: (savedAddress && savedAddress.postalCode) || '',
+        country: (savedAddress && savedAddress.country) || '',
+        totalBookings: s.totalBookings != null ? s.totalBookings : 0,
+        upcomingBookings: s.upcomingBookings != null ? s.upcomingBookings : 0,
+        averageRating: s.averageRating != null ? s.averageRating : 0,
+        memberMonths: calculateMemberMonths(user.createdAt)
+    };
+}
+
 // Function to load profile data (from backend auth/me + localStorage)
 async function loadProfileData() {
-    // Ensure API helper is available
     if (typeof API === 'undefined') {
         console.warn('Profile: API helper not loaded. Showing placeholder data.');
         return;
     }
 
-    // Start with any cached user
     let user = API.getCurrentUser && API.getCurrentUser();
+    if (user) {
+        const cachedView = buildProfileDataFromUser(user, {});
+        if (cachedView) updateProfileDisplay(cachedView);
+    }
 
-    // Try to refresh from backend /auth/me
     try {
         if (API.auth && API.auth.getCurrentUser) {
             const res = await API.auth.getCurrentUser();
@@ -531,48 +559,26 @@ async function loadProfileData() {
         console.warn('Profile: failed to load user from /auth/me, using cached user if available.', e);
     }
 
-    // If still no user, redirect to login
     if (!user) {
         window.location.href = '/pages/auth/login.html';
         return;
     }
 
-    var avatarUrl = user.avatar || (user.id && localStorage.getItem('userAvatar_' + user.id)) || null;
+    const afterAuthView = buildProfileDataFromUser(user, {});
+    if (afterAuthView) updateProfileDisplay(afterAuthView);
 
-    // Map backend user → profile view model
-    const savedAddress = user && user.id ? getAddressPartsForUser(user.id) : null;
+    const stats = { totalBookings: 0, upcomingBookings: 0, averageRating: 0 };
 
-    const profileData = {
-        fullName: user.fullName || 'Player',
-        email: user.email || '',
-        avatar: avatarUrl,
-        playerId: generatePlayerId(),
-        phone: user.phone || 'Not provided',
-        dateOfBirth: formatFullDate(user.dateOfBirth),
-        gender: user.gender || 'Not specified',
-        memberSince: formatMonthYear(user.createdAt),
-        streetAddress: (savedAddress && savedAddress.streetAddress) || user.location || 'Not set',
-        city: (savedAddress && savedAddress.city) || '',
-        state: (savedAddress && savedAddress.state) || '',
-        postalCode: (savedAddress && savedAddress.postalCode) || '',
-        country: (savedAddress && savedAddress.country) || '',
-        totalBookings: 0,
-        upcomingBookings: 0,
-        averageRating: 0,
-        memberMonths: calculateMemberMonths(user.createdAt)
-    };
-
-    // Fetch booking and review stats from API
     try {
         if (API.bookings && API.bookings.getAll) {
             const bookingsRes = await API.bookings.getAll({ limit: 500 });
             const bookings = bookingsRes.bookings || [];
             const now = new Date();
             now.setHours(0, 0, 0, 0);
-            profileData.totalBookings = bookings.filter(function(b) {
+            stats.totalBookings = bookings.filter(function(b) {
                 return b.status !== 'CANCELLED';
             }).length;
-            profileData.upcomingBookings = bookings.filter(function(b) {
+            stats.upcomingBookings = bookings.filter(function(b) {
                 if (b.status === 'CANCELLED') return false;
                 var d = new Date(b.date);
                 d.setHours(0, 0, 0, 0);
@@ -581,15 +587,16 @@ async function loadProfileData() {
         }
         if (API.reviews && API.reviews.getMyReviews) {
             const reviewsRes = await API.reviews.getMyReviews();
-            profileData.averageRating = (reviewsRes.averageRating != null)
+            stats.averageRating = (reviewsRes.averageRating != null)
                 ? reviewsRes.averageRating
                 : 0;
         }
     } catch (e) {
         console.warn('Profile: failed to load booking/review stats', e);
     }
-    
-    updateProfileDisplay(profileData);
+
+    const profileData = buildProfileDataFromUser(user, stats);
+    if (profileData) updateProfileDisplay(profileData);
 }
 
 // Build avatar URL from full name (e.g. "Mousa Aqabnah" → initials "MA")

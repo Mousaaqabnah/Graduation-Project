@@ -38,6 +38,9 @@ function dashboardLocationLine(field) {
 let ownerDashboardFieldsById = new Map();
 let addFieldMapPicker = null;
 let manageFieldMapPicker = null;
+/** Last accepted land pin (revert sea clicks). */
+let lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+let lastValidManageFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
 
 function ownerFieldModerationUi(f) {
     const mod = String((f && f.moderationStatus) || '').toUpperCase();
@@ -64,6 +67,219 @@ function detectSportLabel(sportValue) {
     return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+/** Add-field modal: show custom sport when "Other" is selected. */
+function syncFieldTypeCustomVisibility() {
+    const sel = document.getElementById('fieldType');
+    const group = document.getElementById('fieldSportCustomGroup');
+    const input = document.getElementById('fieldSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+/** Indoor vs outdoor, artificial vs natural grass — only one of each pair at a time. */
+function syncMutuallyExclusiveFieldFeaturesState() {
+    const form = document.getElementById('addFieldForm');
+    if (!form) return;
+    function pair(aSel, bSel) {
+        const a = form.querySelector(aSel);
+        const b = form.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="features"][value="indoor"]', 'input[name="features"][value="outdoor"]');
+    pair('input[name="features"][value="artificial-grass"]', 'input[name="features"][value="natural-grass"]');
+}
+
+function initAddFieldFormEnhancements() {
+    const form = document.getElementById('addFieldForm');
+    if (!form || form.dataset.addFieldEnhancements === '1') return;
+    form.dataset.addFieldEnhancements = '1';
+    const typeSel = document.getElementById('fieldType');
+    if (typeSel) {
+        typeSel.addEventListener('change', function () {
+            syncFieldTypeCustomVisibility();
+        });
+    }
+    form.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'features') {
+            syncMutuallyExclusiveFieldFeaturesState();
+        }
+    });
+    syncFieldTypeCustomVisibility();
+    syncMutuallyExclusiveFieldFeaturesState();
+}
+
+function resolveAddFieldSportForPayload() {
+    const sel = document.getElementById('fieldType');
+    const custom = document.getElementById('fieldSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = (custom && custom.value) ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
+function syncManageSportCustomVisibility() {
+    const sel = document.getElementById('manageSportCategory');
+    const group = document.getElementById('manageSportCustomGroup');
+    const input = document.getElementById('manageSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+function syncMutuallyExclusiveManageFeaturesState() {
+    const root = document.getElementById('editFieldModal');
+    if (!root) return;
+    function pair(aSel, bSel) {
+        const a = root.querySelector(aSel);
+        const b = root.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="manageFeatures"][value="indoor"]', 'input[name="manageFeatures"][value="outdoor"]');
+    pair('input[name="manageFeatures"][value="artificial-grass"]', 'input[name="manageFeatures"][value="natural-grass"]');
+}
+
+function initManageFieldFormEnhancements() {
+    const modal = document.getElementById('editFieldModal');
+    if (!modal || modal.dataset.manageFormEnhancements === '1') return;
+    modal.dataset.manageFormEnhancements = '1';
+    const sportSel = document.getElementById('manageSportCategory');
+    if (sportSel) {
+        sportSel.addEventListener('change', function () {
+            syncManageSportCustomVisibility();
+        });
+    }
+    modal.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'manageFeatures') {
+            syncMutuallyExclusiveManageFeaturesState();
+        }
+    });
+    syncManageSportCustomVisibility();
+    syncMutuallyExclusiveManageFeaturesState();
+}
+
+function resolveManageSportForPayload() {
+    const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = custom && custom.value ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
+function selectManageSportByName(sportName) {
+    const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
+    if (!sel) return;
+    const raw = String(sportName || '').trim();
+    if (!raw) {
+        sel.value = 'football';
+        if (custom) custom.value = '';
+        syncManageSportCustomVisibility();
+        return;
+    }
+    const norm = raw.toLowerCase().replace(/[_-]+/g, ' ');
+    const aliases = {
+        football: ['football', 'soccer', 'futbol', 'futsal football', 'mini football', 'hali saha'],
+        basketball: ['basketball', 'basket ball'],
+        tennis: ['tennis'],
+        padel: ['padel', 'paddle', 'padel tennis'],
+        futsal: ['futsal'],
+        volleyball: ['volleyball', 'voleybol'],
+        badminton: ['badminton']
+    };
+    let canonical = '';
+    Object.keys(aliases).some(function (key) {
+        const words = aliases[key];
+        const matched = words.some(function (w) {
+            return norm === w || norm.indexOf(w + ' ') === 0 || norm.indexOf(' ' + w) >= 0;
+        });
+        if (matched) canonical = key;
+        return matched;
+    });
+    const want = canonical || norm;
+    for (let i = 0; i < sel.options.length; i++) {
+        const opt = sel.options[i];
+        if (opt.value === 'other') continue;
+        const optionText = String(opt.text || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[_-]+/g, ' ');
+        const optionValue = String(opt.value || '').trim().toLowerCase();
+        if (optionText === want || optionValue === want) {
+            sel.selectedIndex = i;
+            if (custom) custom.value = '';
+            syncManageSportCustomVisibility();
+            return;
+        }
+    }
+    const otherOpt = Array.from(sel.options).find(function (o) {
+        return o.value === 'other';
+    });
+    if (otherOpt) {
+        sel.value = 'other';
+        if (custom) custom.value = raw;
+    }
+    syncManageSportCustomVisibility();
+}
+
+function collectManageFeatureStrings() {
+    const out = [];
+    document.querySelectorAll('input[name="manageAmenities"]:checked').forEach(function (cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('input[name="manageFeatures"]:checked').forEach(function (cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('#manageHighlightsList .highlight-item span').forEach(function (span) {
+        const t = span.textContent.trim();
+        if (t) out.push(t);
+    });
+    return out;
+}
+
 function applyManageFeaturesFromField(features) {
     const arr = Array.isArray(features) ? features : [];
     const normalized = arr.map(function(v) { return String(v || '').trim().toLowerCase(); }).filter(Boolean);
@@ -77,7 +293,10 @@ function applyManageFeaturesFromField(features) {
     });
 
     const highlightsList = document.getElementById('manageHighlightsList');
-    if (!highlightsList) return;
+    if (!highlightsList) {
+        syncMutuallyExclusiveManageFeaturesState();
+        return;
+    }
     highlightsList.innerHTML = '';
     arr.forEach(function(item) {
         const text = String(item || '').trim();
@@ -87,6 +306,7 @@ function applyManageFeaturesFromField(features) {
         node.innerHTML = '<span>' + text + '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
         highlightsList.appendChild(node);
     });
+    syncMutuallyExclusiveManageFeaturesState();
 }
 
 function applyManageInfoArraysFromField(field) {
@@ -340,7 +560,6 @@ const addFieldModal = document.getElementById('addFieldModal');
 let currentStep = 1;
 const totalSteps = 8;
 let fieldImages = [];
-let highlights = [];
 let unavailableDates = [];
 
 if (addFieldBtn && addFieldModal) {
@@ -499,6 +718,9 @@ function openManageSection(sectionName) {
         if (manageFieldMapPicker && typeof manageFieldMapPicker.invalidateSize === 'function') {
             setTimeout(function () { manageFieldMapPicker.invalidateSize(); }, 60);
         }
+    } else if (sectionName === 'edit-info') {
+        syncManageSportCustomVisibility();
+        syncMutuallyExclusiveManageFeaturesState();
     }
 }
 
@@ -520,14 +742,7 @@ async function loadFieldData(fieldId) {
     const nameEl = document.getElementById('manageFieldName');
     if (nameEl) nameEl.value = f.name || '';
 
-    const sportEl = document.getElementById('manageSportCategory');
-    if (sportEl) {
-        const wanted = detectSportLabel(f.sport);
-        const match = Array.from(sportEl.options).find(function(opt) {
-            return String(opt.textContent || '').trim().toLowerCase() === wanted.toLowerCase();
-        });
-        if (match) sportEl.value = match.value;
-    }
+    selectManageSportByName(f.sport || 'Football');
 
     const typeEl = document.getElementById('manageFieldType');
     if (typeEl) {
@@ -562,7 +777,10 @@ async function loadFieldData(fieldId) {
     if (lngEl) lngEl.textContent = f.longitude != null ? String(f.longitude) : '-';
     initializeManageMap();
     if (manageFieldMapPicker && Number.isFinite(Number(f.latitude)) && Number.isFinite(Number(f.longitude))) {
-        manageFieldMapPicker.setPosition(Number(f.latitude), Number(f.longitude), 'init');
+        const latN = Number(f.latitude);
+        const lngN = Number(f.longitude);
+        lastValidManageFieldMapPosition = { lat: latN, lng: lngN };
+        manageFieldMapPicker.setPosition(latN, lngN, 'init', { silent: true });
     }
 
     const visibilityToggle = document.getElementById('manageVisibilityToggle');
@@ -686,16 +904,14 @@ function closeAddFieldModal() {
 // Reset form
 function resetAddFieldForm() {
     fieldImages = [];
-    highlights = [];
     unavailableDates = [];
     const form = document.getElementById('addFieldForm');
     if (form) form.reset();
     const imagesGrid = document.getElementById('fieldImagesGrid');
-    const highlightsList = document.getElementById('highlightsList');
     const unavailableDatesList = document.getElementById('unavailableDatesList');
     if (imagesGrid) imagesGrid.innerHTML = '';
-    if (highlightsList) highlightsList.innerHTML = '';
     if (unavailableDatesList) unavailableDatesList.innerHTML = '';
+    lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
     const latEl = document.getElementById('latitude');
     const lngEl = document.getElementById('longitude');
     if (latEl) latEl.textContent = '-';
@@ -710,6 +926,8 @@ function resetAddFieldForm() {
         initializeDaySchedules();
         updateRadioLabels();
         initializeAddFieldMap();
+        syncFieldTypeCustomVisibility();
+        syncMutuallyExclusiveFieldFeaturesState();
     }, 100);
 }
 
@@ -811,6 +1029,23 @@ function validateCurrentStep() {
             alert('Please upload ownership or rental agreement document');
             isValid = false;
         }
+    } else if (currentStep === 2) {
+        const fieldTypeEl = document.getElementById('fieldType');
+        const customSport = document.getElementById('fieldSportCustom');
+        if (fieldTypeEl && fieldTypeEl.value === 'other') {
+            const custom = customSport ? customSport.value.trim() : '';
+            if (!custom) {
+                alert('Please enter the sport name for "Other".');
+                isValid = false;
+                if (customSport) {
+                    customSport.style.borderColor = '#DC2626';
+                    customSport.addEventListener('input', function onIn() {
+                        this.style.borderColor = '#D1D5DB';
+                        this.removeEventListener('input', onIn);
+                    });
+                }
+            }
+        }
     } else if (currentStep === 4) {
         if (fieldImages.length === 0) {
             alert('Please upload at least one field image');
@@ -852,35 +1087,6 @@ function validateCurrentStep() {
 }
 
 // Add highlight
-function addHighlight() {
-    const input = document.getElementById('highlightInput');
-    const value = input ? input.value.trim() : '';
-    
-    if (value && !highlights.includes(value)) {
-        highlights.push(value);
-        renderHighlights();
-        if (input) input.value = '';
-    }
-}
-
-// Remove highlight
-function removeHighlight(index) {
-    highlights.splice(index, 1);
-    renderHighlights();
-}
-
-// Render highlights
-function renderHighlights() {
-    const container = document.getElementById('highlightsList');
-    if (!container) return;
-    container.innerHTML = highlights.map((highlight, index) => `
-        <div class="highlight-tag">
-            <span>${highlight}</span>
-            <button type="button" onclick="removeHighlight(${index})">&times;</button>
-        </div>
-    `).join('');
-}
-
 // Handle field images upload
 function handleFieldImagesUpload(event) {
     const files = Array.from(event.target.files);
@@ -919,6 +1125,63 @@ function renderFieldImages() {
 function removeFieldImage(index) {
     fieldImages.splice(index, 1);
     renderFieldImages();
+}
+
+function fileToDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+        if (!file) {
+            resolve('');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            resolve((e && e.target && e.target.result) || '');
+        };
+        reader.onerror = function () {
+            reject(new Error('Failed to read file.'));
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function collectAddFieldScheduleFromDom() {
+    return {
+        monday: {
+            enabled: document.querySelector('input[name="workingDays"][value="monday"]')?.checked || false,
+            opening: document.getElementById('monday-opening')?.value || null,
+            closing: document.getElementById('monday-closing')?.value || null
+        },
+        tuesday: {
+            enabled: document.querySelector('input[name="workingDays"][value="tuesday"]')?.checked || false,
+            opening: document.getElementById('tuesday-opening')?.value || null,
+            closing: document.getElementById('tuesday-closing')?.value || null
+        },
+        wednesday: {
+            enabled: document.querySelector('input[name="workingDays"][value="wednesday"]')?.checked || false,
+            opening: document.getElementById('wednesday-opening')?.value || null,
+            closing: document.getElementById('wednesday-closing')?.value || null
+        },
+        thursday: {
+            enabled: document.querySelector('input[name="workingDays"][value="thursday"]')?.checked || false,
+            opening: document.getElementById('thursday-opening')?.value || null,
+            closing: document.getElementById('thursday-closing')?.value || null
+        },
+        friday: {
+            enabled: document.querySelector('input[name="workingDays"][value="friday"]')?.checked || false,
+            opening: document.getElementById('friday-opening')?.value || null,
+            closing: document.getElementById('friday-closing')?.value || null
+        },
+        saturday: {
+            enabled: document.querySelector('input[name="workingDays"][value="saturday"]')?.checked || false,
+            opening: document.getElementById('saturday-opening')?.value || null,
+            closing: document.getElementById('saturday-closing')?.value || null
+        },
+        sunday: {
+            enabled: document.querySelector('input[name="workingDays"][value="sunday"]')?.checked || false,
+            opening: document.getElementById('sunday-opening')?.value || null,
+            closing: document.getElementById('sunday-closing')?.value || null
+        }
+    };
 }
 
 // Toggle day schedule (enable/disable time inputs)
@@ -1009,10 +1272,24 @@ function getAddressFieldIds(mode) {
 }
 
 async function applyReverseGeocodedMetadata(lat, lng, mode) {
-    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return;
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return true;
     try {
         const meta = await GeocodingService.reverseGeocode(lat, lng);
-        if (!meta) return;
+        if (!meta) return true;
+        if (meta.isUnbuildableWater) {
+            const reason = meta.invalidPinReason;
+            const msg =
+                reason === 'drift'
+                    ? 'This pin is not on land (for example open sea). Move it onto land until the address matches the pin — try near a street, district, or venue.'
+                    : 'That location is on open water. Place the pin on land (e.g. a street or sports ground).';
+            const title = reason === 'drift' ? 'Pin not on land' : 'Open water';
+            if (typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.alert) {
+                await MatchFieldDialog.alert(msg, { title: title, type: 'warning', okText: 'OK' });
+            } else {
+                alert(msg);
+            }
+            return false;
+        }
         const ids = getAddressFieldIds(mode);
         const addressInput = document.getElementById(ids.addressId);
         const cityInput = document.getElementById(ids.cityId);
@@ -1020,7 +1297,10 @@ async function applyReverseGeocodedMetadata(lat, lng, mode) {
         if (addressInput && meta.address) addressInput.value = meta.address;
         if (cityInput && meta.city) cityInput.value = meta.city;
         if (districtInput && meta.district) districtInput.value = meta.district;
-    } catch (_e) {}
+        return true;
+    } catch (_e) {
+        return true;
+    }
 }
 
 async function geocodeAddressAndSetMarker(mode) {
@@ -1058,9 +1338,19 @@ function initializeAddFieldMap() {
         initialCenter: [41.0082, 28.9784],
         initialZoom: 12,
         draggable: true,
-        onPositionChange: async function(position) {
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
+            if (!ok) {
+                const prev = lastValidAddFieldMapPosition;
+                if (addFieldMapPicker && prev) {
+                    addFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'add');
+                }
+                return;
+            }
+            lastValidAddFieldMapPosition = { lat: position.lat, lng: position.lng };
             applyCoordinatesToDom(position.lat, position.lng, 'add');
-            await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
         }
     });
     bindAddressSearch('add');
@@ -1095,8 +1385,11 @@ async function submitFieldForm() {
     const district = (document.getElementById('fieldDistrict')?.value || '').trim();
     const address = (document.getElementById('fieldAddress')?.value || '').trim();
     const locationLine = [city, district].filter(Boolean).join(', ') || address || '—';
-    const sportVal = document.getElementById('fieldType')?.value || 'other';
-    const sport = detectSportLabel(sportVal);
+    const sport = resolveAddFieldSportForPayload();
+    if (!sport) {
+        alert('Please enter the sport name for "Other".');
+        return;
+    }
     const isIndoor = !!document.querySelector('input[name="features"][value="indoor"]:checked') &&
       !document.querySelector('input[name="features"][value="outdoor"]:checked');
 
@@ -1113,17 +1406,29 @@ async function submitFieldForm() {
         pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour')?.value || '0') || 0),
         amenities: Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(cb => cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value).filter(Boolean),
         features: Array.from(document.querySelectorAll('input[name="features"]:checked')).map(cb => cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value).filter(Boolean),
-        highlights: highlights.slice(),
+        highlights: [],
         images: fieldImages.map(function(img) { return img && img.url ? img.url : ''; }).filter(Boolean),
+        schedule: collectAddFieldScheduleFromDom(),
         bookingType: document.querySelector('input[name="bookingType"]:checked')?.value || 'instant',
-        advanceBooking: document.getElementById('advanceBooking')?.value || '3',
-        cancellationPolicy: document.getElementById('cancellationPolicy')?.value || 'moderate',
         visibilityRequested: !!document.getElementById('fieldVisibilityToggle')?.classList.contains('active'),
         latitude: latNum,
         longitude: lngNum
     };
 
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
     try {
+        const ownFile = document.getElementById('ownershipDoc')?.files?.[0];
+        const licFile = document.getElementById('licensesDoc')?.files?.[0];
+        const ownershipDataUrl = await fileToDataUrl(ownFile);
+        const licenseDataUrl = await fileToDataUrl(licFile);
+        if (ownershipDataUrl) payload.ownershipDocumentUrl = ownershipDataUrl;
+        if (licenseDataUrl) payload.licensesDocumentUrl = licenseDataUrl;
+
         const res = await API.fields.create(payload);
         const fieldId = res && res.field && res.field.id;
         if (fieldId && Array.isArray(unavailableDates) && unavailableDates.length && API.fields.addUnavailableDate) {
@@ -1136,6 +1441,11 @@ async function submitFieldForm() {
         await loadOwnerDashboard();
     } catch (err) {
         alert((err && err.message) || 'Could not create field.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit for Approval';
+        }
     }
 }
 
@@ -1195,6 +1505,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeDaySchedules();
     // Update radio labels styling
     updateRadioLabels();
+    initAddFieldFormEnhancements();
+    initManageFieldFormEnhancements();
 });
 
 // Update radio label styling on change
@@ -1341,9 +1653,19 @@ function initializeManageMap() {
         initialCenter: [41.0082, 28.9784],
         initialZoom: 12,
         draggable: true,
-        onPositionChange: async function(position) {
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
+            if (!ok) {
+                const prev = lastValidManageFieldMapPosition;
+                if (manageFieldMapPicker && prev) {
+                    manageFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'manage');
+                }
+                return;
+            }
+            lastValidManageFieldMapPosition = { lat: position.lat, lng: position.lng };
             applyCoordinatesToDom(position.lat, position.lng, 'manage');
-            await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
         }
     });
     bindAddressSearch('manage');
@@ -1431,10 +1753,11 @@ function submitManageChanges() {
 
     const typeSel = document.getElementById('manageFieldType');
     const typeEnum = String(typeSel && typeSel.value ? typeSel.value : 'Outdoor').toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
-    const sportSel = document.getElementById('manageSportCategory');
-    const sport = sportSel && sportSel.options[sportSel.selectedIndex]
-        ? sportSel.options[sportSel.selectedIndex].text.trim()
-        : 'Football';
+    const sport = resolveManageSportForPayload();
+    if (!sport) {
+        alert('Please enter the sport name for "Other".');
+        return;
+    }
     const capacityRaw = (document.getElementById('manageCapacity')?.value || '').trim();
     const capacityNum = capacityRaw === '' ? null : parseInt(capacityRaw, 10);
 
@@ -1448,7 +1771,8 @@ function submitManageChanges() {
         location: (document.getElementById('manageFieldAddress')?.value || '').trim(),
         address: (document.getElementById('manageFieldAddress')?.value || '').trim() || undefined,
         city: (document.getElementById('manageFieldCity')?.value || '').trim() || undefined,
-        district: (document.getElementById('manageFieldDistrict')?.value || '').trim() || undefined
+        district: (document.getElementById('manageFieldDistrict')?.value || '').trim() || undefined,
+        features: collectManageFeatureStrings()
     };
 
     const latNum = parseFloat(document.getElementById('manageLatitude')?.textContent || '');
@@ -1715,8 +2039,6 @@ window.closeViewModal = closeViewModal;
 window.toggleViewReviews = toggleViewReviews;
 window.openAddFieldModal = openAddFieldModal;
 window.closeAddFieldModal = closeAddFieldModal;
-window.addHighlight = addHighlight;
-window.removeHighlight = removeHighlight;
 window.handleFieldImagesUpload = handleFieldImagesUpload;
 window.removeFieldImage = removeFieldImage;
 window.toggleDaySchedule = toggleDaySchedule;

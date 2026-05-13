@@ -144,6 +144,18 @@ function ownerStatusDisplayLabel(booking) {
     return 'Pending';
 }
 
+/** Same badge classes as the bookings table STATUS column. */
+function ownerStatusBadgeClassForBooking(b) {
+    var statusLabel = ownerStatusDisplayLabel(b);
+    if (statusLabel === 'Rejected' || statusLabel === 'Cancelled') {
+        return 'badge-cancelled';
+    }
+    if (statusLabel === 'Pending') {
+        return 'badge-pending';
+    }
+    return 'badge-confirmed';
+}
+
 function renderOwnerBookingsTable() {
     var tbody = document.getElementById('bookingsTableBody');
     if (!tbody) return;
@@ -162,6 +174,7 @@ function renderOwnerBookingsTable() {
         var dateObj = b.date ? new Date(b.date) : new Date();
         var dateStr = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         var timeStr = (b.timeSlotStart || '') + '-' + (b.timeSlotEnd || '');
+        var durationStr = formatBookingDurationLabel(b);
         var st = (b.status || '').toUpperCase();
         var statusLabel = ownerStatusDisplayLabel(b);
         var statusClass = (statusLabel === 'Rejected' || statusLabel === 'Cancelled')
@@ -181,7 +194,7 @@ function renderOwnerBookingsTable() {
             '<td><div class="customer-cell"><img src="' + escHtml(avatar) + '" alt="" class="customer-avatar"><span>' + escHtml(name) + '</span></div></td>' +
             '<td>' + escHtml(field.name || '') + '</td>' +
             '<td><div class="date-time-cell"><span class="date-text">' + escHtml(dateStr) + '</span><span class="time-text">' + escHtml(timeStr) + '</span></div></td>' +
-            '<td>—</td>' +
+            '<td>' + escHtml(durationStr) + '</td>' +
             '<td><span class="badge ' + payClass + '">' + ownerPaymentUiLabel(b) + '</span></td>' +
             '<td><span class="badge ' + statusClass + '">' + statusLabel + '</span></td>' +
             '<td>' + actions + '</td></tr>';
@@ -197,15 +210,27 @@ function syncCalendarFromCache() {
         if (!calendarBookings[key]) calendarBookings[key] = [];
         var org = b.organizer || {};
         var field = b.field || {};
-        var initials = (org.fullName || 'P').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+        var name = org.fullName || 'Player';
+        var orgId = String(org.id || '');
+        var avatarFromOrg = (org.avatar && String(org.avatar).trim()) || '';
+        var cachedAvatar = '';
+        if (orgId && typeof localStorage !== 'undefined') {
+            try {
+                cachedAvatar = (localStorage.getItem('userAvatar_' + orgId) || '').trim();
+            } catch (_) {}
+        }
+        var avatarUrl = avatarFromOrg || cachedAvatar ||
+            ('https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=007BFF&color=fff&size=128');
+        var initials = (name || 'P').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
         calendarBookings[key].push({
-            name: org.fullName || 'Player',
+            name: name,
             initials: initials,
+            avatarUrl: avatarUrl,
             field: field.name || '',
             time: (b.timeSlotStart || '') + ' - ' + (b.timeSlotEnd || ''),
-            duration: '—',
-            status: ownerStatusUiLabel(b.status),
-            avatarColor: '#007BFF'
+            duration: formatBookingDurationLabel(b),
+            status: ownerStatusDisplayLabel(b),
+            statusBadgeClass: ownerStatusBadgeClassForBooking(b)
         });
     });
 }
@@ -293,6 +318,12 @@ async function notifyParticipantsBookingStatus(booking, bookingId, nextStatus) {
     var notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
     var bookingIdStr = String((bookingData.id != null ? bookingData.id : bookingData._id) || bookingId || '');
     var recipientMap = {};
+
+    // The organizer should always be told when the field owner rejects the booking.
+    if (!isApproved) {
+        var organizerId = String(bookingData.organizerId || (bookingData.organizer && bookingData.organizer.id) || '');
+        if (organizerId) recipientMap[organizerId] = true;
+    }
 
     // API participants/players
     participants.forEach(function(p) {
@@ -575,6 +606,15 @@ function bookingHoursFromRecord(b) {
     return total;
 }
 
+/** Human-readable duration for table/calendar/detail (e.g. "2 hours"). */
+function formatBookingDurationLabel(b) {
+    var hours = bookingHoursFromRecord(b);
+    if (hours <= 0) return '—';
+    var hRounded = Math.round(hours * 1000) / 1000;
+    var hLabel = hRounded % 1 === 0 ? String(Math.round(hRounded)) : String(hRounded);
+    return hLabel + (Math.abs(hRounded - 1) < 1e-9 ? ' hour' : ' hours');
+}
+
 function formatBookingDate(iso) {
     if (!iso) return '—';
     try {
@@ -595,13 +635,7 @@ function buildBookingDetailHtml(b) {
     var field = b.field || {};
     var owner = field.owner || {};
     var org = b.organizer || {};
-    var hours = bookingHoursFromRecord(b);
-    var durationStr = '—';
-    if (hours > 0) {
-        var hRounded = Math.round(hours * 1000) / 1000;
-        var hLabel = hRounded % 1 === 0 ? String(Math.round(hRounded)) : String(hRounded);
-        durationStr = hLabel + (Math.abs(hRounded - 1) < 1e-9 ? ' hour' : ' hours');
-    }
+    var durationStr = formatBookingDurationLabel(b);
     var slotLine = (b.timeSlotStart || '') + ' – ' + (b.timeSlotEnd || '');
     var ranges = b.timeSlotRanges;
     if (Array.isArray(ranges) && ranges.length > 1) {
@@ -745,7 +779,10 @@ async function approveBookingById(bookingId, row) {
         return;
     }
     var labels = ownerBookingConfirmLabels(bookingId);
-    if (!confirm('Approve booking for ' + labels.customer + ' at ' + labels.field + '? This confirms the reservation.')) return;
+    if (!(await MatchFieldDialog.confirm(
+        'Approve booking for ' + labels.customer + ' at ' + labels.field + '? This confirms the reservation.',
+        { okText: 'Approve' }
+    ))) return;
     setOwnerRowActionLoading(row, true);
     setBookingDetailFooterBusy(true);
     try {
@@ -770,7 +807,10 @@ async function declineBookingById(bookingId, row) {
         return;
     }
     var labels = ownerBookingConfirmLabels(bookingId);
-    if (!confirm('Decline this request for ' + labels.customer + ' at ' + labels.field + '? The booking will be cancelled.')) return;
+    if (!(await MatchFieldDialog.confirm(
+        'Decline this request for ' + labels.customer + ' at ' + labels.field + '? The booking will be cancelled.',
+        { type: 'danger', okText: 'Decline' }
+    ))) return;
     setOwnerRowActionLoading(row, true);
     setBookingDetailFooterBusy(true);
     try {
@@ -915,15 +955,24 @@ function displayBookingsForDate(date) {
         } else {
             cardsContainer.innerHTML = bookings.map(booking => `
                 <div class="calendar-booking-card">
-                    <div class="calendar-booking-avatar" style="background: ${booking.avatarColor}; color: white;">${booking.initials}</div>
-                    <div class="calendar-booking-info">
-                        <div class="calendar-booking-name">${booking.name}</div>
-                        <div class="calendar-booking-field">${booking.field}</div>
-                        <div class="calendar-booking-time">${booking.time} • ${booking.duration}</div>
+                    <div class="calendar-booking-avatar" aria-hidden="true">
+                        <img class="calendar-booking-avatar-img" src="${escHtml(booking.avatarUrl)}" alt="">
+                        <span class="calendar-booking-avatar-fallback">${escHtml(booking.initials)}</span>
                     </div>
-                    <span class="badge ${booking.status === 'Confirmed' ? 'badge-confirmed' : 'badge-pending'}">${booking.status}</span>
+                    <div class="calendar-booking-info">
+                        <div class="calendar-booking-name">${escHtml(booking.name)}</div>
+                        <div class="calendar-booking-field">${escHtml(booking.field)}</div>
+                        <div class="calendar-booking-time">${escHtml(booking.time)} • ${escHtml(booking.duration)}</div>
+                    </div>
+                    <span class="badge ${escHtml(booking.statusBadgeClass || 'badge-pending')}">${escHtml(booking.status)}</span>
                 </div>
             `).join('');
+            cardsContainer.querySelectorAll('.calendar-booking-avatar-img').forEach(function(img) {
+                img.addEventListener('error', function() {
+                    var wrap = img.closest('.calendar-booking-avatar');
+                    if (wrap) wrap.classList.add('is-img-broken');
+                });
+            });
         }
     }
 }

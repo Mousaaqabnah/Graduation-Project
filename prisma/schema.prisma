@@ -65,7 +65,7 @@ enum PaymentStatus {
 model User {
   id             String    @id @default(auto()) @map("_id") @db.ObjectId
   email          String    @unique
-  passwordHash   String    @map("password_hash")
+  passwordHash   String?   @map("password_hash")
   fullName       String    @map("full_name")
   phone          String?
   dateOfBirth    DateTime? @map("date_of_birth")
@@ -85,6 +85,10 @@ model User {
 
   /// UI settings keyed by role: { "owner": { ... }, "player": { ... } }
   preferences Json? @map("preferences")
+
+  /// SHA-256 hex of raw reset token; cleared after successful reset
+  passwordResetTokenHash String?   @map("password_reset_token_hash")
+  passwordResetExpires   DateTime? @map("password_reset_expires")
 
   // Relations
   ownedFields         Field[]             @relation("FieldOwner")

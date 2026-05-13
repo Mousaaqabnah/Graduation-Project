@@ -810,11 +810,25 @@ async function moderateFieldAction(fieldId, status, closeModalOnSuccess) {
 
     const statusUpper = String(status || '').toUpperCase();
     const actionWord = statusUpper === 'APPROVED' ? 'approve' : 'reject';
-    if (!confirm(`Are you sure you want to ${actionWord} "${field.fieldName}"?`)) return;
+    if (!(await MatchFieldDialog.confirm(`Are you sure you want to ${actionWord} "${field.fieldName}"?`, {
+        type: statusUpper === 'REJECTED' ? 'danger' : 'warning',
+        okText: statusUpper === 'APPROVED' ? 'Approve' : 'Reject'
+    }))) return;
 
     let reason = '';
     if (statusUpper === 'REJECTED') {
-        reason = prompt('Reason for rejection (optional):') || '';
+        if (typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.prompt) {
+            const r = await MatchFieldDialog.prompt('Reason for rejection (optional):', {
+                title: 'Reason for rejection',
+                type: 'warning',
+                okText: 'OK',
+                cancelText: 'Cancel',
+                placeholder: 'Optional note…'
+            });
+            reason = r != null ? String(r).trim() : '';
+        } else {
+            reason = prompt('Reason for rejection (optional):') || '';
+        }
     }
 
     try {

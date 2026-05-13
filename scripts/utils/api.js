@@ -2,6 +2,254 @@
 // When the HTML is opened from Live Server / another port (or file:), the page origin is not the API server (Express on :3000).
 // POSTing to /api on a static server returns 405 Method Not Allowed — use the real API origin instead.
 
+(function initMatchFieldDialogs() {
+  if (typeof window === 'undefined' || window.MatchFieldDialog) return;
+
+  function ensureDialogStyles() {
+    if (document.getElementById('matchfield-dialog-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'matchfield-dialog-styles';
+    style.textContent = `
+      .mf-dialog-overlay{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.38);backdrop-filter:blur(5px);padding:20px;}
+      .mf-dialog-card{width:min(420px,100%);background:#fff;border:1px solid #E5E7EB;border-radius:22px;box-shadow:0 24px 70px rgba(15,23,42,.22);padding:24px;transform:translateY(10px) scale(.98);opacity:0;transition:all .18s ease;font-family:'Poppins',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+      .mf-dialog-overlay.show .mf-dialog-card{transform:translateY(0) scale(1);opacity:1;}
+      .mf-dialog-icon{width:52px;height:52px;border-radius:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px;}
+      .mf-dialog-icon.success{background:#E8F7EF;color:#16A34A;}
+      .mf-dialog-icon.warning{background:#FFF7E6;color:#F59E0B;}
+      .mf-dialog-icon.danger{background:#FEECEC;color:#DC2626;}
+      .mf-dialog-icon.info{background:#EFF6FF;color:#007BFF;}
+      .mf-dialog-title{margin:0 0 8px;text-align:center;color:#111827;font-size:20px;font-weight:700;}
+      .mf-dialog-message{margin:0;color:#4B5563;text-align:center;font-size:14px;line-height:1.6;white-space:pre-wrap;}
+      .mf-dialog-actions{display:flex;gap:12px;justify-content:center;margin-top:22px;}
+      .mf-dialog-btn{border:none;border-radius:14px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;min-width:104px;font-family:inherit;transition:transform .15s ease,box-shadow .15s ease,background .15s ease;}
+      .mf-dialog-btn:active{transform:translateY(1px);}
+      .mf-dialog-btn.primary{background:#007BFF;color:#fff;box-shadow:0 10px 24px rgba(0,123,255,.28);}
+      .mf-dialog-btn.primary:hover{background:#006AE0;}
+      .mf-dialog-btn.secondary{background:#F3F4F6;color:#374151;border:1px solid #E5E7EB;}
+      .mf-dialog-btn.secondary:hover{background:#E5E7EB;}
+      .mf-dialog-btn.danger{background:#DC2626;color:#fff;box-shadow:0 10px 24px rgba(220,38,38,.22);}
+      .mf-dialog-btn.danger:hover{background:#B91C1C;}
+      .mf-dialog-prompt .mf-dialog-input{width:100%;box-sizing:border-box;margin-top:16px;padding:12px 14px;border:1px solid #E5E7EB;border-radius:12px;font-size:15px;font-family:inherit;color:#111827;background:#fff;}
+      .mf-dialog-prompt .mf-dialog-input:focus{outline:none;border-color:#007BFF;box-shadow:0 0 0 3px rgba(0,123,255,.15);}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function inferType(message, explicitType) {
+    if (explicitType) return explicitType;
+    const text = String(message || '').toLowerCase();
+    if (text.includes('success') || text.includes('successfully') || text.includes('sent') || text.includes('saved')) return 'success';
+    if (text.includes('delete') || text.includes('suspend') || text.includes('block') || text.includes('reject') || text.includes('failed') || text.includes('error')) return 'danger';
+    if (text.includes('sure') || text.includes('warning') || text.includes('cannot')) return 'warning';
+    return 'info';
+  }
+
+  function iconFor(type) {
+    if (type === 'success') return '✓';
+    if (type === 'warning') return '!';
+    if (type === 'danger') return '×';
+    return 'i';
+  }
+
+  function titleFor(type, customTitle) {
+    if (customTitle) return customTitle;
+    if (type === 'success') return 'Success';
+    if (type === 'warning') return 'Please Confirm';
+    if (type === 'danger') return 'Attention Required';
+    return 'MatchField';
+  }
+
+  function showDialog(options) {
+    return new Promise((resolve) => {
+      ensureDialogStyles();
+      const type = inferType(options.message, options.type);
+      const overlay = document.createElement('div');
+      overlay.className = 'mf-dialog-overlay';
+      overlay.innerHTML = `
+        <div class="mf-dialog-card" role="dialog" aria-modal="true">
+          <div class="mf-dialog-icon ${type}">${iconFor(type)}</div>
+          <h3 class="mf-dialog-title">${titleFor(type, options.title)}</h3>
+          <p class="mf-dialog-message"></p>
+          <div class="mf-dialog-actions"></div>
+        </div>
+      `;
+      overlay.querySelector('.mf-dialog-message').textContent = String(options.message || '');
+      const actions = overlay.querySelector('.mf-dialog-actions');
+      const buttons = options.buttons || [{ label: 'OK', value: true, variant: 'primary' }];
+      buttons.forEach((button) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mf-dialog-btn ' + (button.variant || 'primary');
+        btn.textContent = button.label;
+        btn.addEventListener('click', () => close(button.value));
+        actions.appendChild(btn);
+      });
+      function close(value) {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 160);
+        resolve(value);
+      }
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay && options.dismissible !== false) close(false);
+      });
+      document.addEventListener('keydown', function onKey(event) {
+        if (event.key === 'Escape') {
+          document.removeEventListener('keydown', onKey);
+          close(false);
+        }
+      });
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.classList.add('show'), 10);
+      const primary = overlay.querySelector('.mf-dialog-btn.primary, .mf-dialog-btn.danger, .mf-dialog-btn');
+      if (primary) primary.focus();
+    });
+  }
+
+  function showPromptDialog(options) {
+    return new Promise((resolve) => {
+      ensureDialogStyles();
+      const type = options.type || inferType(options.message, null) || 'info';
+      const overlay = document.createElement('div');
+      overlay.className = 'mf-dialog-overlay';
+      const inputType = options.inputType === 'password' ? 'password' : 'text';
+      overlay.innerHTML = `
+        <div class="mf-dialog-card mf-dialog-prompt" role="dialog" aria-modal="true">
+          <div class="mf-dialog-icon ${type}">${iconFor(type)}</div>
+          <h3 class="mf-dialog-title"></h3>
+          <p class="mf-dialog-message"></p>
+          <input class="mf-dialog-input" />
+          <div class="mf-dialog-actions"></div>
+        </div>
+      `;
+      const titleEl = overlay.querySelector('.mf-dialog-title');
+      titleEl.textContent = options.title || titleFor(type, null);
+      overlay.querySelector('.mf-dialog-message').textContent = String(options.message || '');
+      const input = overlay.querySelector('.mf-dialog-input');
+      input.type = inputType;
+      if (options.placeholder) input.placeholder = options.placeholder;
+      if (options.autocomplete != null) {
+        input.setAttribute('autocomplete', options.autocomplete);
+      } else if (inputType === 'password') {
+        input.setAttribute('autocomplete', 'current-password');
+      } else {
+        input.setAttribute('autocomplete', 'off');
+      }
+
+      const actions = overlay.querySelector('.mf-dialog-actions');
+      function close(value) {
+        overlay.classList.remove('show');
+        document.removeEventListener('keydown', onKey);
+        setTimeout(() => overlay.remove(), 160);
+        resolve(value);
+      }
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'mf-dialog-btn secondary';
+      cancelBtn.textContent = options.cancelText || 'Cancel';
+      cancelBtn.addEventListener('click', () => close(null));
+
+      const okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'mf-dialog-btn ' + (type === 'danger' ? 'danger' : 'primary');
+      okBtn.textContent = options.okText || 'OK';
+      okBtn.addEventListener('click', () => close(input.value));
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+
+      function onKey(event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          close(null);
+        } else if (event.key === 'Enter' && document.activeElement === input) {
+          event.preventDefault();
+          close(input.value);
+        }
+      }
+      document.addEventListener('keydown', onKey);
+
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay && options.dismissible !== false) close(null);
+      });
+
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.classList.add('show'), 10);
+      setTimeout(() => {
+        input.focus();
+        if (options.selectAll) input.select();
+      }, 50);
+    });
+  }
+
+  window.MatchFieldDialog = {
+    alert(message, options = {}) {
+      return showDialog({
+        message,
+        title: options.title,
+        type: inferType(message, options.type),
+        buttons: [{ label: options.okText || 'OK', value: true, variant: options.variant || 'primary' }]
+      });
+    },
+    confirm(message, options = {}) {
+      const type = inferType(message, options.type || 'warning');
+      return showDialog({
+        message,
+        title: options.title || 'Please Confirm',
+        type,
+        buttons: [
+          { label: options.cancelText || 'Cancel', value: false, variant: 'secondary' },
+          { label: options.okText || 'Confirm', value: true, variant: type === 'danger' ? 'danger' : 'primary' }
+        ]
+      });
+    },
+    prompt(message, options = {}) {
+      const type = options.type || inferType(message, null) || 'info';
+      return showPromptDialog({
+        message,
+        title: options.title || titleFor(type, null),
+        type,
+        inputType: options.inputType,
+        placeholder: options.placeholder,
+        okText: options.okText,
+        cancelText: options.cancelText,
+        dismissible: options.dismissible,
+        selectAll: options.selectAll
+      });
+    }
+  };
+
+  const nativeAlert = window.alert ? window.alert.bind(window) : null;
+  const nativeConfirm = window.confirm ? window.confirm.bind(window) : null;
+  const nativePrompt = window.prompt ? window.prompt.bind(window) : null;
+
+  window.MatchFieldDialog.native = {
+    alert(message) {
+      if (nativeAlert) nativeAlert(String(message));
+    },
+    confirm(message) {
+      if (nativeConfirm) return nativeConfirm(String(message));
+      return typeof Window !== 'undefined' && Window.prototype.confirm
+        ? Window.prototype.confirm.call(window, message)
+        : false;
+    },
+    prompt(message, defaultText) {
+      if (nativePrompt) return nativePrompt(String(message), defaultText != null ? String(defaultText) : '');
+      return typeof Window !== 'undefined' && Window.prototype.prompt
+        ? Window.prototype.prompt.call(window, message, defaultText != null ? String(defaultText) : '')
+        : null;
+    }
+  };
+
+  window.alert = function matchFieldAlert(message) {
+    if (!document.body || !window.MatchFieldDialog) {
+      if (nativeAlert) nativeAlert(message);
+      return;
+    }
+    window.MatchFieldDialog.alert(message);
+  };
+})();
+
 (function initApiPortFromPageUrl() {
   if (typeof window === 'undefined') return;
   if (window.__API_PORT__ != null && String(window.__API_PORT__).trim() !== '') return;
@@ -263,13 +511,27 @@ const authAPI = {
       method: 'POST',
       body: { email, password }
     });
-    
+
     if (data.token && data.user) {
       setAuthToken(data.token);
       setCurrentUser(data.user);
     }
-    
+
     return data;
+  },
+
+  forgotPassword: async (email) => {
+    return apiRequest('/auth/forgot-password', {
+      method: 'POST',
+      body: { email }
+    });
+  },
+
+  resetPassword: async (token, newPassword) => {
+    return apiRequest('/auth/reset-password', {
+      method: 'POST',
+      body: { token, newPassword }
+    });
   },
 
   logout: () => {
@@ -337,8 +599,12 @@ const usersAPI = {
     });
   },
 
-  search: async (query) => {
-    return apiRequest(`/users/search/users?q=${encodeURIComponent(query)}`);
+  search: async (query, options = {}) => {
+    const params = new URLSearchParams({ q: String(query || '') });
+    if (options && options.playersOnly) {
+      params.set('playersOnly', '1');
+    }
+    return apiRequest(`/users/search/users?${params.toString()}`);
   },
 
   getMyPreferences: async () => {

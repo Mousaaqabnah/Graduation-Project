@@ -6,6 +6,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
 const { mongoFieldUpdateAndFetch, mongoFieldGetByIdPublicDetail } = require('../lib/mongoFieldWrite');
+const { mongoCreateMessageAndTouchConversation, mongoMarkMessageRead } = require('../lib/mongoMessageWrite');
+const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -661,21 +663,80 @@ async function notifyInAppSupportRecipient(conv, adminId, content) {
   const recipientId = recipients[0];
   if (!recipientId) return;
   try {
-    const notification = await prisma.notification.create({
-      data: {
-        title: 'Reply from MatchField Support',
-        message: content,
-        audience: 'private',
-        channels: ['in-app'],
-        targetUserId: recipientId,
-        sentById: adminId
-      }
-    });
-    await prisma.userNotification.create({
-      data: { userId: recipientId, notificationId: notification.id }
+    await mongoCreateUserNotification({
+      title: 'Reply from MatchField Support',
+      message: content,
+      targetUserId: recipientId,
+      sentById: adminId
     });
   } catch (e) {
     console.warn('Admin support notify error:', e);
+  }
+}
+
+async function mongoFindOrCreateSupportConversation(userId, adminId) {
+  const userIdStr = String(userId || '').trim();
+  const adminIdStr = String(adminId || '').trim();
+  if (!isMongoObjectIdString(userIdStr) || !isMongoObjectIdString(adminIdStr)) {
+    throw new Error('Invalid user or admin id');
+  }
+
+  const userOid = new ObjectId(userIdStr);
+  const adminOid = new ObjectId(adminIdStr);
+  const mongo = new MongoClient(process.env.DATABASE_URL);
+  await mongo.connect();
+  try {
+    const db = mongo.db();
+    const conversations = db.collection('conversations');
+    const now = new Date();
+    let doc = await conversations.findOne({
+      $or: [
+        { user1_id: userOid, user2_id: adminOid },
+        { user1_id: adminOid, user2_id: userOid }
+      ]
+    });
+
+    if (!doc) {
+      const inserted = await conversations.insertOne({
+        user1_id: userOid,
+        user2_id: adminOid,
+        is_support_thread: true,
+        created_at: now,
+        updated_at: now,
+        blocked_at: null,
+        starred_at: null
+      });
+      doc = await conversations.findOne({ _id: inserted.insertedId });
+    } else if (doc.is_support_thread !== true) {
+      await conversations.updateOne(
+        { _id: doc._id },
+        { $set: { is_support_thread: true, updated_at: now } }
+      );
+      doc = await conversations.findOne({ _id: doc._id });
+    }
+
+    return {
+      id: String(doc._id),
+      user1Id: String(doc.user1_id),
+      user2Id: String(doc.user2_id),
+      isSupportThread: doc.is_support_thread === true
+    };
+  } finally {
+    await mongo.close();
+  }
+}
+
+async function mongoMessageCountForConversation(conversationId) {
+  const id = String(conversationId || '').trim();
+  if (!isMongoObjectIdString(id)) throw new Error('Invalid conversation id');
+  const mongo = new MongoClient(process.env.DATABASE_URL);
+  await mongo.connect();
+  try {
+    return await mongo.db().collection('messages').countDocuments({
+      conversation_id: new ObjectId(id)
+    });
+  } finally {
+    await mongo.close();
   }
 }
 
@@ -747,6 +808,19 @@ router.get('/support/conversations', async (req, res) => {
             if (conv) {
               const n = await prisma.message.count({ where: { conversationId: conv.id } });
               if (n > 0) {
+                const existingContactMessage = await mongo.db().collection('messages').findOne({
+                  conversation_id: new ObjectId(String(conv.id)),
+                  sender_id: new ObjectId(userIdStr),
+                  content: { $regex: String(d.message || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+                });
+                if (!existingContactMessage) {
+                  const contentParts = [];
+                  if (d.topic) contentParts.push(`Topic: ${d.topic}`);
+                  contentParts.push(String(d.message || ''));
+                  if (d.phone) contentParts.push(`Phone: ${d.phone}`);
+                  contentParts.push(`From: ${d.full_name} <${d.email}> (via Contact form)`);
+                  await mongoCreateMessageAndTouchConversation(conv.id, userIdStr, contentParts.join('\n\n'));
+                }
                 await col.updateOne(
                   { _id: d._id },
                   { $set: { prisma_conversation_id: String(conv.id) } }
@@ -868,15 +942,7 @@ router.post('/support/conversation/:conversationId/messages', [
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    const message = await prisma.message.create({
-      data: { conversationId, senderId: req.user.id, content },
-      include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } }
-    });
-
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() }
-    });
+    const message = await mongoCreateMessageAndTouchConversation(conversationId, req.user.id, content);
 
     await notifyInAppSupportRecipient(conv, req.user.id, content);
 
@@ -923,14 +989,7 @@ router.post('/support/submission/:submissionId/reply', [
       if (!conv || !conv.isSupportThread) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
-      const message = await prisma.message.create({
-        data: { conversationId: convId, senderId: req.user.id, content },
-        include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } }
-      });
-      await prisma.conversation.update({
-        where: { id: convId },
-        data: { updatedAt: new Date() }
-      });
+      const message = await mongoCreateMessageAndTouchConversation(convId, req.user.id, content);
       await notifyInAppSupportRecipient(conv, req.user.id, content);
       return res.status(201).json({ message: 'Message sent', conversationId: convId, messageObj: message });
     }
@@ -945,52 +1004,19 @@ router.post('/support/submission/:submissionId/reply', [
 
     const adminId = req.user.id;
 
-    let conversation = await prisma.conversation.findFirst({
-      where: {
-        isSupportThread: true,
-        OR: [
-          { user1Id: userId, user2Id: adminId },
-          { user1Id: adminId, user2Id: userId }
-        ]
-      }
-    });
+    const conversation = await mongoFindOrCreateSupportConversation(userId, adminId);
 
-    if (!conversation) {
-      conversation = await prisma.conversation.create({
-        data: { user1Id: userId, user2Id: adminId, isSupportThread: true }
-      });
-    } else if (!conversation.isSupportThread) {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { isSupportThread: true }
-      });
-    }
-
-    const msgCount = await prisma.message.count({ where: { conversationId: conversation.id } });
+    const msgCount = await mongoMessageCountForConversation(conversation.id);
     if (msgCount === 0) {
       const contentParts = [];
       if (doc.topic) contentParts.push(`Topic: ${doc.topic}`);
       contentParts.push(String(doc.message));
       if (doc.phone) contentParts.push(`Phone: ${doc.phone}`);
       contentParts.push(`From: ${doc.full_name} <${doc.email}> (via Contact form)`);
-      await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          senderId: userId,
-          content: contentParts.join('\n\n')
-        }
-      });
+      await mongoCreateMessageAndTouchConversation(conversation.id, userId, contentParts.join('\n\n'));
     }
 
-    const adminMsg = await prisma.message.create({
-      data: { conversationId: conversation.id, senderId: adminId, content },
-      include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } }
-    });
-
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { updatedAt: new Date() }
-    });
+    const adminMsg = await mongoCreateMessageAndTouchConversation(conversation.id, adminId, content);
 
     const mongo2 = new MongoClient(process.env.DATABASE_URL);
     await mongo2.connect();
@@ -1016,18 +1042,36 @@ router.post('/support/submission/:submissionId/reply', [
   }
 });
 
-// Mark a message as read (global flag on message)
+// Mark a message read (native Mongo only — Prisma reads/writes can throw P2031 on standalone MongoDB)
 router.put('/support/conversation/:conversationId/messages/:messageId/read', async (req, res) => {
   try {
     const { conversationId, messageId } = req.params;
-    const msg = await prisma.message.findFirst({
-      where: { id: messageId, conversationId },
-      include: { conversation: true }
-    });
-    if (!msg || !msg.conversation || !msg.conversation.isSupportThread) {
+    if (!ObjectId.isValid(conversationId) || !ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid conversation or message id' });
+    }
+
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    try {
+      const convDoc = await mongo.db().collection('conversations').findOne(
+        { _id: new ObjectId(conversationId) },
+        { projection: { is_support_thread: 1 } }
+      );
+      if (!convDoc || convDoc.is_support_thread === false) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+    } finally {
+      await mongo.close();
+    }
+
+    const result = await mongoMarkMessageRead(messageId, conversationId, req.user.id);
+    if (!result.ok && result.reason === 'not_found') {
       return res.status(404).json({ error: 'Message not found' });
     }
-    await prisma.message.update({ where: { id: messageId }, data: { readAt: new Date() } });
+    if (!result.ok) {
+      return res.status(400).json({ error: 'Invalid message or conversation' });
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Admin support mark read error:', error);
@@ -1040,12 +1084,20 @@ router.patch('/support/conversation/:conversationId/star', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { starred } = req.body;
-    const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    if (!conv || !conv.isSupportThread) return res.status(404).json({ error: 'Conversation not found' });
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { starredAt: starred ? new Date() : null }
-    });
+    if (!ObjectId.isValid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
+    }
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    try {
+      const result = await mongo.db().collection('conversations').updateOne(
+        { _id: new ObjectId(conversationId), is_support_thread: true },
+        { $set: { starred_at: starred ? new Date() : null, updated_at: new Date() } }
+      );
+      if (result.matchedCount === 0) return res.status(404).json({ error: 'Conversation not found' });
+    } finally {
+      await mongo.close();
+    }
     res.json({ success: true });
   } catch (error) {
     console.error('Admin support star error:', error);
@@ -1053,17 +1105,50 @@ router.patch('/support/conversation/:conversationId/star', async (req, res) => {
   }
 });
 
-// Block/unblock support conversation
+// Block/unblock support conversation (native Mongo write — Prisma updates need a replica set on MongoDB; see P2031)
 router.patch('/support/conversation/:conversationId/block', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { blocked } = req.body;
-    const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    if (!conv || !conv.isSupportThread) return res.status(404).json({ error: 'Conversation not found' });
-    await prisma.conversation.update({
+    if (!ObjectId.isValid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
+    }
+
+    const existing = await prisma.conversation.findUnique({
       where: { id: conversationId },
-      data: { blockedAt: blocked ? new Date() : null }
+      select: { user1Id: true, user2Id: true, isSupportThread: true }
     });
+    if (!existing || !existing.isSupportThread) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const mongo = new MongoClient(process.env.DATABASE_URL);
+    await mongo.connect();
+    try {
+      const result = await mongo.db().collection('conversations').updateOne(
+        { _id: new ObjectId(conversationId) },
+        {
+          $set: {
+            blocked_at: blocked ? new Date() : null,
+            updated_at: new Date(),
+            is_support_thread: true
+          }
+        }
+      );
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+    } finally {
+      await mongo.close();
+    }
+
+    const { emitConversationUpdate } = require('../lib/chatEvents');
+    emitConversationUpdate([existing.user1Id, existing.user2Id], {
+      conversationId,
+      type: 'support-blocked',
+      blocked: !!blocked
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Admin support block error:', error);

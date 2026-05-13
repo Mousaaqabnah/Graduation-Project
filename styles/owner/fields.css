@@ -535,8 +535,13 @@
 }
 
 .checkbox-label input[type="checkbox"]:checked + span {
-  color: #007BFF;
+  color: #111827;
   font-weight: 500;
+}
+
+.checkbox-label:has(input[type="checkbox"]:checked) {
+  background: #fff;
+  border-color: #e5e7eb;
 }
 
 .checkbox-label input[type="checkbox"] {

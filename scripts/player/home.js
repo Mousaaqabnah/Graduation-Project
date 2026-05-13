@@ -1,5 +1,8 @@
-// Venue data loaded from API
+// Venue data loaded from API (full lists for current location; homepage shows first 6 per section)
 const venues = { popular: [], nearby: [] };
+const HOME_SECTION_PREVIEW_LIMIT = 6;
+/** Match routes/fields.js parsePositiveIntOr max for list endpoints */
+const HOME_SECTION_FETCH_LIMIT = 48;
 const DEFAULT_LOCATION = { name: 'Istanbul', lat: 41.0082, lng: 28.9784, source: 'default' };
 const LOCATION_STORAGE_KEY = 'playerSelectedLocation';
 const LOCATION_OPTIONS = [
@@ -7,6 +10,8 @@ const LOCATION_OPTIONS = [
 ];
 let activeLocation = null;
 let currentPageBySection = { nearby: 1, popular: 1 };
+/** Last successful favorites.getAll() ids (never derived from field lat/lng). */
+let lastApiFavoriteIdsForHome = [];
 const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
 function getFavoriteIdsSet() {
@@ -34,7 +39,17 @@ function applyFavoriteIdsToVenueState(favoriteIds) {
 }
 
 function syncFavoriteButtonsFromState() {
-  document.querySelectorAll('.favorite-btn').forEach(function(btn) {
+  const popularRoot = document.getElementById('popularVenues');
+  const nearbyRoot = document.getElementById('nearbyVenues');
+  var buttons;
+  if (popularRoot && nearbyRoot) {
+    buttons = [].slice.call(popularRoot.querySelectorAll('.favorite-btn[data-venue-id]')).concat(
+      [].slice.call(nearbyRoot.querySelectorAll('.favorite-btn[data-venue-id]'))
+    );
+  } else {
+    buttons = [].slice.call(document.querySelectorAll('.favorite-btn[data-venue-id]'));
+  }
+  buttons.forEach(function(btn) {
     const id = String(btn.getAttribute('data-venue-id') || '');
     const venue = venues.popular.find(function(v) { return String(v.id) === id; })
       || venues.nearby.find(function(v) { return String(v.id) === id; });
@@ -78,10 +93,11 @@ function consumeDirtyReviewFields() {
   }
 }
 
-function mapFieldToVenue(field, favoriteIds) {
+function mapFieldToVenue(field, favoriteIdSet) {
   var id = String(field.id);
   var images = field.images && field.images.length ? field.images : [];
   var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
+  var favSet = favoriteIdSet instanceof Set ? favoriteIdSet : new Set((favoriteIdSet || []).map(String));
   return {
     id: id,
     name: field.name,
@@ -91,9 +107,10 @@ function mapFieldToVenue(field, favoriteIds) {
     reviews: field.reviewCount != null ? field.reviewCount : 0,
     location: field.location || '',
     distance: field.distanceKm != null ? field.distanceKm.toFixed(1) + ' km' : 'N/A',
+    distanceKm: field.distanceKm != null && Number.isFinite(Number(field.distanceKm)) ? Number(field.distanceKm) : null,
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
-    isFavorite: favoriteIds.map(String).indexOf(id) !== -1
+    isFavorite: favSet.has(id)
   };
 }
 
@@ -156,37 +173,74 @@ function resolveActiveLocation() {
 function getFavoriteIdsFromResponse(favRes) {
   return (favRes && favRes.favorites)
     ? favRes.favorites
-      .map(function(f) { return f.fieldId || (f.field && f.field.id); })
+      .map(function(f) { return String(f.fieldId || (f.field && f.field.id) || ''); })
       .filter(Boolean)
     : [];
 }
 
-function loadSectionDataWithLocation(section, favoriteIds, page) {
+/**
+ * Load the user's favorite field ids from the API only (no map coordinates).
+ * When logged in, mirrors the result to localStorage so hearts never depend on which lat/lng loaded fields.
+ */
+function fetchFavoriteIdsForHome() {
+  if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+    lastApiFavoriteIdsForHome = [];
+    return Promise.resolve(new Set(Array.from(getFavoriteIdsSet())));
+  }
+  return API.favorites.getAll()
+    .then(function(favRes) {
+      const apiIds = getFavoriteIdsFromResponse(favRes);
+      lastApiFavoriteIdsForHome = apiIds.slice();
+      persistFavoriteIdsSet(new Set(lastApiFavoriteIdsForHome));
+      return new Set(lastApiFavoriteIdsForHome);
+    })
+    .catch(function() {
+      lastApiFavoriteIdsForHome = Array.from(getFavoriteIdsSet());
+      return new Set(lastApiFavoriteIdsForHome);
+    });
+}
+
+function dedupeVenues(venueList) {
+  const seenIds = new Set();
+  const seenFields = new Set();
+  return (venueList || []).filter(function(venue) {
+    const id = String(venue && venue.id || '').trim();
+    const fieldKey = [
+      String(venue && venue.name || '').trim().toLowerCase(),
+      String(venue && venue.location || '').trim().toLowerCase(),
+      String(venue && venue.sport || '').trim().toLowerCase(),
+      String(venue && venue.price || '')
+    ].join('|');
+    if ((id && seenIds.has(id)) || seenFields.has(fieldKey)) return false;
+    if (id) seenIds.add(id);
+    seenFields.add(fieldKey);
+    return true;
+  });
+}
+
+function loadSectionDataWithLocation(section, favoriteIdSet, page) {
   if (typeof API === 'undefined' || !API.fields || !activeLocation) return Promise.resolve([]);
   const baseParams = {
     lat: activeLocation.lat,
     lng: activeLocation.lng,
     page: page || 1,
-    limit: 9
+    limit: HOME_SECTION_FETCH_LIMIT
   };
   const req = section === 'nearby'
     ? API.fields.getNearby({ ...baseParams, radiusKm: 35 })
-    : API.fields.getRecommendations({ ...baseParams, radiusKm: 45 });
+    : API.fields.getPopularNow({ ...baseParams });
   return req.then(function(res) {
     const fields = (res && res.fields) ? res.fields : [];
-    return fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
+    const mapped = fields.map(function(f) { return mapFieldToVenue(f, favoriteIdSet); });
+    return dedupeVenues(mapped);
   });
 }
 
 function loadVenuesFromAPI() {
-  const favoritesReq = typeof API !== 'undefined' && API.getAuthToken()
-    ? API.favorites.getAll().catch(function() { return { favorites: [] }; })
-    : Promise.resolve({ favorites: [] });
-  return favoritesReq.then(function(favRes) {
-    const favoriteIds = getFavoriteIdsFromResponse(favRes);
+  return fetchFavoriteIdsForHome().then(function(favoriteIdSet) {
     return Promise.all([
-      loadSectionDataWithLocation('popular', favoriteIds, currentPageBySection.popular),
-      loadSectionDataWithLocation('nearby', favoriteIds, currentPageBySection.nearby)
+      loadSectionDataWithLocation('popular', favoriteIdSet, currentPageBySection.popular),
+      loadSectionDataWithLocation('nearby', favoriteIdSet, currentPageBySection.nearby)
     ]).then(function(results) {
       venues.popular = results[0];
       venues.nearby = results[1];
@@ -198,6 +252,7 @@ function loadVenuesFromAPI() {
 function refreshHomepageByLocation() {
   currentPageBySection = { nearby: 1, popular: 1 };
   return loadVenuesFromAPI().then(function() {
+    loadFavoritesFromStorage();
     updateLocationLabel();
     renderVenues('popular', venues.popular);
     renderVenues('nearby', venues.nearby);
@@ -244,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeBookingModal();
     initializePaymentModal();
     handleInviteLink();
-    var allCards = document.querySelectorAll('.venue-card');
+    var allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
     allCards.forEach(function(card) { card.style.display = 'block'; });
   }
   resolveActiveLocation()
@@ -273,8 +328,11 @@ function handleInviteLink() {
     
     if (venue) {
       // Show invitation message
-      setTimeout(() => {
-        if (confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`)) {
+      setTimeout(async () => {
+        if (await MatchFieldDialog.confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`, {
+          type: 'info',
+          okText: 'View Booking'
+        })) {
           openBookingModal(venue);
         }
       }, 500);
@@ -291,7 +349,20 @@ window.handleImageError = function(img, sportName) {
   }
 }
 
-// Render venue cards
+/** Ordered list for homepage grid: popular = API popularity order; nearby = nearest first */
+function getVenuesForHomepagePreview(containerId, venueList) {
+  var list = Array.isArray(venueList) ? venueList.slice() : [];
+  if (containerId === 'nearby') {
+    list.sort(function (a, b) {
+      var da = a && a.distanceKm != null ? a.distanceKm : 1e9;
+      var db = b && b.distanceKm != null ? b.distanceKm : 1e9;
+      return da - db;
+    });
+  }
+  return list.slice(0, HOME_SECTION_PREVIEW_LIMIT);
+}
+
+// Render venue cards (homepage sections only show first HOME_SECTION_PREVIEW_LIMIT)
 function renderVenues(containerId, venueList) {
   const containerName = containerId === 'popular' ? 'popularVenues' : 'nearbyVenues';
   const container = document.getElementById(containerName);
@@ -302,8 +373,11 @@ function renderVenues(containerId, venueList) {
   }
   
   container.innerHTML = '';
-  
-  venueList.forEach(venue => {
+  const toShow = (containerId === 'popular' || containerId === 'nearby')
+    ? getVenuesForHomepagePreview(containerId, venueList)
+    : (venueList || []);
+
+  toShow.forEach(venue => {
       try {
           const card = createVenueCard(venue);
           container.appendChild(card);
@@ -472,9 +546,6 @@ function openBookingModal(venue) {
     dateInput.min = today;
   }
 
-  // Generate invite link
-  generateInviteLink();
-
   // Initialize step navigation
   updateStepDisplay();
   
@@ -515,15 +586,6 @@ function populateFieldDetails(venue) {
       </div>
     </div>
   `;
-}
-
-// Generate invite link
-function generateInviteLink() {
-  const inviteLink = document.getElementById('inviteLink');
-  if (inviteLink && bookingState.field) {
-    const link = `${window.location.origin}${window.location.pathname}?invite=${bookingState.field.id}&organizer=${bookingState.organizer.id}`;
-    inviteLink.value = link;
-  }
 }
 
 // Update step display
@@ -756,6 +818,17 @@ async function loadTimeSlots() {
     }
   });
 
+  // Same calendar day: cannot book slots starting before the current hour (local)
+  const nowForSlots = new Date();
+  const todayYmdLocal = `${nowForSlots.getFullYear()}-${String(nowForSlots.getMonth() + 1).padStart(2, '0')}-${String(nowForSlots.getDate()).padStart(2, '0')}`;
+  if (bookingState.selectedDate === todayYmdLocal) {
+    const minHour = nowForSlots.getHours();
+    slots.forEach((slot) => {
+      const h = parseInt(String(slot.start).split(':')[0], 10);
+      if (!Number.isNaN(h) && h < minHour) slot.available = false;
+    });
+  }
+
   container.innerHTML = slots.map(slot => `
     <button class="time-slot ${!slot.available ? 'unavailable' : ''} ${bookingState.selectedTimeSlots.includes(slot.start) ? 'selected' : ''}" 
             data-start="${slot.start}" 
@@ -808,7 +881,7 @@ function updatePlayersList() {
   if (!container) return;
 
   if (bookingState.players.length === 0) {
-    container.innerHTML = '<p class="no-players">No players added yet. Add players by username or share the invite link.</p>';
+    container.innerHTML = '<p class="no-players">No players added yet. Add players by username.</p>';
     return;
   }
 
@@ -1213,22 +1286,6 @@ function initializeBookingModal() {
   // Setup real-time user search
   setupPlayerSearch();
 
-  // Copy invite link
-  const copyLinkBtn = document.getElementById('copyInviteLink');
-  if (copyLinkBtn) {
-    copyLinkBtn.addEventListener('click', function() {
-      const inviteLink = document.getElementById('inviteLink');
-      if (inviteLink) {
-        inviteLink.select();
-        document.execCommand('copy');
-        this.innerHTML = '<i class="fi fi-rr-check"></i> Copied!';
-        setTimeout(() => {
-          this.innerHTML = '<i class="fi fi-rr-copy"></i> Copy';
-        }, 2000);
-      }
-    });
-  }
-
   // Payment method selection
   const paymentRadios = document.querySelectorAll('input[name="paymentMethod"]');
   paymentRadios.forEach(radio => {
@@ -1474,15 +1531,16 @@ async function searchUsers(query) {
     resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
     resultsContainer.style.display = 'block';
     
-    const response = await API.users.search(query);
+    const response = await API.users.search(query, { playersOnly: true });
     // Ignore stale responses from older debounced searches.
     if (requestId !== latestSearchRequestId) return [];
 
     const users = response.users || [];
     
-    // Filter out current user and already added players
+    // Filter out current user, non-players, and already added players
     const currentUser = API.getCurrentUser();
     const filteredUsers = users.filter(user => {
+      if (user.role !== 'PLAYER') return false;
       if (currentUser && user.id === currentUser.id) return false;
       if (bookingState.players.some(p => p.id === user.id)) return false;
       return true;
@@ -1529,6 +1587,11 @@ async function searchUsers(query) {
 
 // Add player from search result
 function addPlayerFromSearch(user) {
+  if (!user || user.role !== 'PLAYER') {
+    alert('Only players can be added to a booking. Field owners and admins cannot be invited as players.');
+    return;
+  }
+
   // Check if player already added
   if (bookingState.players.some(p => p.id === user.id)) {
     alert('This player is already added.');
@@ -1753,9 +1816,20 @@ function saveBookingAndSendInvitations(booking) {
           console.error('Error adding participants:', err);
         }
       }
-      
-      var isFullyPaid = false;
-      showBookingConfirmation(booking, isFullyPaid);
+
+      const fld = (createdBooking && createdBooking.field) || bookingState.field;
+      let fullyPaidNow = checkFullPayment(booking);
+      let didAutoConfirm = false;
+      if (fullyPaidNow && createdBooking && createdBooking.id && fieldUsesInstantBooking(fld)) {
+        try {
+          didAutoConfirm = await tryAutoConfirmPaidInstantBooking(createdBooking.id, fld);
+        } catch (e) {
+          console.warn('Instant booking auto-confirm failed', e);
+        }
+        if (didAutoConfirm) createdBooking.status = 'CONFIRMED';
+      }
+      const isFullyPaidUi = !!(fullyPaidNow && fieldUsesInstantBooking(fld) && didAutoConfirm);
+      showBookingConfirmation(booking, isFullyPaidUi);
       closeBookingModal();
       setTimeout(function() { window.location.href = 'bookings.html'; }, 2000);
     })
@@ -1814,23 +1888,105 @@ function createPaymentNotifications(booking, players) {
 }
 
 // Check if full payment is received
-function checkFullPayment(booking) {
-  if (booking.paymentMethod === 'organizer') {
-    // If organizer pays full amount, check if organizer has paid
-    return booking.organizerPaymentStatus === 'paid';
-  } else if (booking.paymentMethod === 'split') {
-    // If split payment, check if all players (including organizer) have paid
-    const allPlayersPaid = booking.players.length === 0 || booking.players.every(p => p.paymentStatus === 'paid');
-    const organizerPaid = booking.organizerPaymentStatus === 'paid';
-    return allPlayersPaid && organizerPaid;
-  } else if (booking.paymentMethod === 'mixed') {
-    // If mixed payment, check if all players (including organizer) have paid their assigned amounts
-    const allPlayersPaid = booking.players.length === 0 || booking.players.every(p => p.paymentStatus === 'paid');
-    const organizerPaid = booking.organizerPaymentStatus === 'paid';
-    return allPlayersPaid && organizerPaid;
+function paymentMarkedPaid(status) {
+  return String(status || '').toLowerCase() === 'paid';
+}
+
+function bookingIdString(b) {
+  if (!b) return '';
+  var id = b.id != null ? b.id : b._id;
+  return id != null ? String(id) : '';
+}
+
+function organizerPaidFromLocalStorage(bookingId) {
+  var bid = String(bookingId || '');
+  if (!bid) return false;
+  try {
+    var m = JSON.parse(localStorage.getItem('organizerPaidBookings') || '{}');
+    return !!m[bid];
+  } catch (e) {
+    return false;
   }
-  
+}
+
+function participantPaidFromLocalStorage(bookingId, userId) {
+  var bid = String(bookingId || '');
+  var uid = String(userId || '');
+  if (!bid || !uid) return false;
+  try {
+    var m = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+    return !!m[bid + '_' + uid];
+  } catch (e) {
+    return false;
+  }
+}
+
+function participantRecordUserId(p) {
+  if (!p) return '';
+  return String(p.userId || p.id || (p.user && (p.user.id || p.user._id)) || '');
+}
+
+function checkFullPayment(booking) {
+  if (!booking) return false;
+  const bid = bookingIdString(booking);
+  const pm = String(booking.paymentMethod || '').toLowerCase();
+  if (pm === 'organizer') {
+    return paymentMarkedPaid(booking.organizerPaymentStatus) || organizerPaidFromLocalStorage(bid);
+  }
+  if (pm === 'split' || pm === 'mixed') {
+    const parts = booking.players || booking.participants || [];
+    const organizerPaid =
+      paymentMarkedPaid(booking.organizerPaymentStatus) || organizerPaidFromLocalStorage(bid);
+    const allPlayersPaid =
+      parts.length === 0 ||
+      parts.every(function (p) {
+        const pid = participantRecordUserId(p);
+        if (!pid) return true;
+        return (
+          paymentMarkedPaid(p.paymentStatus) ||
+          participantPaidFromLocalStorage(bid, pid)
+        );
+      });
+    return organizerPaid && allPlayersPaid;
+  }
+
   return false;
+}
+
+function isBookingApprovedLocal(status) {
+  const s = String(status || '').toLowerCase();
+  return s === 'confirmed' || s === 'upcoming' || s === 'completed';
+}
+
+function fieldUsesInstantBooking(field) {
+  if (!field) return true;
+  const t = String(field.bookingType != null ? field.bookingType : 'instant').toLowerCase();
+  return t !== 'request';
+}
+
+/** After full payment: confirm on server for instant-booking fields (no owner approval). */
+function tryAutoConfirmPaidInstantBooking(bookingId, bookingOrFieldHint) {
+  if (!bookingId || typeof API === 'undefined' || !API.bookings) return Promise.resolve(false);
+  const fieldHint = bookingOrFieldHint && bookingOrFieldHint.field ? bookingOrFieldHint.field : bookingOrFieldHint;
+  if (fieldHint && fieldHint.bookingType !== undefined && fieldHint.bookingType !== null) {
+    if (!fieldUsesInstantBooking(fieldHint)) return Promise.resolve(false);
+    return API.bookings.updateStatus(String(bookingId), 'CONFIRMED')
+      .then(function () { return true; })
+      .catch(function (e) {
+        console.warn('Auto-confirm booking failed', e);
+        return false;
+      });
+  }
+  return API.bookings.getById(String(bookingId))
+    .then(function (res) {
+      const fld = res && res.booking && res.booking.field;
+      if (!fieldUsesInstantBooking(fld)) return false;
+      return API.bookings.updateStatus(String(bookingId), 'CONFIRMED').then(function () { return true; });
+    })
+    .catch(function (e) {
+      console.warn('Auto-confirm booking failed', e);
+      return false;
+    });
 }
 
 // Show booking confirmation message
@@ -2024,7 +2180,8 @@ let paymentState = {
   amount: 0,
   bookingId: null,
   isOrganizer: false,
-  booking: null
+  booking: null,
+  coverLeftShare: null
 };
 
 // Open payment modal
@@ -2033,7 +2190,8 @@ function openPaymentModal(options) {
     amount: options.amount || 0,
     bookingId: options.bookingId || null,
     isOrganizer: options.isOrganizer || false,
-    booking: options.booking || null
+    booking: options.booking || null,
+    coverLeftShare: options.coverLeftShare || null
   };
 
   const modal = document.getElementById('paymentModal');
@@ -2085,7 +2243,8 @@ function closePaymentModal() {
       amount: 0,
       bookingId: null,
       isOrganizer: false,
-      booking: null
+      booking: null,
+      coverLeftShare: null
     };
   }
 }
@@ -2298,6 +2457,29 @@ function validateExpiryDate(expiryDate) {
 }
 
 // Process payment
+function markOrganizerCoveredLeftSharePayment(bookingId, coverLeftShare) {
+  if (!bookingId || !coverLeftShare) return;
+  var notificationId = String(coverLeftShare.notificationId || ('covered_' + Date.now()));
+  var paidMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+  paidMap[String(bookingId) + '_covered_' + notificationId] = true;
+  localStorage.setItem('playerPaidBookings', JSON.stringify(paidMap));
+
+  var covered = JSON.parse(localStorage.getItem('organizerCoveredLeftPlayerShares') || '{}');
+  covered[notificationId] = {
+    bookingId: String(bookingId),
+    amount: Number(coverLeftShare.amount || paymentState.amount || 0),
+    leftPlayerName: coverLeftShare.leftPlayerName || 'Player',
+    coveredAt: new Date().toISOString()
+  };
+  localStorage.setItem('organizerCoveredLeftPlayerShares', JSON.stringify(covered));
+
+  var notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+  var remainingNotifications = notifications.filter(function(n) {
+    return String(n.id || '') !== notificationId;
+  });
+  localStorage.setItem('playerNotifications', JSON.stringify(remainingNotifications));
+}
+
 function processPayment(paymentData) {
   // In a real app, this would send payment data to a secure payment gateway
   console.log('Processing payment:', {
@@ -2309,10 +2491,15 @@ function processPayment(paymentData) {
   });
 
   let updatedBooking = null;
+  let bookingForConfirm = null;
+  let bookingsArrayForSave = null;
+  const isCoveringLeftShare = !!paymentState.coverLeftShare;
 
   // Update booking payment status (paying for an EXISTING booking - do NOT create a new one)
   if (paymentState.booking) {
-    if (paymentState.isOrganizer) {
+    if (isCoveringLeftShare) {
+      markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
+    } else if (paymentState.isOrganizer) {
       paymentState.booking.organizerPaymentStatus = 'paid';
       var organizerPaidKey = 'organizerPaidBookings';
       var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
@@ -2321,8 +2508,11 @@ function processPayment(paymentData) {
     } else {
       // Update player payment status
       const playerData = getPlayerData();
+      const uid = String((playerData && (playerData.id || playerData._id)) || '');
       const players = paymentState.booking.players || paymentState.booking.participants || [];
-      const player = players.find(p => (p.id || p.userId) === playerData.id);
+      const player = players.find(function (p) {
+        return participantRecordUserId(p) === uid;
+      });
       if (player) {
         player.paymentStatus = 'paid';
       }
@@ -2331,7 +2521,6 @@ function processPayment(paymentData) {
       // Store in dedicated key so refresh always shows paid (works with API + localStorage)
       var paidKey = 'playerPaidBookings';
       var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
-      var uid = String((playerData && (playerData.id || playerData._id)) || '');
       paid[String(paymentState.bookingId) + '_' + uid] = true;
       localStorage.setItem(paidKey, JSON.stringify(paid));
     }
@@ -2346,24 +2535,22 @@ function processPayment(paymentData) {
     }
     localStorage.setItem('playerBookings', JSON.stringify(allBookings));
     // Do NOT call saveBookingAndSendInvitations - that creates a NEW booking and causes duplicates
-    const isFullyPaid = checkFullPayment(paymentState.booking);
-    if (isFullyPaid && paymentState.booking.status !== 'confirmed') {
-      paymentState.booking.status = 'confirmed';
-      paymentState.booking.confirmedAt = new Date().toISOString();
-      localStorage.setItem('playerBookings', JSON.stringify(allBookings));
-      notifyFieldOwner(paymentState.booking);
-      showBookingConfirmation(paymentState.booking, true);
-    }
+    bookingForConfirm = paymentState.booking;
+    bookingsArrayForSave = allBookings;
     updatedBooking = paymentState.booking;
   } else if (paymentState.bookingId) {
     // Update existing booking
     const bookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    const bookingIndex = bookings.findIndex(b => b.id === paymentState.bookingId);
+    const bookingIndex = bookings.findIndex(function (b) {
+      return String(b.id) === String(paymentState.bookingId);
+    });
     
     if (bookingIndex !== -1) {
       const booking = bookings[bookingIndex];
       
-      if (paymentState.isOrganizer) {
+      if (isCoveringLeftShare) {
+        markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
+      } else if (paymentState.isOrganizer) {
         booking.organizerPaymentStatus = 'paid';
         var organizerPaidKey = 'organizerPaidBookings';
         var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
@@ -2371,8 +2558,11 @@ function processPayment(paymentData) {
         localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
       } else {
         const playerData = getPlayerData();
+        const uid = String((playerData && (playerData.id || playerData._id)) || '');
         const players = booking.players || booking.participants || [];
-        const player = players.find(p => (p.id || p.userId) === playerData.id);
+        const player = players.find(function (p) {
+          return participantRecordUserId(p) === uid;
+        });
         if (player) {
           player.paymentStatus = 'paid';
         }
@@ -2380,38 +2570,55 @@ function processPayment(paymentData) {
         notifyOrganizerOfPayment(booking, playerData, paymentState.amount);
         var paidKey = 'playerPaidBookings';
         var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
-        var uid = String((playerData && (playerData.id || playerData._id)) || '');
         paid[String(paymentState.bookingId) + '_' + uid] = true;
         localStorage.setItem(paidKey, JSON.stringify(paid));
       }
-      
-      // Check if full payment is received
-      const isFullyPaid = checkFullPayment(booking);
-      if (isFullyPaid && booking.status !== 'confirmed') {
-        booking.status = 'confirmed';
-        booking.confirmedAt = new Date().toISOString();
-        
-        // Notify field owner of confirmation
-        notifyFieldOwner(booking);
-        
-        // Show confirmation message
-        showBookingConfirmation(booking, true);
-      }
-      
+
       localStorage.setItem('playerBookings', JSON.stringify(bookings));
+      bookingForConfirm = booking;
+      bookingsArrayForSave = bookings;
       updatedBooking = booking;
     }
   }
 
-  // Close payment modal
-  closePaymentModal();
-  if (paymentState.booking) {
-    closeBookingModal();
+  function finishPaymentFlow() {
+    closePaymentModal();
+    if (paymentState.booking) {
+      closeBookingModal();
+    }
+    alert(isCoveringLeftShare
+      ? 'Payment successful! Missing player share has been paid.'
+      : 'Payment successful! Your share has been paid.');
+    window.location.href = 'bookings.html';
   }
 
-  // Single success message, then refresh page to show updated state
-  alert('Payment successful! Your share has been paid.');
-  window.location.href = 'bookings.html';
+  if (
+    bookingForConfirm
+    && checkFullPayment(bookingForConfirm)
+    && !isBookingApprovedLocal(bookingForConfirm.status)
+  ) {
+    const fld = bookingForConfirm.field || {};
+    if (fieldUsesInstantBooking(fld)) {
+      var confirmBookingId = String(paymentState.bookingId || bookingIdString(bookingForConfirm) || '');
+      tryAutoConfirmPaidInstantBooking(confirmBookingId, bookingForConfirm)
+        .then(function (ok) {
+          if (ok) {
+            bookingForConfirm.status = 'CONFIRMED';
+            bookingForConfirm.confirmedAt = new Date().toISOString();
+            if (bookingsArrayForSave) {
+              localStorage.setItem('playerBookings', JSON.stringify(bookingsArrayForSave));
+            }
+            showBookingConfirmation(bookingForConfirm, true);
+          }
+          notifyFieldOwner(bookingForConfirm);
+        })
+        .finally(finishPaymentFlow);
+      return;
+    }
+    notifyFieldOwner(bookingForConfirm);
+  }
+
+  finishPaymentFlow();
 }
 
 // Make functions available globally for use from other pages
@@ -2524,35 +2731,12 @@ function setupEventListeners() {
           });
       }
 
-      const favoriteFieldsMenuItem = document.getElementById('favoriteFieldsMenuItem');
-      const favoriteFieldsModal = document.getElementById('favoriteFieldsModal');
-      const closeFavoriteFieldsModalBtn = document.getElementById('closeFavoriteFieldsModal');
-      const favoriteFieldsModalOverlay = document.querySelector('.favorite-fields-modal-overlay');
-      if (favoriteFieldsMenuItem) {
-          favoriteFieldsMenuItem.addEventListener('click', function(e) {
-              e.preventDefault();
-              e.stopPropagation();
-              if (profilePopup) profilePopup.classList.remove('active');
-              openFavoriteFieldsModal();
-          });
-      }
-      if (closeFavoriteFieldsModalBtn) {
-          closeFavoriteFieldsModalBtn.addEventListener('click', closeFavoriteFieldsModal);
-      }
-      if (favoriteFieldsModalOverlay) {
-          favoriteFieldsModalOverlay.addEventListener('click', closeFavoriteFieldsModal);
-      }
-      document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape' && favoriteFieldsModal && favoriteFieldsModal.classList.contains('active')) {
-              closeFavoriteFieldsModal();
-          }
-      });
   }
 }
 
 // Filter venues by sport
 function filterVenuesBySport(sport) {
-  const allCards = document.querySelectorAll('.venue-card');
+  const allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
   
   if (sport === 'all') {
       allCards.forEach(card => {
@@ -2572,7 +2756,7 @@ function filterVenuesBySport(sport) {
 
 // Filter venues by search query
 function filterVenuesBySearch(query) {
-  const allCards = document.querySelectorAll('.venue-card');
+  const allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
   
   // If query is empty, show all cards
   if (!query) {
@@ -2609,64 +2793,25 @@ function getUnifiedFavoriteIds() {
 }
 
 async function openFavoriteFieldsModal() {
+  if (window.MatchFieldProfileFavorites && typeof window.MatchFieldProfileFavorites.openModal === 'function') {
+    return window.MatchFieldProfileFavorites.openModal({
+      getCachedVenues: function () {
+        return [].concat(venues.popular || [], venues.nearby || []);
+      }
+    });
+  }
   const modal = document.getElementById('favoriteFieldsModal');
   const body = document.getElementById('favoriteFieldsModalBody');
   if (!modal || !body) return;
-  body.innerHTML = '<div class="favorite-empty-state">Loading favorites...</div>';
+  body.innerHTML = '<div class="favorite-empty-state">Favorite fields are unavailable.</div>';
   modal.classList.add('active');
-
-  try {
-    let favoriteEntries = [];
-    if (typeof API !== 'undefined' && API.getAuthToken()) {
-      const favRes = await API.favorites.getAll().catch(function() { return { favorites: [] }; });
-      favoriteEntries = (favRes && favRes.favorites) ? favRes.favorites : [];
-    }
-    let ids = favoriteEntries
-      .map(function(f) { return String(f.fieldId || (f.field && f.field.id) || ''); })
-      .filter(Boolean);
-    if (!ids.length) ids = getUnifiedFavoriteIds();
-
-    const loadedMap = new Map([...venues.popular, ...venues.nearby].map(function(v) { return [String(v.id), v]; }));
-    const favoriteFields = await Promise.all(ids.map(async function(id) {
-      if (loadedMap.has(id)) return loadedMap.get(id);
-      if (typeof API !== 'undefined' && API.fields && API.fields.getById) {
-        const res = await API.fields.getById(id).catch(function() { return null; });
-        if (res && res.field) return mapFieldToVenue(res.field, [id]);
-      }
-      return null;
-    }));
-
-    const list = favoriteFields.filter(Boolean);
-    if (!list.length) {
-      body.innerHTML = '<div class="favorite-empty-state">No favorite fields yet.</div>';
-      return;
-    }
-
-    body.innerHTML = list.map(function(field) {
-      return `
-        <div class="favorite-field-item">
-          <img src="${field.image}" alt="${field.name}">
-          <div class="favorite-field-item-details">
-            <p class="favorite-field-item-title">${field.name}</p>
-            <p class="favorite-field-item-meta">${field.location} · ${field.distance}</p>
-          </div>
-          <button class="favorite-field-item-action" data-favorite-view-id="${field.id}">View</button>
-        </div>
-      `;
-    }).join('');
-
-    body.querySelectorAll('[data-favorite-view-id]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var id = btn.getAttribute('data-favorite-view-id');
-        window.location.href = 'field-info.html?id=' + encodeURIComponent(id);
-      });
-    });
-  } catch (_) {
-    body.innerHTML = '<div class="favorite-empty-state">Failed to load favorite fields.</div>';
-  }
 }
 
 function closeFavoriteFieldsModal() {
+  if (window.MatchFieldProfileFavorites && window.MatchFieldProfileFavorites.closeModal) {
+    window.MatchFieldProfileFavorites.closeModal();
+    return;
+  }
   const modal = document.getElementById('favoriteFieldsModal');
   if (modal) modal.classList.remove('active');
 }
@@ -2677,17 +2822,14 @@ function saveFavoritesToStorage() {
   persistFavoriteIdsSet(new Set(favorites.map(String)));
 }
 
-// Load favorites from localStorage
+// Apply heart state from localStorage (kept in sync with API when logged in; never derived from map coords).
 function loadFavoritesFromStorage() {
-  const favorites = Array.from(getFavoriteIdsSet());
-  applyFavoriteIdsToVenueState(favorites);
+  applyFavoriteIdsToVenueState(Array.from(getFavoriteIdsSet()));
   syncFavoriteButtonsFromState();
 }
 
-window.addEventListener('matchfield:favorites-updated', function(e) {
-  const favorites = e && e.detail && Array.isArray(e.detail.favorites) ? e.detail.favorites : Array.from(getFavoriteIdsSet());
-  applyFavoriteIdsToVenueState(favorites);
-  syncFavoriteButtonsFromState();
+window.addEventListener('matchfield:favorites-updated', function() {
+  loadFavoritesFromStorage();
 });
 
 window.addEventListener('storage', function(e) {

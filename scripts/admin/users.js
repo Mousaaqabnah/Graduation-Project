@@ -162,13 +162,23 @@ function renderUsers() {
 
 async function toggleUserStatus(userId, action) {
   const newStatus = action === 'suspend' ? 'SUSPENDED' : 'ACTIVE';
-  if (!confirm(`Are you sure you want to ${action === 'suspend' ? 'suspend' : 'activate'} this user?`)) return;
+  const ok = await MatchFieldDialog.confirm(
+    `Are you sure you want to ${action === 'suspend' ? 'suspend' : 'activate'} this user?`,
+    { type: action === 'suspend' ? 'danger' : 'warning', okText: action === 'suspend' ? 'Suspend' : 'Activate' }
+  );
+  if (!ok) return;
 
   try {
     await API.users.updateStatus(userId, newStatus);
     const u = allUsers.find((x) => x.id === userId);
     if (u) u.status = newStatus;
     renderUsers();
+    if (action === 'suspend' && window.MatchFieldDialog && typeof MatchFieldDialog.alert === 'function') {
+      await MatchFieldDialog.alert(
+        'This user has been suspended. They can only use Contact Us until you activate their account again.',
+        { type: 'info', title: 'User suspended' }
+      );
+    }
   } catch (err) {
     alert(err.message || 'Failed to update user status.');
   }

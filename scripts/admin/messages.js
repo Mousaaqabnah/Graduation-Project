@@ -17,6 +17,68 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
+function parseContactFormContent(rawText, fallback) {
+  const raw = String(rawText || '');
+  const result = {
+    topic: (fallback && fallback.topic) || '',
+    message: raw,
+    phone: (fallback && fallback.phone) || '',
+    email: (fallback && fallback.email) || '',
+    name: (fallback && fallback.fullName) || ''
+  };
+
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const messageLines = [];
+
+  lines.forEach((line) => {
+    const topicMatch = /^Topic:\s*(.+)$/i.exec(line);
+    const phoneMatch = /^Phone:\s*(.+)$/i.exec(line);
+    const fromMatch = /^From:\s*(.+?)(?:\s*<([^>]+)>)?\s*(?:\(via Contact form\))?$/i.exec(line);
+
+    if (topicMatch) {
+      result.topic = topicMatch[1].trim();
+      return;
+    }
+    if (phoneMatch) {
+      result.phone = phoneMatch[1].trim();
+      return;
+    }
+    if (fromMatch) {
+      result.name = fromMatch[1].trim();
+      if (fromMatch[2]) result.email = fromMatch[2].trim();
+      return;
+    }
+    messageLines.push(line);
+  });
+
+  if (messageLines.length) result.message = messageLines.join('\n\n');
+  return result;
+}
+
+function looksLikeContactFormContent(rawText) {
+  const raw = String(rawText || '');
+  return /(^|\n)Topic:/i.test(raw) || /(^|\n)Phone:/i.test(raw) || /\(via Contact form\)/i.test(raw);
+}
+
+function renderContactMessageCard(rawText, fallback) {
+  const data = parseContactFormContent(rawText, fallback || {});
+
+  return `
+    <div class="contact-message-card">
+      ${data.topic ? `
+        <div class="contact-message-topic">
+          <span class="contact-message-label">Topic</span>
+          <strong>${escapeHtml(data.topic)}</strong>
+        </div>
+      ` : ''}
+      <div class="contact-message-main">
+        <span class="contact-message-label">Message</span>
+        <p>${escapeHtml(data.message || 'No message provided.')}</p>
+      </div>
+    </div>
+  `;
+}
+
 function getTimeAgo(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d.getTime())) return '';
@@ -166,6 +228,7 @@ function filterThreads() {
     if (selectedStatus !== 'all') {
       if (selectedStatus === 'pending' && t.workflowStatus !== 'pending') return false;
       if (selectedStatus === 'replied' && t.workflowStatus !== 'replied') return false;
+      if (selectedStatus === 'starred' && !t.starred) return false;
       if (
         (selectedStatus === 'unread' || selectedStatus === 'read') &&
         t.status !== selectedStatus
@@ -260,7 +323,10 @@ async function toggleBlock(threadId) {
   const t = allThreads.find((x) => String(x.id) === String(threadId));
   if (!t || t.isContactSubmission) return;
   const next = !t.blocked;
-  const ok = confirm(next ? `Block/Spam message from ${t.fullName}?` : `Unblock this message from ${t.fullName}?`);
+  const ok = await MatchFieldDialog.confirm(
+    next ? `Block/Spam message from ${t.fullName}?` : `Unblock this message from ${t.fullName}?`,
+    { type: next ? 'danger' : 'warning', okText: next ? 'Block' : 'Unblock' }
+  );
   if (!ok) return;
   try {
     await API.admin.supportSetBlocked(t.conversationId, next);
@@ -301,11 +367,17 @@ async function showMessageDetail(threadId) {
   if (!t || !messageContent || !messageModal) return;
 
   if (!t.isContactSubmission && t.status === 'unread' && t.latestMessageId) {
+    const prevStatus = t.status;
     t.status = 'read';
     filterThreads();
     try {
       await API.admin.supportMarkAsRead(t.conversationId, t.latestMessageId);
-    } catch (_) {}
+    } catch (err) {
+      t.status = prevStatus;
+      filterThreads();
+      console.warn('Admin inbox: mark as read failed', err);
+      alert((err && err.message) || 'Could not mark as read on the server. Try again.');
+    }
   }
 
   const initials = String(t.fullName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -314,9 +386,6 @@ async function showMessageDetail(threadId) {
 
   if (t.isContactSubmission) {
     await autoMarkSubmissionSeenWhenViewed(t);
-    const phoneLine = t.phone
-      ? `<p class="message-detail-meta"><strong>Phone:</strong> ${escapeHtml(t.phone)}</p>`
-      : '';
     const timeStr = t.date ? getTimeAgo(t.date) : '';
     messageContent.innerHTML = `
       <div class="message-detail-header">
@@ -330,9 +399,8 @@ async function showMessageDetail(threadId) {
         <div class="message-detail-thread-label">Contact form message</div>
         <div class="message-detail-item from-user">
           <div class="message-detail-item-header">${escapeHtml(t.fullName)} · ${escapeHtml(timeStr)}</div>
-          <div class="message-detail-item-text">${escapeHtml(t.message)}</div>
+          ${renderContactMessageCard(t.message, t)}
         </div>
-        ${phoneLine}
       </div>
     `;
     appendReplyFormToMessageModal(t);
@@ -367,10 +435,13 @@ async function showMessageDetail(threadId) {
         const isFromAdmin = meId && m.sender && String(m.sender.id) === meId;
         const senderName = m.sender ? (m.sender.fullName || 'Unknown') : 'Unknown';
         const timeStr = m.createdAt ? getTimeAgo(m.createdAt) : '';
+        const contentHtml = !isFromAdmin && looksLikeContactFormContent(m.content)
+          ? renderContactMessageCard(m.content, { fullName: senderName })
+          : `<div class="message-detail-item-text">${escapeHtml(m.content)}</div>`;
         return `
           <div class="message-detail-item ${isFromAdmin ? 'from-admin' : 'from-user'}">
             <div class="message-detail-item-header">${escapeHtml(senderName)} · ${escapeHtml(timeStr)}</div>
-            <div class="message-detail-item-text">${escapeHtml(m.content)}</div>
+            ${contentHtml}
           </div>
         `;
       }).join('');

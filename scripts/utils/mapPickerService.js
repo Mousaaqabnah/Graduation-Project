@@ -37,10 +37,11 @@
       );
     }
 
-    function setPosition(lat, lng, source) {
+    function setPosition(lat, lng, source, opts) {
       var latNum = parseFloat(lat);
       var lngNum = parseFloat(lng);
       if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return;
+      var silent = opts && opts.silent;
       if (!marker) {
         marker = L.marker([latNum, lngNum], { draggable: draggable }).addTo(map);
         marker.on('dragend', function () {
@@ -50,7 +51,7 @@
         marker.setLatLng([latNum, lngNum]);
       }
       map.setView([latNum, lngNum], Math.max(map.getZoom(), 15));
-      notify(source || 'set');
+      if (!silent) notify(source || 'set');
     }
 
     map.on('click', function (e) {

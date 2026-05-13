@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Chat</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -170,7 +171,7 @@
                         <h2>Messages</h2>
                         <button class="add-friend-btn" id="addFriendBtn">
                             <i class="fi fi-rr-user-add"></i>
-                            <span>+ Add Friend</span>
+                            <span>Start Chatting</span>
                         </button>
                     </div>
                     
@@ -221,99 +222,6 @@
                         </button>
                     </div>
                 </div>
-
-                <!-- Right Sidebar - Player Info -->
-                <aside class="player-info-sidebar" id="playerInfoSidebar">
-                    <div class="player-avatar-container">
-                        <div class="player-avatar-large">
-                            <img src="https://ui-avatars.com/api/?name=Player&background=EF4444&color=fff&size=128" alt="Player Avatar" id="playerAvatar">
-                            <span class="online-indicator"></span>
-                        </div>
-                    </div>
-                    
-                    <div class="player-info-section">
-                        <h3>Player Information</h3>
-                        <div class="player-info-card">
-                            <div class="player-info-details">
-                                <h4 id="playerName">—</h4>
-                                <p class="player-status" id="playerStatus">—</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="player-stats-section">
-                        <h3>Player Stats</h3>
-                        <div class="player-stats-grid">
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Total Bookings:</span>
-                                <span class="player-stat-value" id="totalBookings">—</span>
-                            </div>
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Member Since:</span>
-                                <span class="player-stat-value" id="memberSince">—</span>
-                            </div>
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Location:</span>
-                                <span class="player-stat-value" id="playerLocation">—</span>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
-
-                <!-- Right Sidebar - Other field owner + field (same pattern as player chat) -->
-                <aside class="field-info-sidebar" id="fieldInfoSidebar">
-                    <div class="field-image-container">
-                        <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&amp;h=300&amp;fit=crop&amp;auto=format" alt="Field" id="fieldImage">
-                    </div>
-                    <div class="field-owner-section">
-                        <h3>Field Owner</h3>
-                        <div class="field-owner-card">
-                            <div class="field-owner-avatar">
-                                <img src="https://ui-avatars.com/api/?name=Owner&amp;background=007BFF&amp;color=fff&amp;size=128" alt="Owner" id="fieldOwnerAvatar">
-                                <span class="online-indicator"></span>
-                            </div>
-                            <div class="field-owner-info">
-                                <h4 id="fieldOwnerName">—</h4>
-                                <p class="field-owner-status" id="fieldOwnerStatus">—</p>
-                            </div>
-                        </div>
-                        <div class="field-owner-actions">
-                            <button type="button" class="field-action-btn" id="fieldAddFriendBtn">
-                                <i class="fi fi-rr-user-add"></i>
-                                <span>+ Add To Friend</span>
-                            </button>
-                            <button type="button" class="field-action-btn" id="viewFieldPageBtn">
-                                <i class="fi fi-rr-eye"></i>
-                                <span>View Field Page</span>
-                            </button>
-                            <button type="button" class="field-action-btn primary" id="bookNowBtn">
-                                <i class="fi fi-rr-calendar-day"></i>
-                                <span>Book Now</span>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="field-information-section">
-                        <h3>Field Information</h3>
-                        <div class="field-info-grid">
-                            <div class="field-info-item">
-                                <span class="field-info-label">Sport:</span>
-                                <span class="field-info-value" id="fieldType">—</span>
-                            </div>
-                            <div class="field-info-item">
-                                <span class="field-info-label">Rate:</span>
-                                <span class="field-info-value" id="fieldRate">—</span>
-                            </div>
-                            <div class="field-info-item">
-                                <span class="field-info-label">Court:</span>
-                                <span class="field-info-value" id="fieldSize">—</span>
-                            </div>
-                            <div class="field-info-item">
-                                <span class="field-info-label">Surface / extras:</span>
-                                <span class="field-info-value" id="fieldSurface">—</span>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
             </div>
         </main>
     </div>

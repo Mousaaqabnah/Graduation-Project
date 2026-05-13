@@ -6,6 +6,71 @@ const bookingsData = {
     cancelled: []
 };
 
+// Reference point for "distance to field" on cards (same key as home / all-fields)
+var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
+var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+var bookingDistanceRefCoords = null;
+
+function readPlayerSavedLocationForDistance() {
+    try {
+        var raw = localStorage.getItem(PLAYER_LOCATION_STORAGE_KEY);
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) {
+            return { lat: parsed.lat, lng: parsed.lng };
+        }
+    } catch (_) {}
+    return null;
+}
+
+function getPlayerCoordsForBookings() {
+    var saved = readPlayerSavedLocationForDistance();
+    if (saved) return Promise.resolve(saved);
+    return new Promise(function(resolve) {
+        if (!navigator.geolocation) {
+            resolve(DEFAULT_PLAYER_LOCATION);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            },
+            function() {
+                resolve(DEFAULT_PLAYER_LOCATION);
+            },
+            { timeout: 6000, enableHighAccuracy: false, maximumAge: 600000 }
+        );
+    });
+}
+
+function computeBookingCardDistance(booking) {
+    var field = booking && booking.field;
+    if (!field) return 'N/A';
+    var apiKm = field.distanceKm != null ? Number(field.distanceKm) : NaN;
+    if (Number.isFinite(apiKm) && window.FieldMapData && typeof FieldMapData.formatDistanceFromKm === 'function') {
+        var label = FieldMapData.formatDistanceFromKm(apiKm);
+        return label || 'N/A';
+    }
+    var flat = field.latitude != null ? Number(field.latitude) : NaN;
+    var flng = field.longitude != null ? Number(field.longitude) : NaN;
+    if (!Number.isFinite(flat) || !Number.isFinite(flng)) return 'N/A';
+    var ref = bookingDistanceRefCoords;
+    if (!ref || !Number.isFinite(ref.lat) || !Number.isFinite(ref.lng)) return 'N/A';
+    if (!window.FieldMapData || typeof FieldMapData.haversineKm !== 'function') return 'N/A';
+    var km = FieldMapData.haversineKm(ref.lat, ref.lng, flat, flng);
+    var formatted = FieldMapData.formatDistanceFromKm(km);
+    return formatted || 'N/A';
+}
+
+function bookingLocationLine(displayBooking) {
+    var loc = displayBooking.location || '';
+    var dist = displayBooking.distance;
+    if (dist && dist !== 'N/A') {
+        return (loc ? loc + ' · ' : '') + dist;
+    }
+    return loc || 'Location';
+}
+
 // Current filter state
 var currentFilter = 'upcoming';
 var searchQuery = '';
@@ -29,13 +94,6 @@ function getCurrentUserSafe() {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
-    loadBookingsFromStorage();
-    initializeFilters();
-    initializeSearch();
-    renderBookings();
-    initializeProfile();
-    initializePaymentStatusModal();
-    // Info (i) button: use delegation so it works for dynamically rendered cards
     var listEl = document.getElementById('bookingsList');
     if (listEl) {
         listEl.addEventListener('click', function(e) {
@@ -47,6 +105,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (id) showPaymentStatusInfo(id);
         });
     }
+
+    getPlayerCoordsForBookings().then(function(coords) {
+        bookingDistanceRefCoords = coords;
+        loadBookingsFromStorage();
+        initializeFilters();
+        initializeSearch();
+        renderBookings();
+        initializeProfile();
+        initializePaymentStatusModal();
+    });
 });
 
 // Check if a booking's end time has passed (so it should show as completed)
@@ -87,6 +155,33 @@ function getExpectedParticipantCount(booking) {
     return null;
 }
 
+function escapeHtml(str) {
+    if (str == null) return '';
+    var div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
+function participantAvatarFromRaw(player) {
+    var u = player && player.user;
+    var fromUser = u && u.avatar ? String(u.avatar).trim() : '';
+    if (fromUser) return fromUser;
+    if (player && player.avatar) return String(player.avatar).trim();
+    return '';
+}
+
+function resolveParticipantAvatarUrl(player) {
+    var name = (player && player.name) || 'Player';
+    var pid = String(player && player.id || '');
+    var direct = (player && player.avatar && String(player.avatar).trim()) || '';
+    if (direct) return direct;
+    if (pid && typeof localStorage !== 'undefined') {
+        var cached = localStorage.getItem('userAvatar_' + pid);
+        if (cached && String(cached).trim()) return String(cached).trim();
+    }
+    return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=007BFF&color=fff&size=128';
+}
+
 function normalizeBookingParticipants(booking) {
     var list = (booking && (booking.players || booking.participants)) || [];
     var byKey = {};
@@ -101,6 +196,7 @@ function normalizeBookingParticipants(booking) {
         normalized.push({
             id: pid,
             name: pName,
+            avatar: participantAvatarFromRaw(player),
             paymentStatus: normalizePaymentStatus(player.paymentStatus)
         });
     });
@@ -327,6 +423,49 @@ async function enrichMissingBookingImages(bookings) {
     }
 }
 
+async function enrichBookingsWithFieldCoords(bookings) {
+    if (!Array.isArray(bookings) || bookings.length === 0) return bookings || [];
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getAll) return bookings;
+
+    var needsCoords = bookings.some(function(b) {
+        var f = b && b.field;
+        if (!f) return true;
+        return f.latitude == null || f.longitude == null;
+    });
+    if (!needsCoords) return bookings;
+
+    try {
+        var fieldsRes = await API.fields.getAll({ limit: 300 });
+        var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
+        if (!fields.length) return bookings;
+
+        var byId = {};
+        fields.forEach(function(f) {
+            var fid = String((f && (f.id || f._id)) || '');
+            if (fid) byId[fid] = f;
+        });
+
+        return bookings.map(function(b) {
+            var fid = String((b && (b.fieldId || (b.field && (b.field.id || b.field._id)))) || '');
+            var src = fid ? byId[fid] : null;
+            if (!src) return b;
+            var prev = b.field || {};
+            var hasLat = prev.latitude != null && prev.longitude != null;
+            if (hasLat) return b;
+            var next = Object.assign({}, b);
+            next.field = Object.assign({}, prev, {
+                latitude: src.latitude != null ? src.latitude : prev.latitude,
+                longitude: src.longitude != null ? src.longitude : prev.longitude,
+                location: prev.location || src.location,
+                name: prev.name || src.name
+            });
+            return next;
+        });
+    } catch (e) {
+        return bookings;
+    }
+}
+
 // Remove duplicates from an array of display bookings by id
 function dedupeById(arr) {
     var seen = {};
@@ -449,7 +588,7 @@ function loadBookingsFromStorage() {
                     });
                     list = mergePaymentStatusFromLocalStorage(list);
                 }
-                list = await enrichMissingBookingImages(list);
+                list = await enrichBookingsWithFieldCoords(await enrichMissingBookingImages(list));
                 applyBookings(list.filter(keepBookingForCurrentUser));
             })
             .catch(function(err) {
@@ -516,6 +655,16 @@ function loadBookingsFromStorageFallback(applyBookings) {
         var isInvited = bookingId && invitedBookingIds.indexOf(bookingId) !== -1;
         return isOrganizer || isParticipant || isInvited;
     });
+    if (typeof API !== 'undefined' && API.fields && API.fields.getAll && API.getAuthToken && API.getAuthToken()) {
+        enrichBookingsWithFieldCoords(playerBookings)
+            .then(function(enriched) {
+                applyBookings(enriched);
+            })
+            .catch(function() {
+                applyBookings(playerBookings);
+            });
+        return;
+    }
     applyBookings(playerBookings);
 }
 
@@ -626,7 +775,7 @@ function convertBookingToDisplayFormat(booking) {
         rating: 4.8,
         reviewCount: 98,
         location: (booking.field && booking.field.location) || 'Location',
-        distance: 'N/A',
+        distance: computeBookingCardDistance(booking),
         date: dateDisplay,
         time: timeDisplay,
         teamSize: teamSize,
@@ -722,6 +871,7 @@ function filterBookingsBySearch(bookings) {
         const searchableText = [
             booking.fieldName,
             booking.location,
+            booking.distance,
             booking.date,
             booking.time,
             booking.price,
@@ -822,7 +972,7 @@ function getPaymentButton(booking) {
 // Pay for booking
 function payForBooking(bookingId, isOrganizer) {
     // Try to find booking in API cache first, then localStorage
-    var booking = allBookingsCache.find(function(b) { return b.id === bookingId; });
+    var booking = allBookingsCache.find(function(b) { return String(b.id) === String(bookingId); });
     if (!booking) {
         var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
         booking = allBookings.find(function(b) { return b.id === bookingId; });
@@ -843,8 +993,8 @@ function payForBooking(bookingId, isOrganizer) {
         amount = booking.totalCost;
     } else {
         // Find participant's assigned amount
-        var player = participants.find(function(p) { 
-            return (p.userId || p.id) === (playerData && playerData.id); 
+        var player = participants.find(function(p) {
+            return String(p.userId || p.id || (p.user && (p.user.id || p.user._id)) || '') === String(playerData && (playerData.id || playerData._id) || '');
         });
         amount = (player && player.paymentAmount) || costPerPlayer;
     }
@@ -931,7 +1081,7 @@ function createBookingCard(booking) {
                         </div>
                         <div class="booking-location">
                             <i class="fi fi-rr-marker"></i>
-                            <span>${booking.location} . ${booking.distance}</span>
+                            <span>${bookingLocationLine(booking)}</span>
                         </div>
                     </div>
                     <div class="booking-details">
@@ -991,8 +1141,11 @@ function createBookingCard(booking) {
 }
 
 // Cancel booking function (API or localStorage)
-function cancelBooking(bookingId) {
-    if (!confirm('Are you sure you want to cancel this booking?')) return;
+async function cancelBooking(bookingId) {
+    if (!(await MatchFieldDialog.confirm('Are you sure you want to cancel this booking?', {
+        type: 'danger',
+        okText: 'Cancel Booking'
+    }))) return;
     function moveToCancelled() {
         var displayIndex = bookingsData.upcoming.findIndex(function(b) { return b.id === bookingId; });
         if (displayIndex !== -1) {
@@ -1022,8 +1175,11 @@ function cancelBooking(bookingId) {
 }
 
 // Leave booking function (for non-organizers)
-function leaveBooking(bookingId) {
-    if (!confirm('Are you sure you want to leave this booking? The organizer will be notified.')) return;
+async function leaveBooking(bookingId) {
+    if (!(await MatchFieldDialog.confirm('Are you sure you want to leave this booking? The organizer will be notified.', {
+        type: 'warning',
+        okText: 'Leave Booking'
+    }))) return;
     
     var playerData = getCurrentUserSafe() || {};
     var playerId = playerData && playerData.id;
@@ -1043,6 +1199,18 @@ function leaveBooking(bookingId) {
 
     var currentPlayerId = String((playerData && (playerData.id || playerData._id)) || '');
     var participantsList = fullBooking.participants || fullBooking.players || [];
+    var leavingParticipant = participantsList.find(function(p) {
+        return String(p.userId || p.id || '') === currentPlayerId;
+    });
+    var fallbackShareAmount = fullBooking.totalCost && fullBooking.teamSize
+        ? Math.round(Number(fullBooking.totalCost) / Number(fullBooking.teamSize))
+        : 0;
+    var leftPlayerShareAmount = Number(
+        (leavingParticipant && leavingParticipant.paymentAmount) ||
+        (leavingParticipant && leavingParticipant.amount) ||
+        fallbackShareAmount ||
+        0
+    );
     var isCurrentUserParticipant = participantsList.some(function(p) {
         return String(p.userId || p.id || '') === currentPlayerId;
     });
@@ -1053,6 +1221,10 @@ function leaveBooking(bookingId) {
         type: 'player_left_booking',
         playerId: fullBooking.organizerId,
         bookingId: bookingId,
+        leftPlayerId: currentPlayerId,
+        leftPlayerName: playerName,
+        fieldName: (fullBooking.field && fullBooking.field.name) || fullBooking.fieldName || 'the field',
+        paymentAmount: leftPlayerShareAmount,
         title: 'Player Left Booking',
         message: playerName + ' has left your booking at ' + (fullBooking.field && fullBooking.field.name || 'the field') + '.',
         date: fullBooking.date,
@@ -1416,15 +1588,10 @@ async function loadRescheduleSlots(fieldId, date, originalStart) {
     var modal = document.getElementById('rescheduleModal');
     if (!container || !modal || !fieldId || !date) return;
 
-    // Generate hourly slots 9–22
     var slots = [];
-    for (var hour = 9; hour < 22; hour++) {
-        var startTime = hour.toString().padStart(2, '0') + ':00';
-        var endTime = (hour + 1).toString().padStart(2, '0') + ':00';
-        slots.push({ start: startTime, end: endTime, available: true });
-    }
-
     var bookedSlots = [];
+    var workingSlots = [];
+
     if (typeof API !== 'undefined' && API.fields && API.fields.getAvailability) {
         try {
             container.innerHTML = '<p style=\"text-align: center; padding: 16px;\">Loading availability...</p>';
@@ -1435,15 +1602,49 @@ async function loadRescheduleSlots(fieldId, date, originalStart) {
                   '</div>';
                 return;
             }
+            if (availability && availability.available === false && availability.closedBySchedule) {
+                container.innerHTML = '<div style=\"text-align:center; padding:16px; color:#dc3545;\">' +
+                  (availability.message || 'This field is closed on the selected day.') +
+                  '</div>';
+                return;
+            }
             bookedSlots = (availability && availability.bookedSlots) || [];
+            workingSlots = (availability && Array.isArray(availability.workingSlots)) ? availability.workingSlots : [];
         } catch (e) {
             console.warn('Failed to load availability for reschedule', e);
         }
     }
 
+    var baseStarts = workingSlots.length ? workingSlots : (function () {
+        var out = [];
+        for (var hour = 9; hour < 22; hour++) {
+            out.push(hour.toString().padStart(2, '0') + ':00');
+        }
+        return out;
+    })();
+
+    baseStarts.forEach(function (startTime) {
+        var hour = parseInt(startTime.split(':')[0], 10);
+        slots.push({
+            start: startTime,
+            end: (hour + 1).toString().padStart(2, '0') + ':00',
+            available: true
+        });
+    });
+
     slots.forEach(function(slot) {
         if (bookedSlots.indexOf(slot.start) !== -1) slot.available = false;
     });
+
+    var nowR = new Date();
+    var todayYmdLocal = nowR.getFullYear() + '-' + String(nowR.getMonth() + 1).padStart(2, '0') + '-' + String(nowR.getDate()).padStart(2, '0');
+    if (date === todayYmdLocal) {
+        var minHour = nowR.getHours();
+        slots.forEach(function (slot) {
+            var h = parseInt(String(slot.start).split(':')[0], 10);
+            if (!isNaN(h) && h < minHour) slot.available = false;
+        });
+    }
 
     container.innerHTML = slots.map(function(slot) {
         return '<button type=\"button\" class=\"time-slot ' +
@@ -1655,9 +1856,14 @@ async function showPaymentStatusInfo(bookingId) {
                            booking.paymentMethod === 'mixed' ? (booking.mixedPaymentDistribution && booking.mixedPaymentDistribution[booking.organizerId] || 0) : 0;
     
     const organizerPaymentStatus = organizerIsPaid ? 'paid' : (booking.organizerPaymentStatus || 'pending');
+    var organizerAvatar = '';
+    if (booking.organizer && booking.organizer.avatar) {
+        organizerAvatar = String(booking.organizer.avatar).trim();
+    }
     const organizerItem = createPlayerPaymentItem({
         id: booking.organizerId,
         name: booking.organizerName || (booking.organizer && booking.organizer.fullName) || 'Organizer',
+        avatar: organizerAvatar,
         paymentStatus: organizerPaymentStatus,
         paymentAmount: organizerAmount,
         isOrganizer: true,
@@ -1676,6 +1882,7 @@ async function showPaymentStatusInfo(bookingId) {
         const playerItem = createPlayerPaymentItem({
             id: pid,
             name: pName,
+            avatar: player.avatar || '',
             paymentStatus: player.paymentStatus,
             paymentAmount: playerAmount,
             isOrganizer: false,
@@ -1706,11 +1913,18 @@ function createPlayerPaymentItem(player) {
     const amountDisplay = player.paymentAmount > 0 ? `₺${player.paymentAmount}` : '';
     const nameDisplay = player.isCurrentUser ? `${player.name} (You)` : player.name;
     const organizerBadge = player.isOrganizer ? '<span class="organizer-badge">Organizer</span>' : '';
+    var displayName = player.name || 'Player';
+    var initial = displayName.length ? displayName.charAt(0).toUpperCase() : '?';
+    var avatarSrc = escapeHtml(resolveParticipantAvatarUrl(player));
+    var avatarAlt = escapeHtml(displayName);
+    var avatarBlock =
+        '<img src="' + avatarSrc + '" alt="' + avatarAlt + '" loading="lazy" class="player-avatar-img">' +
+        '<span class="player-avatar-fallback" aria-hidden="true">' + escapeHtml(initial) + '</span>';
     
     item.innerHTML = `
         <div class="player-info">
             <div class="player-avatar">
-                ${player.name.charAt(0).toUpperCase()}
+                ${avatarBlock}
             </div>
             <div class="player-details">
                 <div class="player-name-row">
@@ -1727,6 +1941,14 @@ function createPlayerPaymentItem(player) {
             </div>
         </div>
     `;
+
+    var avatarWrap = item.querySelector('.player-avatar');
+    var avatarImg = item.querySelector('.player-avatar-img');
+    if (avatarWrap && avatarImg) {
+        avatarImg.addEventListener('error', function() {
+            avatarWrap.classList.add('is-img-broken');
+        });
+    }
     
     return item;
 }

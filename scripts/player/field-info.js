@@ -233,12 +233,103 @@ function findVenueById(venueId) {
   return allVenues.find(venue => String(venue.id) === String(venueId));
 }
 
+// Same keys / default as scripts/player/home.js (list API supplies distanceKm; GET /:id does not).
+var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
+var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function readPlayerSavedLocation() {
+  try {
+    var raw = localStorage.getItem(PLAYER_LOCATION_STORAGE_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng))
+      return { lat: parsed.lat, lng: parsed.lng };
+  } catch (_) {}
+  return null;
+}
+
+function getPlayerCoordsForDistance() {
+  var saved = readPlayerSavedLocation();
+  if (saved) return Promise.resolve(saved);
+  return new Promise(function(resolve) {
+    if (!navigator.geolocation) {
+      resolve(DEFAULT_PLAYER_LOCATION);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      function() {
+        resolve(DEFAULT_PLAYER_LOCATION);
+      },
+      { timeout: 6000, enableHighAccuracy: true }
+    );
+  });
+}
+
+function formatDistanceFromKm(km) {
+  if (!Number.isFinite(km)) return 'N/A';
+  return km.toFixed(1) + ' km';
+}
+
+function applyDistanceToVenue(venue, field) {
+  if (!venue || !field) return Promise.resolve(venue);
+  var apiKm = field.distanceKm != null ? Number(field.distanceKm) : NaN;
+  if (Number.isFinite(apiKm)) {
+    venue.distance = formatDistanceFromKm(apiKm);
+    return Promise.resolve(venue);
+  }
+  var flat = field.latitude != null ? Number(field.latitude) : null;
+  var flng = field.longitude != null ? Number(field.longitude) : null;
+  if (!Number.isFinite(flat) || !Number.isFinite(flng)) {
+    venue.distance = 'N/A';
+    return Promise.resolve(venue);
+  }
+  return getPlayerCoordsForDistance().then(function(coords) {
+    var km = haversineKm(coords.lat, coords.lng, flat, flng);
+    venue.distance = formatDistanceFromKm(km);
+    return venue;
+  });
+}
+
+function mergeAmenitiesAndFeatures(field) {
+  var a = Array.isArray(field && field.amenities) ? field.amenities : [];
+  var f = Array.isArray(field && field.features) ? field.features : [];
+  var seen = {};
+  var out = [];
+  [].concat(a, f).forEach(function (x) {
+    var s = String(x || '').trim();
+    if (!s) return;
+    var k = s.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = true;
+    out.push(s);
+  });
+  return out;
+}
+
 // Load field from API and map to venue format for rendering
 function loadFieldFromAPI(fieldId) {
   if (typeof API === 'undefined' || !fieldId) return Promise.resolve(null);
+  var apiField;
   return API.fields.getById(fieldId).then(function(res) {
     // API returns { field: {...} }, extract the actual field
-    var field = (res && res.field) ? res.field : res;
+    apiField = (res && res.field) ? res.field : res;
+    var field = apiField;
     var images = (field.images && field.images.length) ? field.images : [];
     var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop';
     var reviewCount = field.reviewCount != null ? field.reviewCount : (field._count && field._count.reviews) || 0;
@@ -256,7 +347,7 @@ function loadFieldFromAPI(fieldId) {
       price: field.pricePerHour != null ? field.pricePerHour : 0,
       isFavorite: false,
       description: field.description || '',
-      features: Array.isArray(field.features) ? field.features : [],
+      features: mergeAmenitiesAndFeatures(field),
       address: field.address || '',
       city: field.city || '',
       district: field.district || '',
@@ -264,17 +355,22 @@ function loadFieldFromAPI(fieldId) {
       longitude: field.longitude != null ? Number(field.longitude) : null,
       phone: field.phone || '',
       venueResponse: field.venueResponse || '',
+      capacity: field.capacity != null ? Number(field.capacity) : null,
       owner: field.owner || null,
+      ownerId: field.ownerId || (field.owner && (field.owner.id || field.owner._id)) || null,
       apiReviews: Array.isArray(field.reviews) ? field.reviews : []
     };
   }).then(function(venue) {
+    function withDistance(v) {
+      return applyDistanceToVenue(v, apiField);
+    }
     if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
       return API.favorites.check(venue.id).then(function(res) {
         venue.isFavorite = !!(res && (res.isFavorite || res.isFavorited));
         return venue;
-      }).catch(function() { return venue; });
+      }).catch(function() { return venue; }).then(withDistance);
     }
-    return venue;
+    return withDistance(venue);
   });
 }
 
@@ -372,6 +468,14 @@ function saveFavoritesToStorage() {
   persistFavoriteIdsSet(set);
 }
 
+/** Build "5v5" / "6v6" / "5v6" label from total player capacity (e.g. 10 → 5v5). */
+function matchFormatLabelFromCapacity(capacity) {
+  var n = Number(capacity);
+  if (!Number.isFinite(n) || n < 2) return null;
+  var a = Math.floor(n / 2);
+  var b = n - a;
+  return String(a) + 'v' + String(b);
+}
 
 // Render field info
 function renderFieldInfo(venue) {
@@ -386,20 +490,26 @@ function renderFieldInfo(venue) {
       return;
   }
 
-  // Create field feature tags for display under image (simplified)
-  const fieldFeatureTags = [
-      venue.type.charAt(0).toUpperCase() + venue.type.slice(1), // Outdoor/Indoor
-      venue.sport, // Football, Tennis, etc.
-      'Synthetic', // Assume synthetic turf/court
-      'Available today', // Availability status
-      '6v6'
+  // Create field feature tags for display under image
+  var typeRaw = venue.type ? String(venue.type) : 'outdoor';
+  var typeLabel = typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1).toLowerCase();
+  var fieldFeatureTags = [
+    typeLabel,
+    venue.sport || 'Sport',
+    'Synthetic',
+    'Available today'
   ];
+  var matchTag = matchFormatLabelFromCapacity(venue.capacity);
+  if (matchTag) {
+    fieldFeatureTags.push(matchTag);
+  }
 
   const fieldFeatureTagsHTML = fieldFeatureTags.map(tag => `
       <span class="field-feature-tag">${tag}</span>
   `).join('');
 
-  const featuresHTML = venue.features.map(feature => `
+  const featuresList = Array.isArray(venue.features) ? venue.features : [];
+  const featuresHTML = featuresList.map(feature => `
       <div class="field-feature-item">
           <div class="field-feature-icon">
               <i class="fi fi-rr-check"></i>
@@ -490,23 +600,12 @@ function renderFieldInfo(venue) {
 
       <!-- Field Details Grid - Content Below Main Row -->
       <div class="field-content-grid">
-          <!-- Left Column - Description, Highlights, Amenities, Reviews -->
+          <!-- Left Column - Description, Amenities, Reviews -->
           <div class="field-content-left">
               <!-- Description -->
               <div class="field-description-section">
                   <h2 class="section-title">${venue.name}</h2>
                   <p class="field-description">${venue.description || 'A premium sports facility with excellent amenities and professional-grade equipment.'}</p>
-              </div>
-
-              <!-- Highlights -->
-              <div class="field-highlights-section">
-                  <h3 class="section-title">Highlights</h3>
-                  <ul class="highlights-list">
-                      <li>Easy access by car and public transport</li>
-                      <li>High-quality lighting for night games</li>
-                      <li>Clean changing rooms and showers</li>
-                      <li>Snacks and drinks available on site</li>
-                  </ul>
               </div>
 
               <!-- Amenities -->
@@ -636,12 +735,19 @@ function renderFieldInfo(venue) {
   const messageVenueBtn = document.getElementById('messageVenueBtn');
   if (messageVenueBtn) {
     messageVenueBtn.addEventListener('click', function() {
-      const ownerId = venue && venue.owner && venue.owner.id ? String(venue.owner.id) : '';
+      var own = venue && venue.owner;
+      var ownerId = String(
+        (own && (own.id || own._id)) || (venue && venue.ownerId) || ''
+      ).trim();
       if (!ownerId) {
         alert('Venue contact is currently unavailable.');
         return;
       }
-      window.location.href = 'chat.html?userId=' + encodeURIComponent(ownerId) + '&fieldId=' + encodeURIComponent(String(venue.id));
+      window.location.href =
+        'chat.html?userId=' +
+        encodeURIComponent(ownerId) +
+        '&fieldId=' +
+        encodeURIComponent(String(venue.id));
     });
   }
 }

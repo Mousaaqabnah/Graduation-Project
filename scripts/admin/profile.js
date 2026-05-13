@@ -141,10 +141,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
-    // Load user
+    // Load user: paint from session cache first, then refresh from API
     try {
-        currentUser = await loadMe();
-        if (currentUser) {
+        const cached = window.API?.getCurrentUser?.();
+        if (cached) {
+            currentUser = cached;
+            renderUser(cached);
+        }
+        const fresh = await loadMe();
+        if (fresh) {
+            currentUser = fresh;
             if (window.API?.setCurrentUser) API.setCurrentUser(currentUser);
             renderUser(currentUser);
         }

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Home</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,6 +13,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="../../styles/player/home.css">
+    <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
 </head>
 <body>
     <div class="app-container">
@@ -319,7 +321,7 @@
                             </div>
                         </div>
                         <div class="add-player-input">
-                            <div class="search-input-container" style="position: relative; flex: 1;">
+                            <div class="search-input-container">
                                 <input type="text" id="playerSearchInput" placeholder="Search by username or Player ID" autocomplete="off">
                                 <div id="playerSearchResults" class="search-results-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #e0e0e0; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
                                     <!-- Search results will appear here -->
@@ -328,15 +330,6 @@
                             <button class="add-player-btn" id="addPlayerBtn">
                                 <i class="fi fi-rr-plus"></i> Add Player
                             </button>
-                        </div>
-                        <div class="invite-link-section">
-                            <label>Or share invite link:</label>
-                            <div class="invite-link-container">
-                                <input type="text" id="inviteLink" readonly>
-                                <button class="copy-link-btn" id="copyInviteLink">
-                                    <i class="fi fi-rr-copy"></i> Copy
-                                </button>
-                            </div>
                         </div>
                         <div class="players-list" id="playersList">
                             <!-- Added players will appear here -->
@@ -770,6 +763,7 @@
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/profile-popup-favorites.js"></script>
     <script src="../../scripts/player/home.js"></script>
 </body>
 </html>

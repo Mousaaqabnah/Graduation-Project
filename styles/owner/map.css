@@ -1,5 +1,10 @@
 /* Map Page Styles for Field Owner */
 
+/* Leaflet map panes use z-index in the hundreds; header must stack above the map */
+.main-header {
+    z-index: 20000;
+}
+
 /* Map Title Section */
 .map-title-section {
     display: flex;
@@ -371,6 +376,12 @@
     align-items: flex-end;
     gap: 8px;
     flex-shrink: 0;
+}
+
+.field-distance {
+    font-size: 14px;
+    color: #6B7280;
+    font-weight: 500;
 }
 
 .btn-view,

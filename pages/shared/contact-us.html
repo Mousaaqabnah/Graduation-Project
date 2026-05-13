@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Contact Us</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,6 +12,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../../styles/shared/contact-us.css">
+    <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
 </head>
 <body>
     <div class="app-container">
@@ -151,6 +153,13 @@
                                         <span>My Bookings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
+                                    <a href="#" class="profile-menu-item" id="favoriteFieldsMenuItem">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-heart"></i>
+                                        </div>
+                                        <span>Favorite Fields</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -254,11 +263,28 @@
         </main>
     </div>
 
+    <div class="favorite-fields-modal" id="favoriteFieldsModal">
+        <div class="favorite-fields-modal-overlay"></div>
+        <div class="favorite-fields-modal-content">
+            <div class="favorite-fields-modal-header">
+                <h2>Favorite Fields</h2>
+                <button type="button" class="modal-close" id="closeFavoriteFieldsModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="favorite-fields-modal-body" id="favoriteFieldsModalBody"></div>
+        </div>
+    </div>
+
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/profile-popup-favorites.js"></script>
     <script src="../../scripts/shared/contact-us.js"></script>
 </body>
 </html>

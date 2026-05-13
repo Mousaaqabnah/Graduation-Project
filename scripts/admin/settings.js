@@ -5,8 +5,6 @@ var FIXED_ADMIN_PREFS = {
     timezone: 'Europe/Istanbul'
 };
 
-var SESSION_TIMEOUT_ALLOWED = ['15', '30', '60', '120'];
-
 var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
 var accountSettingsState = {
     emailNotifications: true,
@@ -25,13 +23,6 @@ var adminNotificationPrefsState = {
     verificationRequests: true,
     systemErrors: true,
     securityAlerts: true,
-    isSaving: false
-};
-
-var adminPrivacyState = {
-    sessionTimeout: '30',
-    ipWhitelist: false,
-    auditLogAccess: true,
     isSaving: false
 };
 
@@ -64,7 +55,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     initializeAccountSettingsHandlers();
     initializeAdminNotificationPreferenceHandlers();
-    initializeAdminPrivacyHandlers();
     initializeAdminSystemPrefsHandlers();
 
     var changePasswordBtn = document.getElementById('changePasswordBtn');
@@ -173,32 +163,47 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     var deleteAccountBtn = document.getElementById('deleteAccountBtn');
     if (deleteAccountBtn) {
-        deleteAccountBtn.addEventListener('click', function() {
-            if (!confirm('Are you sure you want to delete your admin account? This action cannot be undone.')) return;
-            if (!confirm('This will permanently delete your admin account and data. Are you absolutely sure?')) return;
+        deleteAccountBtn.addEventListener('click', async function() {
+            if (!(await MatchFieldDialog.confirm('Are you sure you want to delete your admin account? This action cannot be undone.', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete Account'
+            }))) return;
+            if (!(await MatchFieldDialog.confirm('This will permanently delete your admin account and data. Are you absolutely sure?', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete permanently'
+            }))) return;
 
             if (typeof API === 'undefined' || !API.auth || !API.auth.deleteAccount) {
-                alert('Account deletion service is unavailable. Please refresh the page.');
+                await MatchFieldDialog.alert('Account deletion service is unavailable. Please refresh the page.', { type: 'danger', title: 'Error' });
                 return;
             }
 
-            var currentPwd = prompt('Please enter your current password to confirm account deletion:');
+            var currentPwd = await MatchFieldDialog.prompt('Please enter your current password to confirm account deletion.', {
+                type: 'danger',
+                title: 'Confirm password',
+                inputType: 'password',
+                placeholder: 'Current password',
+                okText: 'Continue',
+                cancelText: 'Cancel'
+            });
             if (currentPwd == null) return;
             currentPwd = String(currentPwd).trim();
             if (!currentPwd) {
-                alert('Current password is required to delete your account.');
+                await MatchFieldDialog.alert('Current password is required to delete your account.', { type: 'warning', title: 'Password required' });
                 return;
             }
 
             deleteAccountBtn.disabled = true;
             deleteAccountBtn.textContent = 'Deleting...';
             API.auth.deleteAccount(currentPwd)
-                .then(function() {
-                    alert('Your account has been deleted successfully.');
+                .then(async function() {
+                    await MatchFieldDialog.alert('Your account has been deleted successfully.', { type: 'success', title: 'Deleted' });
                     API.auth.logout();
                 })
-                .catch(function(err) {
-                    alert((err && err.message) ? err.message : 'Failed to delete account.');
+                .catch(async function(err) {
+                    await MatchFieldDialog.alert((err && err.message) ? err.message : 'Failed to delete account.', { type: 'danger', title: 'Error' });
                 })
                 .finally(function() {
                     deleteAccountBtn.disabled = false;
@@ -245,21 +250,6 @@ async function loadSettings() {
         }
     });
 
-    var sessionEl = document.getElementById('sessionTimeout');
-    if (sessionEl && settings.sessionTimeout) {
-        if (SESSION_TIMEOUT_ALLOWED.indexOf(String(settings.sessionTimeout)) !== -1) {
-            sessionEl.value = String(settings.sessionTimeout);
-        }
-    }
-    if (settings.ipWhitelist !== undefined) {
-        var ipEl = document.getElementById('ipWhitelist');
-        if (ipEl) ipEl.checked = Boolean(settings.ipWhitelist);
-    }
-    if (settings.auditLogAccess !== undefined) {
-        var auEl = document.getElementById('auditLogAccess');
-        if (auEl) auEl.checked = Boolean(settings.auditLogAccess);
-    }
-
     var langEl = document.getElementById('language');
     if (langEl) langEl.value = FIXED_ADMIN_PREFS.language;
     var tzEl = document.getElementById('timezone');
@@ -285,9 +275,6 @@ function buildAdminSettingsFromDom() {
         verificationRequests: Boolean(document.getElementById('verificationRequests') && document.getElementById('verificationRequests').checked),
         systemErrors: Boolean(document.getElementById('systemErrors') && document.getElementById('systemErrors').checked),
         securityAlerts: Boolean(document.getElementById('securityAlerts') && document.getElementById('securityAlerts').checked),
-        sessionTimeout: document.getElementById('sessionTimeout') ? document.getElementById('sessionTimeout').value : '30',
-        ipWhitelist: Boolean(document.getElementById('ipWhitelist') && document.getElementById('ipWhitelist').checked),
-        auditLogAccess: Boolean(document.getElementById('auditLogAccess') && document.getElementById('auditLogAccess').checked),
         language: FIXED_ADMIN_PREFS.language,
         timezone: FIXED_ADMIN_PREFS.timezone,
         dateFormat: document.getElementById('dateFormat') ? document.getElementById('dateFormat').value : 'DD/MM/YYYY',
@@ -308,11 +295,6 @@ function syncAdminStateFromDom() {
     ADMIN_NOTIFICATION_PREF_KEYS.forEach(function(key) {
         adminNotificationPrefsState[key] = Boolean(document.getElementById(key) && document.getElementById(key).checked);
     });
-
-    var st = document.getElementById('sessionTimeout');
-    adminPrivacyState.sessionTimeout = st && SESSION_TIMEOUT_ALLOWED.indexOf(st.value) !== -1 ? st.value : '30';
-    adminPrivacyState.ipWhitelist = Boolean(document.getElementById('ipWhitelist') && document.getElementById('ipWhitelist').checked);
-    adminPrivacyState.auditLogAccess = Boolean(document.getElementById('auditLogAccess') && document.getElementById('auditLogAccess').checked);
 
     var df = document.getElementById('dateFormat');
     var ipp = document.getElementById('itemsPerPage');
@@ -451,112 +433,6 @@ function saveAdminNotificationPreferences(nextPrefs) {
         .finally(function() {
             adminNotificationPrefsState.isSaving = false;
             setAdminNotificationControlsDisabled(false);
-        });
-}
-
-function initializeAdminPrivacyHandlers() {
-    var sessionEl = document.getElementById('sessionTimeout');
-    if (sessionEl) {
-        sessionEl.addEventListener('change', function() {
-            var nextTimeout = sessionEl.value;
-            if (SESSION_TIMEOUT_ALLOWED.indexOf(nextTimeout) === -1) {
-                sessionEl.value = adminPrivacyState.sessionTimeout;
-                return;
-            }
-            saveAdminPrivacySettings({
-                sessionTimeout: nextTimeout,
-                ipWhitelist: Boolean(document.getElementById('ipWhitelist') && document.getElementById('ipWhitelist').checked),
-                auditLogAccess: Boolean(document.getElementById('auditLogAccess') && document.getElementById('auditLogAccess').checked)
-            });
-        });
-    }
-
-    var ipEl = document.getElementById('ipWhitelist');
-    if (ipEl) {
-        ipEl.addEventListener('change', function() {
-            saveAdminPrivacySettings({
-                sessionTimeout: document.getElementById('sessionTimeout') ? document.getElementById('sessionTimeout').value : adminPrivacyState.sessionTimeout,
-                ipWhitelist: Boolean(ipEl.checked),
-                auditLogAccess: Boolean(document.getElementById('auditLogAccess') && document.getElementById('auditLogAccess').checked)
-            });
-        });
-    }
-
-    var auEl = document.getElementById('auditLogAccess');
-    if (auEl) {
-        auEl.addEventListener('change', function() {
-            saveAdminPrivacySettings({
-                sessionTimeout: document.getElementById('sessionTimeout') ? document.getElementById('sessionTimeout').value : adminPrivacyState.sessionTimeout,
-                ipWhitelist: Boolean(document.getElementById('ipWhitelist') && document.getElementById('ipWhitelist').checked),
-                auditLogAccess: Boolean(auEl.checked)
-            });
-        });
-    }
-}
-
-function applyAdminPrivacyToDom(prefs) {
-    var sessionEl = document.getElementById('sessionTimeout');
-    if (sessionEl && SESSION_TIMEOUT_ALLOWED.indexOf(prefs.sessionTimeout) !== -1) {
-        sessionEl.value = prefs.sessionTimeout;
-    }
-    var ipEl = document.getElementById('ipWhitelist');
-    if (ipEl) ipEl.checked = Boolean(prefs.ipWhitelist);
-    var auEl = document.getElementById('auditLogAccess');
-    if (auEl) auEl.checked = Boolean(prefs.auditLogAccess);
-}
-
-function setAdminPrivacyControlsDisabled(disabled) {
-    var sessionEl = document.getElementById('sessionTimeout');
-    var ipEl = document.getElementById('ipWhitelist');
-    var auEl = document.getElementById('auditLogAccess');
-    if (sessionEl) sessionEl.disabled = disabled;
-    if (ipEl) ipEl.disabled = disabled;
-    if (auEl) auEl.disabled = disabled;
-}
-
-function saveAdminPrivacySettings(nextPrefs) {
-    if (adminPrivacyState.isSaving) return;
-
-    var nextTimeout = SESSION_TIMEOUT_ALLOWED.indexOf(String(nextPrefs.sessionTimeout)) !== -1
-        ? String(nextPrefs.sessionTimeout)
-        : adminPrivacyState.sessionTimeout;
-    var nextIp = Boolean(nextPrefs.ipWhitelist);
-    var nextAudit = Boolean(nextPrefs.auditLogAccess);
-
-    var prev = {
-        sessionTimeout: adminPrivacyState.sessionTimeout,
-        ipWhitelist: adminPrivacyState.ipWhitelist,
-        auditLogAccess: adminPrivacyState.auditLogAccess
-    };
-
-    adminPrivacyState.sessionTimeout = nextTimeout;
-    adminPrivacyState.ipWhitelist = nextIp;
-    adminPrivacyState.auditLogAccess = nextAudit;
-    applyAdminPrivacyToDom(adminPrivacyState);
-    saveSettings();
-
-    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
-        return;
-    }
-
-    adminPrivacyState.isSaving = true;
-    setAdminPrivacyControlsDisabled(true);
-    API.users.patchMyPreferences({
-        sessionTimeout: nextTimeout,
-        ipWhitelist: nextIp,
-        auditLogAccess: nextAudit
-    })
-        .catch(function(err) {
-            adminPrivacyState.sessionTimeout = prev.sessionTimeout;
-            adminPrivacyState.ipWhitelist = prev.ipWhitelist;
-            adminPrivacyState.auditLogAccess = prev.auditLogAccess;
-            applyAdminPrivacyToDom(adminPrivacyState);
-            saveSettings();
-            alert((err && err.message) ? err.message : 'Failed to save privacy settings. Changes were reverted.');
-        })
-        .finally(function() {
-            adminPrivacyState.isSaving = false;
-            setAdminPrivacyControlsDisabled(false);
         });
 }
 

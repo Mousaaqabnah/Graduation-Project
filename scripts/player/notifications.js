@@ -229,6 +229,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <button type="button" class="notification-detail-close" aria-label="Close">&times;</button>
         <h3 class="notification-detail-title"></h3>
         <p class="notification-detail-message"></p>
+        <div class="notification-detail-actions"></div>
         <p class="notification-detail-time"></p>
       </div>
     `;
@@ -242,6 +243,19 @@ document.addEventListener('DOMContentLoaded', function () {
       .notification-detail-close{position:absolute;top:12px;right:12px;background:none;border:none;font-size:24px;cursor:pointer;color:#6B7280;}
       .notification-detail-title{margin:0 0 12px;font-size:18px;font-weight:600;}
       .notification-detail-message{margin:0 0 12px;font-size:14px;line-height:1.5;white-space:pre-wrap;}
+      .notification-detail-actions{display:flex;flex-direction:column;gap:10px;margin:16px 0 12px;}
+      .notification-action-btn{border:none;border-radius:10px;padding:10px 12px;font-size:14px;font-weight:600;cursor:pointer;}
+      .notification-action-btn.primary{background:#007BFF;color:#fff;}
+      .notification-action-btn.secondary{background:#EFF6FF;color:#007BFF;}
+      .notification-action-btn:disabled{opacity:.65;cursor:not-allowed;}
+      .notification-add-player-box{display:none;margin-top:6px;padding:12px;border:1px solid #E5E7EB;border-radius:10px;background:#F9FAFB;}
+      .notification-add-player-box.active{display:block;}
+      .notification-add-player-input{width:100%;box-sizing:border-box;border:1px solid #D1D5DB;border-radius:8px;padding:9px 10px;font-size:14px;}
+      .notification-player-results{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:180px;overflow:auto;}
+      .notification-player-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;}
+      .notification-player-result span{font-size:13px;color:#374151;}
+      .notification-player-result button{border:none;border-radius:8px;background:#007BFF;color:#fff;padding:7px 9px;font-size:12px;font-weight:600;cursor:pointer;}
+      .notification-action-note{margin:8px 0 0;color:#6B7280;font-size:12px;line-height:1.4;}
       .notification-detail-time{margin:0;font-size:12px;color:#9CA3AF;}
       .notification-item{cursor:pointer;}
       .notification-item:hover{background:#F3F4F6;}
@@ -251,10 +265,250 @@ document.addEventListener('DOMContentLoaded', function () {
   detailModal.querySelector('.notification-detail-backdrop').onclick = () => detailModal.classList.remove('active');
   detailModal.querySelector('.notification-detail-close').onclick = () => detailModal.classList.remove('active');
 
-  function openDetail(title, message, time) {
+  function getNotificationBookingId(notification) {
+    return String((notification && notification.bookingId) || '');
+  }
+
+  function getBookingIdValue(booking) {
+    return String((booking && (booking.id != null ? booking.id : booking._id)) || '');
+  }
+
+  async function loadBookingForNotification(notification) {
+    const bookingId = getNotificationBookingId(notification);
+    if (!bookingId) return null;
+    if (window.API && API.bookings && API.bookings.getById && API.getAuthToken && API.getAuthToken()) {
+      try {
+        const res = await API.bookings.getById(bookingId);
+        if (res && res.booking) return res.booking;
+      } catch (e) {
+        console.warn('notification booking load failed', e);
+      }
+    }
+    try {
+      const bookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+      return bookings.find((b) => getBookingIdValue(b) === bookingId) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function getLeftPlayerShare(notification, booking) {
+    const explicit = Number(notification && notification.paymentAmount);
+    if (explicit > 0) return explicit;
+    const total = Number(booking && booking.totalCost) || 0;
+    const teamSize = Number(booking && booking.teamSize) || 0;
+    if (total > 0 && teamSize > 0) return Math.round(total / teamSize);
+    const participants = (booking && (booking.participants || booking.players)) || [];
+    const totalPlayers = participants.length + 2; // organizer + remaining players + the one who left
+    return total > 0 ? Math.round(total / totalPlayers) : 0;
+  }
+
+  function markLeftShareCovered(notification, amount) {
+    const bookingId = getNotificationBookingId(notification);
+    if (!bookingId) return;
+    const coverKey = bookingId + '_covered_' + String(notification.id || Date.now());
+    const paidMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+    paidMap[coverKey] = true;
+    localStorage.setItem('playerPaidBookings', JSON.stringify(paidMap));
+
+    const covered = JSON.parse(localStorage.getItem('organizerCoveredLeftPlayerShares') || '{}');
+    covered[String(notification.id || coverKey)] = {
+      bookingId: bookingId,
+      amount: amount,
+      leftPlayerName: notification.leftPlayerName || 'Player',
+      coveredAt: new Date().toISOString()
+    };
+    localStorage.setItem('organizerCoveredLeftPlayerShares', JSON.stringify(covered));
+  }
+
+  function removeLocalNotificationById(notificationId) {
+    if (!notificationId) return;
+    try {
+      const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+      const next = notifications.filter((n) => String(n.id || '') !== String(notificationId));
+      localStorage.setItem('playerNotifications', JSON.stringify(next));
+    } catch (_) {}
+  }
+
+  function createReplacementPaymentNotification(booking, notification, player, amount) {
+    const currentUser = getCurrentUser() || {};
+    const bookingId = getBookingIdValue(booking) || getNotificationBookingId(notification);
+    const fieldName = (booking && booking.field && booking.field.name) || notification.fieldName || 'the field';
+    const fieldImage =
+      (booking && booking.field && Array.isArray(booking.field.images) && booking.field.images[0]) ||
+      notification.fieldImage ||
+      '';
+    const dateValue = (booking && booking.date) || notification.date;
+    const timeValue = (booking && booking.timeSlotStart && booking.timeSlotEnd)
+      ? (booking.timeSlotStart + ' - ' + booking.timeSlotEnd)
+      : (notification.time || '');
+    const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    notifications.push({
+      id: 'notif_' + Date.now() + '_' + player.id,
+      type: 'booking_payment_request',
+      playerId: player.id,
+      playerName: player.fullName || player.name || '',
+      bookingId: bookingId,
+      fieldName: fieldName,
+      fieldImage: fieldImage,
+      title: 'Payment Required',
+      message: (currentUser.fullName || currentUser.name || 'The organizer') +
+        ' invited you to replace a player at ' + fieldName + '. Your share is ₺' + amount + '.',
+      date: dateValue,
+      time: timeValue,
+      paymentAmount: amount,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+    localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+  }
+
+  async function addReplacementPlayer(notification, user, button) {
+    const booking = await loadBookingForNotification(notification);
+    if (!booking) {
+      alert('Booking not found. Please refresh and try again.');
+      return;
+    }
+    const bookingId = getBookingIdValue(booking) || getNotificationBookingId(notification);
+    const amount = getLeftPlayerShare(notification, booking);
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Adding...';
+    }
+    try {
+      if (window.API && API.bookings && API.bookings.addParticipant && API.getAuthToken && API.getAuthToken()) {
+        await API.bookings.addParticipant(bookingId, user.id);
+      }
+      createReplacementPaymentNotification(booking, notification, user, amount);
+      removeLocalNotificationById(notification.id);
+      alert((user.fullName || user.name || 'Player') + ' was added and sent a payment request.');
+      detailModal.classList.remove('active');
+      await loadNotifications();
+      if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge();
+    } catch (e) {
+      alert((e && e.message) || 'Could not add this player.');
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Add';
+      }
+    }
+  }
+
+  function renderPlayerSearchResults(container, notification, users) {
+    if (!container) return;
+    if (!users || !users.length) {
+      container.innerHTML = '<p class="notification-action-note">No players found.</p>';
+      return;
+    }
+    container.innerHTML = users.map((u, index) => {
+      return '<div class="notification-player-result" data-index="' + index + '">' +
+        '<span>' + escapeHtml(u.fullName || u.email || 'Player') + '</span>' +
+        '<button type="button">Add</button>' +
+        '</div>';
+    }).join('');
+    container.querySelectorAll('.notification-player-result button').forEach((btn) => {
+      btn.addEventListener('click', function () {
+        const row = btn.closest('.notification-player-result');
+        const idx = parseInt(row && row.getAttribute('data-index'), 10);
+        const user = users[idx];
+        if (user) addReplacementPlayer(notification, user, btn);
+      });
+    });
+  }
+
+  function renderPlayerLeftActions(notification) {
+    const bookingId = getNotificationBookingId(notification);
+    if (!bookingId) return '';
+    const amountText = Number(notification.paymentAmount) > 0 ? ' (₺' + Number(notification.paymentAmount) + ')' : '';
+    return `
+      <button type="button" class="notification-action-btn primary" data-notification-action="add-player">
+        Add Another Player
+      </button>
+      <button type="button" class="notification-action-btn secondary" data-notification-action="cover-share">
+        Pay Missing Player Share${amountText}
+      </button>
+      <div class="notification-add-player-box">
+        <input type="text" class="notification-add-player-input" placeholder="Search player by name or email">
+        <div class="notification-player-results"></div>
+        <p class="notification-action-note">The selected player will be added to this booking and receive a payment request.</p>
+      </div>
+    `;
+  }
+
+  function wirePlayerLeftActions(notification) {
+    const actions = detailModal.querySelector('.notification-detail-actions');
+    if (!actions || notification.type !== 'player_left_booking') return;
+    const addBtn = actions.querySelector('[data-notification-action="add-player"]');
+    const coverBtn = actions.querySelector('[data-notification-action="cover-share"]');
+    const addBox = actions.querySelector('.notification-add-player-box');
+    const input = actions.querySelector('.notification-add-player-input');
+    const results = actions.querySelector('.notification-player-results');
+
+    if (addBtn && addBox && input) {
+      addBtn.addEventListener('click', function () {
+        addBox.classList.toggle('active');
+        if (addBox.classList.contains('active')) input.focus();
+      });
+      input.addEventListener('input', async function () {
+        const q = input.value.trim();
+        if (q.length < 2) {
+          if (results) results.innerHTML = '<p class="notification-action-note">Type at least 2 characters.</p>';
+          return;
+        }
+        if (!(window.API && API.users && API.users.search)) return;
+        try {
+          const res = await API.users.search(q);
+          const users = (res.users || []).filter((u) => String(u.role || '').toUpperCase() === 'PLAYER');
+          renderPlayerSearchResults(results, notification, users);
+        } catch (e) {
+          if (results) results.innerHTML = '<p class="notification-action-note">Could not search players.</p>';
+        }
+      });
+    }
+
+    if (coverBtn) {
+      coverBtn.addEventListener('click', async function () {
+        const booking = await loadBookingForNotification(notification);
+        const amount = getLeftPlayerShare(notification, booking);
+        const bookingId = (booking && getBookingIdValue(booking)) || getNotificationBookingId(notification);
+        if (!booking || !bookingId) {
+          alert('Booking not found. Please refresh and try again.');
+          return;
+        }
+        if (typeof window.openPaymentModal !== 'function') {
+          alert('Payment form is not available on this page. Please open My Bookings and try again.');
+          return;
+        }
+        window.openPaymentModal({
+          amount: amount,
+          bookingId: bookingId,
+          isOrganizer: true,
+          booking: booking,
+          coverLeftShare: {
+            notificationId: notification.id,
+            leftPlayerName: notification.leftPlayerName || notification.playerName || 'Player',
+            amount: amount
+          }
+        });
+        detailModal.classList.remove('active');
+      });
+    }
+  }
+
+  function openDetail(notification) {
+    const title = notification && notification.title;
+    const message = notification && notification.message;
+    const time = formatTime(notification && notification.createdAt);
     detailModal.querySelector('.notification-detail-title').textContent = title || 'Notification';
     detailModal.querySelector('.notification-detail-message').textContent = message || '';
     detailModal.querySelector('.notification-detail-time').textContent = time || '';
+    const actions = detailModal.querySelector('.notification-detail-actions');
+    if (actions) {
+      actions.innerHTML = notification && notification.type === 'player_left_booking'
+        ? renderPlayerLeftActions(notification)
+        : '';
+    }
+    wirePlayerLeftActions(notification || {});
     detailModal.classList.add('active');
   }
 
@@ -297,6 +551,7 @@ document.addEventListener('DOMContentLoaded', function () {
       local = [];
     }
     const localNotifications = local.map((n) => ({
+      ...n,
       id: n.id || 'local-' + (n.date || ''),
       title: n.title || 'Booking update',
       message: n.message || '',
@@ -332,7 +587,7 @@ document.addEventListener('DOMContentLoaded', function () {
       el.addEventListener('click', () => {
         const idx = parseInt(el.dataset.index, 10);
         const n = combined[idx];
-        if (n) openDetail(n.title, n.message, formatTime(n.createdAt));
+        if (n) openDetail(n);
       });
     });
   }

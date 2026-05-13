@@ -241,6 +241,10 @@ body {
     margin-top: -8px;
 }
 
+.form-options--end {
+    justify-content: flex-end;
+}
+
 .checkbox-label {
     display: flex;
     align-items: flex-start;
@@ -304,44 +308,6 @@ body {
     background: #2563EB;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.btn-google {
-    background: white;
-    color: #212529;
-    border: 1.5px solid #E5E7EB;
-    width: 100%;
-}
-
-.btn-google:hover {
-    background: #F9FAFB;
-    border-color: #D1D5DB;
-}
-
-.google-icon {
-    width: 20px;
-    height: 20px;
-    
-}
-
-.divider {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    margin: 24px 0;
-    color: #9CA3AF;
-    font-size: 14px;
-}
-
-.divider::before,
-.divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid #E5E7EB;
-}
-
-.divider span {
-    padding: 0 16px;
 }
 
 .signup-text {

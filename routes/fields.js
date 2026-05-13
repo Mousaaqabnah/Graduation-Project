@@ -13,6 +13,7 @@ const {
   mongoFieldUnavailableListForField,
   mongoFieldUnavailableInsertDayStart
 } = require('../lib/mongoFieldWrite');
+const { earliestAllowedSlotStartMinutesForYmd } = require('../lib/bookingSameDayRules');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -799,6 +800,24 @@ router.get('/:id/availability', async (req, res) => {
       }
     }
 
+    const earliestSameDay = earliestAllowedSlotStartMinutesForYmd(date);
+    if (earliestSameDay != null) {
+      workingSlots = workingSlots.filter((s) => {
+        const mins = timeToMinutes(s);
+        return mins != null && mins >= earliestSameDay;
+      });
+    }
+    if (earliestSameDay != null && workingSlots.length === 0) {
+      return res.json({
+        available: false,
+        lockedByOwner: false,
+        closedBySchedule: true,
+        bookedSlots: [],
+        workingSlots: [],
+        message: 'No time slots remain available for the rest of today.'
+      });
+    }
+
     // Check if the entire date is unavailable (locked by owner)
     const unavailableDate = await prisma.fieldUnavailableDate.findFirst({
       where: {
@@ -960,7 +979,8 @@ function normalizeUpdateFieldValue(field, value) {
   if (field === 'ownershipDocumentUrl' || field === 'licensesDocumentUrl') {
     if (value === null || value === '') return null;
     const t = String(value).trim();
-    return t.length <= 10 * 1024 * 1024 ? t : null;
+    // Stay under MongoDB 16MB document cap alongside other field properties (~12 MiB string).
+    return t.length <= 12 * 1024 * 1024 ? t : null;
   }
   return value;
 }
@@ -1022,8 +1042,8 @@ router.post('/', authenticate, requireRole('OWNER', 'ADMIN'), [
     function optionalDocumentUrl(v) {
       if (v == null || typeof v !== 'string') return null;
       const t = v.trim();
-      // Accept long data URLs (base64) produced by owner-side uploads.
-      if (!t || t.length > 10 * 1024 * 1024) return null;
+      // Accept long data URLs (base64) produced by owner-side uploads (must fit in BSON with other fields).
+      if (!t || t.length > 12 * 1024 * 1024) return null;
       return t;
     }
 

@@ -53,6 +53,16 @@ document.addEventListener('DOMContentLoaded', function () {
     setupUseLocation();
     setupRecenter();
     setupManageLocationLink();
+    if (window.FieldMapData && typeof FieldMapData.tryAutoFillDistances === 'function') {
+      FieldMapData.tryAutoFillDistances(allFieldsData, function (coords) {
+        if (coords) {
+          userLocation = coords;
+          var locationSpan = document.querySelector('.location-indicator span');
+          if (locationSpan) locationSpan.textContent = 'Your location';
+        }
+        renderFieldList(fieldsData);
+      });
+    }
   });
 });
 
@@ -122,6 +132,7 @@ function createFieldCard(field) {
     '</div>',
     '</div>',
     '<div class="field-actions">',
+    '<span class="field-distance">' + escapeHtml(field.distance || '—') + '</span>',
     '<button type="button" class="btn-view" data-field-id="' + escapeHtml(field.id) + '">View</button>',
     '<button type="button" class="btn-manage" data-field-id="' + escapeHtml(field.id) + '">Manage</button>',
     '</div>'
@@ -256,10 +267,14 @@ function setupUseLocation() {
     navigator.geolocation.getCurrentPosition(
       function (position) {
         userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+        if (window.FieldMapData && typeof FieldMapData.applyDistancesFromPoint === 'function') {
+          FieldMapData.applyDistancesFromPoint(allFieldsData, userLocation.lat, userLocation.lng);
+        }
         if (typeof MapService !== 'undefined') MapService.setCenter(userLocation.lat, userLocation.lng, 14);
         if (locationSpan) locationSpan.textContent = 'Your location';
         btn.disabled = false;
         btn.textContent = prev;
+        renderFieldList(fieldsData);
       },
       function () {
         alert('Unable to retrieve your location. Please enable location services.');

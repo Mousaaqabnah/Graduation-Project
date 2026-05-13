@@ -134,7 +134,8 @@ body {
   flex-wrap: nowrap;
   position: sticky;
   top: 0;
-  z-index: 50;
+  /* Above Leaflet panes (~400–700) so profile/notification popups stay visible */
+  z-index: 20000;
   background: rgba(246, 249, 255, 0.8);
   backdrop-filter: blur(10px);
   padding: 15px 32px;

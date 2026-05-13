@@ -66,8 +66,9 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
 // Search users (must be before /:id so "search" is not treated as an id)
 router.get('/search/users', authenticate, async (req, res) => {
   try {
-    const { q } = req.query;
-    
+    const { q, playersOnly } = req.query;
+    const restrictToPlayers = playersOnly === '1' || String(playersOnly || '').toLowerCase() === 'true';
+
     if (!q || q.length < 2) {
       return res.json({ users: [] });
     }
@@ -77,7 +78,8 @@ router.get('/search/users', authenticate, async (req, res) => {
         OR: [
           { fullName: { contains: q } },
           { email: { contains: q } }
-        ]
+        ],
+        ...(restrictToPlayers ? { role: 'PLAYER' } : {})
       },
       take: 10,
       select: {

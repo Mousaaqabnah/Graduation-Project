@@ -1275,6 +1275,52 @@ body {
   white-space: pre-wrap;
 }
 
+.contact-message-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.contact-message-main {
+  background: #FFFFFF;
+  border: 1px solid #E6EEF8;
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.contact-message-topic {
+  background: #EFF6FF;
+  border: 1px solid #DCEBFF;
+  border-radius: 14px;
+  padding: 13px 16px;
+}
+
+.contact-message-topic strong {
+  display: block;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.contact-message-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #007BFF;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.contact-message-main p {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 .message-detail-empty {
   padding: 16px;
   color: #9CA3AF;

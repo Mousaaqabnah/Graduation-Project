@@ -49,7 +49,7 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// Same as authenticate but allows suspended users (for notifications, contact, etc.)
+// Same as authenticate but allows suspended users (used for session read such as GET /auth/me).
 const authenticateAllowSuspended = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];

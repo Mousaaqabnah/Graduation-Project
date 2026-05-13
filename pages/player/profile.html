@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile - MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,6 +12,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="../../styles/player/home.css">
     <link rel="stylesheet" href="../../styles/player/profile.css">
+    <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
 </head>
 <body>
     <div class="app-container">
@@ -129,8 +131,8 @@
                                         <img src="https://ui-avatars.com/api/?name=User&background=007BFF&color=fff&size=128" alt="Profile">
                                     </div>
                                     <div class="profile-details">
-                                        <p class="profile-name">John Doe</p>
-                                        <p class="profile-email">john.doe@example.com</p>
+                                        <p class="profile-name">—</p>
+                                        <p class="profile-email">—</p>
                                     </div>
                                 </div>
                                 
@@ -154,6 +156,13 @@
                                             <i class="fi fi-rr-calendar-day"></i>
                                         </div>
                                         <span>My Bookings</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
+                                    <a href="#" class="profile-menu-item" id="favoriteFieldsMenuItem">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-heart"></i>
+                                        </div>
+                                        <span>Favorite Fields</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -189,21 +198,15 @@
                     <div class="profile-card-header">
                         <div class="profile-avatar-section">
                             <div class="profile-avatar-container">
-                                <img src="https://ui-avatars.com/api/?name=John+Doe&background=007BFF&color=fff&size=256" alt="Profile Picture" class="profile-avatar-main" id="profileAvatar">
+                                <img src="https://ui-avatars.com/api/?name=User&background=E5E7EB&color=9CA3AF&size=256" alt="Profile Picture" class="profile-avatar-main" id="profileAvatar">
                                 <input type="file" id="avatarFileInput" accept="image/*" style="display: none;">
                                 <button type="button" class="avatar-edit-btn" id="avatarEditBtn" title="Change profile picture">
                                     <i class="fi fi-rr-camera"></i>
                                 </button>
                             </div>
                             <div class="profile-basic-info">
-                                <h2 class="profile-name-main" id="profileNameMain">John Doe</h2>
-                                <p class="profile-email-main" id="profileEmailMain">john.doe@example.com</p>
-                                <div class="profile-badges">
-                                    <span class="profile-badge">
-                                        <i class="fi fi-rr-badge-check"></i>
-                                        Verified Account
-                                    </span>
-                                </div>
+                                <h2 class="profile-name-main" id="profileNameMain">—</h2>
+                                <p class="profile-email-main" id="profileEmailMain">—</p>
                             </div>
                         </div>
                     </div>
@@ -220,16 +223,16 @@
                             <div class="profile-info-grid">
                                 <div class="info-item">
                                     <label class="info-label">Full Name</label>
-                                    <p class="info-value" id="fullName">John Doe</p>
+                                    <p class="info-value" id="fullName">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Email Address</label>
-                                    <p class="info-value" id="emailAddress">john.doe@example.com</p>
+                                    <p class="info-value" id="emailAddress">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Player ID</label>
                                     <div class="player-id-container">
-                                        <p class="info-value player-id-value" id="playerId">PLR-12345678</p>
+                                        <p class="info-value player-id-value" id="playerId">—</p>
                                         <button class="copy-player-id-btn" id="copyPlayerIdBtn" title="Copy Player ID">
                                             <i class="fi fi-rr-copy"></i>
                                         </button>
@@ -237,19 +240,19 @@
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Phone Number</label>
-                                    <p class="info-value" id="phoneNumber">+90 555 123 4567</p>
+                                    <p class="info-value" id="phoneNumber">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Date of Birth</label>
-                                    <p class="info-value" id="dateOfBirth">January 15, 1995</p>
+                                    <p class="info-value" id="dateOfBirth">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Gender</label>
-                                    <p class="info-value" id="gender">Male</p>
+                                    <p class="info-value" id="gender">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Member Since</label>
-                                    <p class="info-value" id="memberSince">March 2023</p>
+                                    <p class="info-value" id="memberSince">—</p>
                                 </div>
                             </div>
                         </div>
@@ -265,23 +268,23 @@
                             <div class="profile-info-grid">
                                 <div class="info-item info-item-full">
                                     <label class="info-label">Street Address</label>
-                                    <p class="info-value" id="streetAddress">123 Main Street, Apt 4B</p>
+                                    <p class="info-value" id="streetAddress">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">City</label>
-                                    <p class="info-value" id="city">Istanbul</p>
+                                    <p class="info-value" id="city">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">State/Province</label>
-                                    <p class="info-value" id="state">Istanbul Province</p>
+                                    <p class="info-value" id="state">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Postal Code</label>
-                                    <p class="info-value" id="postalCode">34000</p>
+                                    <p class="info-value" id="postalCode">—</p>
                                 </div>
                                 <div class="info-item">
                                     <label class="info-label">Country</label>
-                                    <p class="info-value" id="country">Turkey</p>
+                                    <p class="info-value" id="country">—</p>
                                 </div>
                             </div>
                         </div>
@@ -300,7 +303,7 @@
                                         <i class="fi fi-rr-calendar-check"></i>
                                     </div>
                                     <div class="stat-content">
-                                        <p class="stat-value" id="totalBookings">24</p>
+                                        <p class="stat-value" id="totalBookings">—</p>
                                         <p class="stat-label">Total Bookings</p>
                                     </div>
                                 </div>
@@ -309,7 +312,7 @@
                                         <i class="fi fi-rr-calendar-day"></i>
                                     </div>
                                     <div class="stat-content">
-                                        <p class="stat-value" id="upcomingBookings">5</p>
+                                        <p class="stat-value" id="upcomingBookings">—</p>
                                         <p class="stat-label">Upcoming Bookings</p>
                                     </div>
                                 </div>
@@ -318,7 +321,7 @@
                                         <i class="fi fi-rr-star"></i>
                                     </div>
                                     <div class="stat-content">
-                                        <p class="stat-value" id="averageRating">4.8</p>
+                                        <p class="stat-value" id="averageRating">—</p>
                                         <p class="stat-label">Average Rating</p>
                                     </div>
                                 </div>
@@ -327,7 +330,7 @@
                                         <i class="fi fi-rr-clock"></i>
                                     </div>
                                     <div class="stat-content">
-                                        <p class="stat-value" id="memberMonths">21</p>
+                                        <p class="stat-value" id="memberMonths">—</p>
                                         <p class="stat-label">Months as Member</p>
                                     </div>
                                 </div>
@@ -418,11 +421,29 @@
         </div>
     </div>
 
+    <div class="favorite-fields-modal" id="favoriteFieldsModal">
+        <div class="favorite-fields-modal-overlay"></div>
+        <div class="favorite-fields-modal-content">
+            <div class="favorite-fields-modal-header">
+                <h2>Favorite Fields</h2>
+                <button type="button" class="modal-close" id="closeFavoriteFieldsModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="favorite-fields-modal-body" id="favoriteFieldsModalBody"></div>
+        </div>
+    </div>
+
     <!-- Shared API + auth guard (must be loaded before page script) -->
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/player/notifications.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/profile-popup-favorites.js"></script>
 
     <!-- Page script -->
     <script src="../../scripts/player/profile.js"></script>

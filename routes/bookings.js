@@ -1,14 +1,44 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate } = require('../middleware/auth');
 const { totalCostFromFieldPrice, totalHoursFromRanges } = require('../lib/bookingPricing');
+const { earliestAllowedSlotStartMinutesForYmd } = require('../lib/bookingSameDayRules');
 const { isMongoObjectIdString, mongoBookingInsertOne, mongoBookingSetFields } = require('../lib/mongoBookingWrite');
+const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function isInstantBookingField(field) {
+  const t = String(field?.bookingType ?? 'instant').toLowerCase();
+  return t !== 'request';
+}
+
 router.use(authenticate);
+
+async function mongoBookingParticipantInsertOne({ bookingId, userId, paymentAmount }) {
+  if (!isMongoObjectIdString(bookingId) || !isMongoObjectIdString(userId)) {
+    throw new Error('Invalid booking or user id');
+  }
+  const client = new MongoClient(process.env.DATABASE_URL);
+  await client.connect();
+  try {
+    const db = client.db();
+    const now = new Date();
+    const result = await db.collection('booking_participants').insertOne({
+      booking_id: new ObjectId(String(bookingId)),
+      user_id: new ObjectId(String(userId)),
+      payment_status: 'PENDING',
+      payment_amount: paymentAmount,
+      created_at: now
+    });
+    return String(result.insertedId);
+  } finally {
+    await client.close();
+  }
+}
 
 function timeToMinutes(value) {
   if (typeof value !== 'string') return null;
@@ -70,10 +100,15 @@ async function validateBookingWindow(field, dateValue, ranges, excludeBookingId)
     }
   }
 
+  const earliestSameDay = earliestAllowedSlotStartMinutesForYmd(ymd);
+
   for (const r of ranges) {
     const start = timeToMinutes(r && r.start);
     const end = timeToMinutes(r && r.end);
     if (start == null || end == null || end <= start) return 'Invalid time range.';
+    if (earliestSameDay != null && start < earliestSameDay) {
+      return 'You cannot book time slots before the current hour.';
+    }
     if (start < openingMins || end > closingMins) return 'Selected time is outside the field working schedule.';
   }
 
@@ -152,8 +187,11 @@ router.get('/', async (req, res) => {
               name: true,
               sport: true,
               location: true,
+              latitude: true,
+              longitude: true,
               images: true,
-              pricePerHour: true
+              pricePerHour: true,
+              bookingType: true
             }
           },
           organizer: {
@@ -292,7 +330,7 @@ router.post('/', [
     // Check if field exists and is active
     const field = await prisma.field.findUnique({
       where: { id: fieldId },
-      select: { id: true, isActive: true, pricePerHour: true, schedule: true }
+      select: { id: true, isActive: true, pricePerHour: true, schedule: true, bookingType: true }
     });
 
     if (!field || !field.isActive) {
@@ -341,7 +379,8 @@ router.post('/', [
             id: true,
             name: true,
             sport: true,
-            location: true
+            location: true,
+            bookingType: true
           }
         },
         organizer: {
@@ -380,7 +419,10 @@ router.put('/:id/status', [
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      include: { field: true }
+      include: {
+        field: true,
+        participants: { select: { userId: true } }
+      }
     });
 
     if (!booking) {
@@ -391,16 +433,35 @@ router.put('/:id/status', [
     const isOrganizer = String(booking.organizerId) === uid;
     const isFieldOwner = String(booking.field.ownerId) === uid;
     const isAdmin = req.user.role === 'ADMIN';
+    const isParticipant = (booking.participants || []).some((p) => String(p.userId) === uid);
 
-    if (!isOrganizer && !isFieldOwner && !isAdmin) {
+    const prev = booking.status;
+    const instantField = isInstantBookingField(booking.field);
+    // Invited players paying last must be able to finalize instant bookings (same as organizer client flow).
+    const participantInstantFinalize =
+      isParticipant &&
+      !isOrganizer &&
+      !isFieldOwner &&
+      !isAdmin &&
+      prev === 'PENDING' &&
+      (status === 'CONFIRMED' || status === 'UPCOMING') &&
+      instantField;
+
+    if (!isOrganizer && !isFieldOwner && !isAdmin && !participantInstantFinalize) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const prev = booking.status;
-    // Approve pending requests (confirm): only venue owner or admin
+    // Approve pending → confirmed: owner/admin always; organizer or participant for instant-booking fields
     if (prev === 'PENDING' && (status === 'CONFIRMED' || status === 'UPCOMING')) {
-      if (!isFieldOwner && !isAdmin) {
-        return res.status(403).json({ error: 'Only the field owner can approve booking requests.' });
+      const ownerOrAdmin = isFieldOwner || isAdmin;
+      const organizerInstant = isOrganizer && instantField;
+      const participantInstant = isParticipant && !isOrganizer && instantField;
+      if (!ownerOrAdmin && !organizerInstant && !participantInstant) {
+        return res.status(403).json({
+          error: isOrganizer
+            ? 'This field uses request-based booking. The owner must approve before it can be confirmed.'
+            : 'Only the field owner can approve booking requests.'
+        });
       }
     }
     // Decline / withdraw while still pending: owner, admin, or organizer
@@ -428,6 +489,20 @@ router.put('/:id/status', [
     }
     if (!matched) {
       return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    if (prev === 'PENDING' && status === 'CANCELLED' && (isFieldOwner || isAdmin) && !isOrganizer) {
+      const fieldName = booking.field && booking.field.name ? booking.field.name : 'your booking';
+      try {
+        await mongoCreateUserNotification({
+          title: 'Booking Rejected',
+          message: `Your booking at ${fieldName} was rejected by the field owner.`,
+          targetUserId: booking.organizerId,
+          sentById: req.user.id
+        });
+      } catch (notifyErr) {
+        console.error('Booking rejection notification error:', notifyErr);
+      }
     }
 
     const updatedBooking = await prisma.booking.findUnique({
@@ -568,13 +643,24 @@ router.post('/:id/participants', [
     }
 
     // Only organizer can add participants
-    if (booking.organizerId !== req.user.id) {
+    if (String(booking.organizerId) !== String(req.user.id)) {
       return res.status(403).json({ error: 'Only organizer can add participants' });
     }
 
     // Check if user is already a participant
-    if (booking.participants.some(p => p.userId === userId)) {
+    if (booking.participants.some(p => String(p.userId) === String(userId))) {
       return res.status(400).json({ error: 'User is already a participant' });
+    }
+
+    const invitee = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true }
+    });
+    if (!invitee) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (invitee.role !== 'PLAYER') {
+      return res.status(400).json({ error: 'Only players can be invited to a booking.' });
     }
 
     // Calculate payment amount based on payment method
@@ -585,13 +671,20 @@ router.post('/:id/participants', [
       paymentAmount = booking.mixedPaymentDistribution[userId] || null;
     }
 
-    const participant = await prisma.bookingParticipant.create({
-      data: {
+    let participantId;
+    try {
+      participantId = await mongoBookingParticipantInsertOne({
         bookingId: id,
         userId,
-        paymentAmount,
-        paymentStatus: 'PENDING'
-      },
+        paymentAmount
+      });
+    } catch (err) {
+      console.error('Add participant error (mongo insert):', err);
+      return res.status(500).json({ error: 'Failed to add participant' });
+    }
+
+    const participant = await prisma.bookingParticipant.findUnique({
+      where: { id: participantId },
       include: {
         user: {
           select: {

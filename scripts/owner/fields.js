@@ -40,6 +40,151 @@ function setFieldStatusBadgeFromField(f) {
         '<span class="' + dotClass + '"></span><span class="status-text">' + ownerFieldEsc(ui.label) + '</span>';
 }
 
+function detectSportLabel(sportValue) {
+    const raw = String(sportValue || '').trim().toLowerCase();
+    if (!raw) return 'Football';
+    if (raw === 'soccer') return 'Football';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function syncFieldTypeCustomVisibility() {
+    const sel = document.getElementById('fieldType');
+    const group = document.getElementById('fieldSportCustomGroup');
+    const input = document.getElementById('fieldSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+function syncMutuallyExclusiveFieldFeaturesState() {
+    const form = document.getElementById('addFieldForm');
+    if (!form) return;
+    function pair(aSel, bSel) {
+        const a = form.querySelector(aSel);
+        const b = form.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="features"][value="indoor"]', 'input[name="features"][value="outdoor"]');
+    pair('input[name="features"][value="artificial-grass"]', 'input[name="features"][value="natural-grass"]');
+}
+
+function initAddFieldFormEnhancements() {
+    const form = document.getElementById('addFieldForm');
+    if (!form || form.dataset.addFieldEnhancements === '1') return;
+    form.dataset.addFieldEnhancements = '1';
+    const typeSel = document.getElementById('fieldType');
+    if (typeSel) {
+        typeSel.addEventListener('change', function () {
+            syncFieldTypeCustomVisibility();
+        });
+    }
+    form.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'features') {
+            syncMutuallyExclusiveFieldFeaturesState();
+        }
+    });
+    syncFieldTypeCustomVisibility();
+    syncMutuallyExclusiveFieldFeaturesState();
+}
+
+function resolveAddFieldSportForPayload() {
+    const sel = document.getElementById('fieldType');
+    const custom = document.getElementById('fieldSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = custom && custom.value ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
+function syncManageSportCustomVisibility() {
+    const sel = document.getElementById('manageSportCategory');
+    const group = document.getElementById('manageSportCustomGroup');
+    const input = document.getElementById('manageSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+function syncMutuallyExclusiveManageFeaturesState() {
+    const root = document.getElementById('editFieldModal');
+    if (!root) return;
+    function pair(aSel, bSel) {
+        const a = root.querySelector(aSel);
+        const b = root.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="manageFeatures"][value="indoor"]', 'input[name="manageFeatures"][value="outdoor"]');
+    pair('input[name="manageFeatures"][value="artificial-grass"]', 'input[name="manageFeatures"][value="natural-grass"]');
+}
+
+function initManageFieldFormEnhancements() {
+    const modal = document.getElementById('editFieldModal');
+    if (!modal || modal.dataset.manageFormEnhancements === '1') return;
+    modal.dataset.manageFormEnhancements = '1';
+    const sportSel = document.getElementById('manageSportCategory');
+    if (sportSel) {
+        sportSel.addEventListener('change', function () {
+            syncManageSportCustomVisibility();
+        });
+    }
+    modal.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'manageFeatures') {
+            syncMutuallyExclusiveManageFeaturesState();
+        }
+    });
+    syncManageSportCustomVisibility();
+    syncMutuallyExclusiveManageFeaturesState();
+}
+
+function resolveManageSportForPayload() {
+    const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = custom && custom.value ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
 function renderOwnerFieldsList(fields) {
     const list = document.getElementById('fieldsList');
     if (!list) return;
@@ -166,10 +311,11 @@ const addFieldModal = document.getElementById('addFieldModal');
 let currentStep = 1;
 const totalSteps = 8;
 let fieldImages = [];
-let highlights = [];
 let unavailableDates = [];
 let addFieldMapPicker = null;
 let manageFieldMapPicker = null;
+let lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+let lastValidManageFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
 
 if (addFieldBtn) {
     addFieldBtn.addEventListener('click', () => {
@@ -203,14 +349,15 @@ function closeAddFieldModal() {
 // Reset form
 function resetAddFieldForm() {
     fieldImages = [];
-    highlights = [];
     unavailableDates = [];
     document.getElementById('addFieldForm').reset();
     document.getElementById('fieldImagesGrid').innerHTML = '';
-    document.getElementById('highlightsList').innerHTML = '';
+    const hl = document.getElementById('highlightsList');
+    if (hl) hl.innerHTML = '';
     document.getElementById('unavailableDatesList').innerHTML = '';
     document.getElementById('latitude').textContent = '-';
     document.getElementById('longitude').textContent = '-';
+    lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
     updateStepButtons();
     if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
         addFieldMapPicker.destroy();
@@ -221,6 +368,8 @@ function resetAddFieldForm() {
         initializeDaySchedules();
         updateRadioLabels();
         initializeAddFieldMap();
+        syncFieldTypeCustomVisibility();
+        syncMutuallyExclusiveFieldFeaturesState();
     }, 100);
 }
 
@@ -322,6 +471,23 @@ function validateCurrentStep() {
             alert('Please upload ownership or rental agreement document');
             isValid = false;
         }
+    } else if (currentStep === 2) {
+        const fieldTypeEl = document.getElementById('fieldType');
+        const customSport = document.getElementById('fieldSportCustom');
+        if (fieldTypeEl && fieldTypeEl.value === 'other') {
+            const custom = customSport ? customSport.value.trim() : '';
+            if (!custom) {
+                alert('Please enter the sport name for "Other".');
+                isValid = false;
+                if (customSport) {
+                    customSport.style.borderColor = '#DC2626';
+                    customSport.addEventListener('input', function onIn() {
+                        this.style.borderColor = '#D1D5DB';
+                        this.removeEventListener('input', onIn);
+                    });
+                }
+            }
+        }
     } else if (currentStep === 4) {
         if (fieldImages.length === 0) {
             alert('Please upload at least one field image');
@@ -358,35 +524,6 @@ function validateCurrentStep() {
     }
     
     return isValid;
-}
-
-// Add highlight
-function addHighlight() {
-    const input = document.getElementById('highlightInput');
-    const value = input.value.trim();
-    
-    if (value && !highlights.includes(value)) {
-        highlights.push(value);
-        renderHighlights();
-        input.value = '';
-    }
-}
-
-// Remove highlight
-function removeHighlight(index) {
-    highlights.splice(index, 1);
-    renderHighlights();
-}
-
-// Render highlights
-function renderHighlights() {
-    const container = document.getElementById('highlightsList');
-    container.innerHTML = highlights.map((highlight, index) => `
-        <div class="highlight-tag">
-            <span>${highlight}</span>
-            <button type="button" onclick="removeHighlight(${index})">&times;</button>
-        </div>
-    `).join('');
 }
 
 // Handle field images upload
@@ -458,10 +595,24 @@ function getAddressFieldIds(mode) {
 }
 
 async function applyReverseGeocodedMetadata(lat, lng, mode) {
-    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return;
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return true;
     try {
         const meta = await GeocodingService.reverseGeocode(lat, lng);
-        if (!meta) return;
+        if (!meta) return true;
+        if (meta.isUnbuildableWater) {
+            const reason = meta.invalidPinReason;
+            const msg =
+                reason === 'drift'
+                    ? 'This pin is not on land (for example open sea). Move it onto land until the address matches the pin — try near a street, district, or venue.'
+                    : 'That location is on open water. Place the pin on land (e.g. a street or sports ground).';
+            const title = reason === 'drift' ? 'Pin not on land' : 'Open water';
+            if (typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.alert) {
+                await MatchFieldDialog.alert(msg, { title: title, type: 'warning', okText: 'OK' });
+            } else {
+                alert(msg);
+            }
+            return false;
+        }
         const ids = getAddressFieldIds(mode);
         const addressInput = document.getElementById(ids.addressId);
         const cityInput = document.getElementById(ids.cityId);
@@ -469,8 +620,10 @@ async function applyReverseGeocodedMetadata(lat, lng, mode) {
         if (addressInput && meta.address) addressInput.value = meta.address;
         if (cityInput && meta.city) cityInput.value = meta.city;
         if (districtInput && meta.district) districtInput.value = meta.district;
+        return true;
     } catch (e) {
         console.warn('reverse geocoding failed', e);
+        return true;
     }
 }
 
@@ -517,9 +670,19 @@ function initializeAddFieldMap() {
         initialCenter: [41.0082, 28.9784],
         initialZoom: 12,
         draggable: true,
-        onPositionChange: async function(position) {
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
+            if (!ok) {
+                const prev = lastValidAddFieldMapPosition;
+                if (addFieldMapPicker && prev) {
+                    addFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'add');
+                }
+                return;
+            }
+            lastValidAddFieldMapPosition = { lat: position.lat, lng: position.lng };
             applyCoordinatesToDom(position.lat, position.lng, 'add');
-            await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
         }
     });
     bindAddressSearch('add');
@@ -619,8 +782,6 @@ async function submitFieldForm() {
         // Basic info
         fieldName: document.getElementById('fieldName').value,
         description: document.getElementById('fieldDescription').value,
-        venueResponse: document.getElementById('fieldVenueResponse') ? document.getElementById('fieldVenueResponse').value : '',
-        highlights: highlights,
         fieldType: document.getElementById('fieldType').value,
         capacity: parseInt(document.getElementById('capacity').value),
         
@@ -684,8 +845,6 @@ async function submitFieldForm() {
         
         // Settings
         bookingType: document.querySelector('input[name="bookingType"]:checked').value,
-        advanceBooking: document.getElementById('advanceBooking').value,
-        cancellationPolicy: document.getElementById('cancellationPolicy').value,
         visibility: document.getElementById('fieldVisibilityToggle').classList.contains('active')
     };
     
@@ -694,9 +853,11 @@ async function submitFieldForm() {
         return;
     }
 
-    const sportSelect = document.getElementById('fieldType');
-    const sportVal = sportSelect ? sportSelect.value : 'other';
-    const sportLabel = sportVal ? sportVal.charAt(0).toUpperCase() + sportVal.slice(1) : 'Football';
+    const sport = resolveAddFieldSportForPayload();
+    if (!sport) {
+        alert('Please enter the sport name for "Other".');
+        return;
+    }
     const indoorCb = document.querySelector('input[name="features"][value="indoor"]');
     const outdoorCb = document.querySelector('input[name="features"][value="outdoor"]');
     const isIndoor = indoorCb && indoorCb.checked && !(outdoorCb && outdoorCb.checked);
@@ -719,9 +880,8 @@ async function submitFieldForm() {
 
     const payload = {
         name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
-        sport: sportLabel,
+        sport: sport,
         description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
-        venueResponse: (document.getElementById('fieldVenueResponse') && document.getElementById('fieldVenueResponse').value.trim()) || '',
         capacity: parseInt(document.getElementById('capacity') && document.getElementById('capacity').value, 10) || null,
         type: isIndoor ? 'INDOOR' : 'OUTDOOR',
         location: locationLine,
@@ -731,12 +891,10 @@ async function submitFieldForm() {
         pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour') && document.getElementById('pricePerHour').value) || 0),
         amenities: amenities,
         features: feat,
-        highlights: highlights.slice(),
+        highlights: [],
         images: [],
         schedule: formData.schedule,
         bookingType: formData.bookingType,
-        advanceBooking: formData.advanceBooking,
-        cancellationPolicy: formData.cancellationPolicy,
         visibilityRequested: !!formData.visibility,
         latitude: latNum,
         longitude: lngNum,
@@ -894,14 +1052,21 @@ function applyManageFeaturesFromField(features) {
             hl.appendChild(highlightItem);
         });
     }
+    syncMutuallyExclusiveManageFeaturesState();
 }
 
 function selectManageSportByName(sportName) {
     const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
     if (!sel) return;
-    const raw = String(sportName || '').trim().toLowerCase();
-    if (!raw) return;
-    const norm = raw.replace(/[_-]+/g, ' ');
+    const raw = String(sportName || '').trim();
+    if (!raw) {
+        sel.value = 'football';
+        if (custom) custom.value = '';
+        syncManageSportCustomVisibility();
+        return;
+    }
+    const norm = raw.toLowerCase().replace(/[_-]+/g, ' ');
     const aliases = {
         football: ['football', 'soccer', 'futbol', 'futsal football', 'mini football', 'hali saha'],
         basketball: ['basketball', 'basket ball'],
@@ -912,9 +1077,9 @@ function selectManageSportByName(sportName) {
         badminton: ['badminton']
     };
     let canonical = '';
-    Object.keys(aliases).some(function(key) {
+    Object.keys(aliases).some(function (key) {
         const words = aliases[key];
-        const matched = words.some(function(w) {
+        const matched = words.some(function (w) {
             return norm === w || norm.indexOf(w + ' ') === 0 || norm.indexOf(' ' + w) >= 0;
         });
         if (matched) canonical = key;
@@ -922,15 +1087,28 @@ function selectManageSportByName(sportName) {
     });
     const want = canonical || norm;
     for (let i = 0; i < sel.options.length; i++) {
-        const optionText = String(sel.options[i].text || '')
+        const opt = sel.options[i];
+        if (opt.value === 'other') continue;
+        const optionText = String(opt.text || '')
             .trim()
             .toLowerCase()
             .replace(/[_-]+/g, ' ');
-        if (optionText === want) {
+        const optionValue = String(opt.value || '').trim().toLowerCase();
+        if (optionText === want || optionValue === want) {
             sel.selectedIndex = i;
+            if (custom) custom.value = '';
+            syncManageSportCustomVisibility();
             return;
         }
     }
+    const otherOpt = Array.from(sel.options).find(function (o) {
+        return o.value === 'other';
+    });
+    if (otherOpt) {
+        sel.value = 'other';
+        if (custom) custom.value = raw;
+    }
+    syncManageSportCustomVisibility();
 }
 
 function resetManageImagesContainer() {
@@ -1123,6 +1301,9 @@ function openManageSection(sectionName) {
         if (manageFieldMapPicker && typeof manageFieldMapPicker.invalidateSize === 'function') {
             setTimeout(function () { manageFieldMapPicker.invalidateSize(); }, 60);
         }
+    } else if (sectionName === 'edit-info') {
+        syncManageSportCustomVisibility();
+        syncMutuallyExclusiveManageFeaturesState();
     }
 
     const submitBtn = document.getElementById('manageSubmitBtn');
@@ -1242,7 +1423,10 @@ async function loadFieldData(fieldId) {
         if (lngEl && f.longitude != null) lngEl.textContent = String(f.longitude);
         initializeManageMap();
         if (manageFieldMapPicker && Number.isFinite(Number(f.latitude)) && Number.isFinite(Number(f.longitude))) {
-            manageFieldMapPicker.setPosition(Number(f.latitude), Number(f.longitude), 'init');
+            const latN = Number(f.latitude);
+            const lngN = Number(f.longitude);
+            lastValidManageFieldMapPosition = { lat: latN, lng: lngN };
+            manageFieldMapPicker.setPosition(latN, lngN, 'init', { silent: true });
         }
 
         const visToggle = document.getElementById('manageVisibilityToggle');
@@ -1258,23 +1442,6 @@ async function loadFieldData(fieldId) {
             `input[name="manageBookingType"][value="${bookingTypeValue === 'request' ? 'request' : 'instant'}"]`
         );
         if (bookingInput) bookingInput.checked = true;
-        const advSel = document.getElementById('manageAdvanceBooking');
-        if (advSel && f.advanceBooking != null) {
-            const want = String(f.advanceBooking);
-            const hasOption = Array.from(advSel.options).some(function(opt) {
-                return String(opt.value) === want;
-            });
-            if (hasOption) advSel.value = want;
-        }
-        const cancelSel = document.getElementById('manageCancellationPolicy');
-        if (cancelSel && f.cancellationPolicy) {
-            const want = String(f.cancellationPolicy);
-            const hasOption = Array.from(cancelSel.options).some(function(opt) {
-                return String(opt.value) === want;
-            });
-            if (hasOption) cancelSel.value = want;
-        }
-
         const datesList = document.getElementById('manageUnavailableDatesList');
         if (datesList && API.fields.listUnavailableDates) {
             datesList.innerHTML = '';
@@ -1311,8 +1478,11 @@ async function loadFieldData(fieldId) {
 }
 
 // Delete Field
-function deleteField(button) {
-    if (!confirm('Are you sure you want to delete this field? This action cannot be undone.')) return;
+async function deleteField(button) {
+    if (!(await MatchFieldDialog.confirm('Are you sure you want to delete this field? This action cannot be undone.', {
+        type: 'danger',
+        okText: 'Delete'
+    }))) return;
     const fieldCard = button.closest('.field-list-card');
     const fieldId = fieldCard && fieldCard.getAttribute('data-field-id');
     if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.delete) {
@@ -1674,9 +1844,19 @@ function initializeManageMap() {
         initialCenter: [41.0082, 28.9784],
         initialZoom: 12,
         draggable: true,
-        onPositionChange: async function(position) {
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
+            if (!ok) {
+                const prev = lastValidManageFieldMapPosition;
+                if (manageFieldMapPicker && prev) {
+                    manageFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'manage');
+                }
+                return;
+            }
+            lastValidManageFieldMapPosition = { lat: position.lat, lng: position.lng };
             applyCoordinatesToDom(position.lat, position.lng, 'manage');
-            await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
         }
     });
     bindAddressSearch('manage');
@@ -1781,11 +1961,11 @@ async function submitManageChanges() {
         const typeSel = document.getElementById('manageFieldType');
         const typeLabel = (typeSel && typeSel.value) || 'Outdoor';
         const typeEnum = String(typeLabel).toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
-        const sportSel = document.getElementById('manageSportCategory');
-        const sport =
-            sportSel && sportSel.options[sportSel.selectedIndex]
-                ? sportSel.options[sportSel.selectedIndex].text.trim()
-                : 'Football';
+        const sport = resolveManageSportForPayload();
+        if (!sport) {
+            alert('Please enter the sport name for "Other".');
+            return;
+        }
 
         payload.name = (document.getElementById('manageFieldName')?.value || '').trim() || 'Field';
         payload.sport = sport;
@@ -1823,8 +2003,6 @@ async function submitManageChanges() {
     } else if (currentManageSection === 'settings') {
         const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
         payload.bookingType = document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant';
-        payload.advanceBooking = document.getElementById('manageAdvanceBooking')?.value || '3';
-        payload.cancellationPolicy = document.getElementById('manageCancellationPolicy')?.value || 'moderate';
         payload.isActive = !maintOn;
     } else {
         alert('Please choose a section first.');
@@ -1929,6 +2107,8 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedDate = new Date();
     initializeDaySchedules();
     updateRadioLabels();
+    initAddFieldFormEnhancements();
+    initManageFieldFormEnhancements();
     try {
         const params = new URLSearchParams(window.location.search);
         const manageId = params.get('manage');

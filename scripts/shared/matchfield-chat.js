@@ -10,8 +10,6 @@
     currentConversationId: null,
     currentConversation: null,
     messages: [],
-    currentFieldInfo: null,
-    currentPlayerSummary: null,
     isLoading: false,
     isSending: false,
     hasMoreOlder: false,
@@ -32,22 +30,24 @@
     '🎉', '🔥', '❤️', '💯', '⚽', '🏟️', '📅', '📍'
   ];
 
-  function getFieldInfoUrl(fieldId) {
-    if (!fieldId) return '';
-    const q = encodeURIComponent(fieldId);
-    return VARIANT === 'owner' ? `../player/field-info.html?id=${q}` : `field-info.html?id=${q}`;
-  }
-
-  function hideChatSidebars() {
-    ['playerInfoSidebar', 'fieldInfoSidebar'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.classList.remove('visible');
-    });
-  }
-
   function getCurrentUserId() {
     const user = typeof API !== 'undefined' && API.getCurrentUser ? API.getCurrentUser() : null;
     return user ? user.id : null;
+  }
+
+  function getQueryParam(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function scrollActiveConversationIntoView() {
+    const el = document.querySelector('.message-item.active');
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }
 
   function formatRole(role) {
@@ -75,13 +75,6 @@
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     return d.toLocaleDateString();
-  }
-
-  function formatMemberSince(iso) {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }
 
   function formatMessageTime(date) {
@@ -344,7 +337,10 @@
     if (!chatState.currentConversationId) return;
     const conv = chatState.currentConversation;
     const next = !conv.blockedAt;
-    if (!confirm(next ? 'Block this conversation? Sending will be disabled.' : 'Unblock this conversation?')) return;
+    if (!(await MatchFieldDialog.confirm(
+      next ? 'Block this conversation? Sending will be disabled.' : 'Unblock this conversation?',
+      { type: next ? 'danger' : 'warning', okText: next ? 'Block' : 'Unblock' }
+    ))) return;
     try {
       await API.messages.setBlocked(chatState.currentConversationId, next);
       conv.blockedAt = next ? new Date().toISOString() : null;
@@ -363,170 +359,12 @@
     const attachBtn = document.getElementById('attachBtn');
     if (input) {
       input.disabled = blocked;
-      input.placeholder = blocked ? 'This conversation is blocked' : 'Type a message...';
+      input.placeholder = blocked
+        ? 'This conversation is restricted — you cannot send messages'
+        : 'Type a message...';
     }
     if (sendBtn) sendBtn.disabled = blocked;
     if (attachBtn) attachBtn.disabled = blocked;
-  }
-
-  function getFieldBookNowButton() {
-    return (
-      document.getElementById('bookNowBtn') ||
-      document.querySelector('#fieldInfoSidebar .field-action-btn.primary')
-    );
-  }
-
-  function applyPlayerSidebarPresence(conv) {
-    const statusEl = document.getElementById('playerStatus');
-    const dot = document.querySelector('#playerInfoSidebar .player-avatar-large .online-indicator');
-    if (!conv) {
-      if (statusEl) {
-        statusEl.textContent = '—';
-        statusEl.classList.remove('player-status--online', 'player-status--offline');
-      }
-      if (dot) dot.style.display = 'none';
-      return;
-    }
-    const online = conv.status === 'online';
-    if (statusEl) {
-      statusEl.textContent = online ? 'Online' : 'Offline';
-      statusEl.classList.remove('player-status--online', 'player-status--offline');
-      statusEl.classList.add(online ? 'player-status--online' : 'player-status--offline');
-    }
-    if (dot) dot.style.display = online ? '' : 'none';
-  }
-
-  function updatePlayerInfoSidebar(conv) {
-    if (!conv || !conv.otherUser) return;
-    const u = conv.otherUser;
-    const nameEl = document.getElementById('playerName');
-    const avatarEl = document.getElementById('playerAvatar');
-    if (nameEl) nameEl.textContent = u.fullName || conv.name || 'Player';
-    if (avatarEl) avatarEl.src = getAvatarUrl(u);
-    applyPlayerSidebarPresence(conv);
-  }
-
-  /** Owner chat: load booking count, member since, location (requires GET /users/:id for owners). */
-  async function enrichPlayerSidebar(conv) {
-    if (!conv || VARIANT !== 'owner' || !document.getElementById('playerInfoSidebar')) return;
-    const tb = document.getElementById('totalBookings');
-    const ms = document.getElementById('memberSince');
-    const locEl = document.getElementById('playerLocation');
-    if (!API || !API.users || !API.users.getById) {
-      if (tb) tb.textContent = '—';
-      if (ms) ms.textContent = '—';
-      if (locEl) locEl.textContent = '—';
-      return;
-    }
-    try {
-      const res = await API.users.getById(conv.userId);
-      const u = res.user;
-      const sum = res.playerChatSummary || {};
-      if (tb) tb.textContent = typeof sum.totalBookings === 'number' ? String(sum.totalBookings) : '—';
-      if (ms) ms.textContent = u && u.createdAt ? formatMemberSince(u.createdAt) : '—';
-      if (locEl) {
-        const loc = u && u.location != null ? String(u.location).trim() : '';
-        locEl.textContent = loc || '—';
-      }
-      if (u) {
-        const nameEl = document.getElementById('playerName');
-        const avatarEl = document.getElementById('playerAvatar');
-        if (nameEl && u.fullName) nameEl.textContent = u.fullName;
-        if (avatarEl) avatarEl.src = getAvatarUrl(u);
-        applyPlayerSidebarPresence(conv);
-      }
-    } catch (_) {
-      if (tb) tb.textContent = '—';
-      if (ms) ms.textContent = '—';
-      if (locEl) locEl.textContent = '—';
-    }
-  }
-
-  function resetPlayerSidebarStats() {
-    ['totalBookings', 'memberSince', 'playerLocation'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = '—';
-    });
-    applyPlayerSidebarPresence(null);
-  }
-
-  function applyFieldOwnerSidebarPresence(ownerConv) {
-    const ownerStatusEl = document.getElementById('fieldOwnerStatus');
-    const dot = document.querySelector('#fieldInfoSidebar .field-owner-avatar .online-indicator');
-    if (!ownerConv) {
-      if (ownerStatusEl) {
-        ownerStatusEl.textContent = '—';
-        ownerStatusEl.classList.remove('field-owner-status--online', 'field-owner-status--offline');
-      }
-      if (dot) dot.style.display = 'none';
-      return;
-    }
-    const online = ownerConv.status === 'online';
-    if (ownerStatusEl) {
-      ownerStatusEl.textContent = online ? 'Online' : 'Offline';
-      ownerStatusEl.classList.remove('field-owner-status--online', 'field-owner-status--offline');
-      ownerStatusEl.classList.add(online ? 'field-owner-status--online' : 'field-owner-status--offline');
-    }
-    if (dot) dot.style.display = online ? '' : 'none';
-  }
-
-  function updateFieldInfoSidebar(info) {
-    if (!info || !info.owner) return;
-    const field = info.field;
-    const owner = info.owner;
-    const ownerNameEl = document.getElementById('fieldOwnerName');
-    const ownerAvatarEl = document.getElementById('fieldOwnerAvatar');
-    const typeEl = document.getElementById('fieldType');
-    const rateEl = document.getElementById('fieldRate');
-    const sizeEl = document.getElementById('fieldSize');
-    const surfaceEl = document.getElementById('fieldSurface');
-    const imgEl = document.getElementById('fieldImage');
-    if (ownerNameEl) ownerNameEl.textContent = owner.name;
-    if (ownerAvatarEl) ownerAvatarEl.src = owner.avatar;
-    applyFieldOwnerSidebarPresence(owner);
-    const bookBtn = getFieldBookNowButton();
-    if (field) {
-      if (imgEl) imgEl.src = (field.images && field.images[0]) || 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format';
-      if (typeEl) typeEl.textContent = field.sport || field.name || 'Field';
-      if (rateEl) rateEl.textContent = field.pricePerHour != null ? `₺${field.pricePerHour}/h` : 'N/A';
-      if (sizeEl) {
-        const bits = [];
-        if (field.type === 'INDOOR') bits.push('Indoor');
-        else if (field.type === 'OUTDOOR') bits.push('Outdoor');
-        if (field.capacity != null && String(field.capacity).trim() !== '') {
-          bits.push(`${field.capacity} players max`);
-        }
-        sizeEl.textContent = bits.length ? bits.join(' · ') : '—';
-      }
-      if (surfaceEl) {
-        const feats = Array.isArray(field.features) ? field.features.filter(Boolean) : [];
-        surfaceEl.textContent = feats.length ? feats.slice(0, 4).join(', ') : '—';
-      }
-      const viewBtn = document.getElementById('viewFieldPageBtn');
-      if (viewBtn) {
-        viewBtn.disabled = false;
-        viewBtn.style.opacity = '1';
-      }
-      if (bookBtn) {
-        bookBtn.disabled = false;
-        bookBtn.style.opacity = '1';
-      }
-    } else {
-      if (imgEl) imgEl.src = 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format';
-      if (typeEl) typeEl.textContent = '—';
-      if (rateEl) rateEl.textContent = '—';
-      if (sizeEl) sizeEl.textContent = '—';
-      if (surfaceEl) surfaceEl.textContent = '—';
-      const viewBtn = document.getElementById('viewFieldPageBtn');
-      if (viewBtn) {
-        viewBtn.disabled = true;
-        viewBtn.style.opacity = '0.6';
-      }
-      if (bookBtn) {
-        bookBtn.disabled = true;
-        bookBtn.style.opacity = '0.6';
-      }
-    }
   }
 
   async function loadConversations(options = {}) {
@@ -552,18 +390,58 @@
       sortConversations(mapped);
       chatState.conversations = mapped;
       renderMessageList();
+
+      const requestedUserId = !silent ? getQueryParam('userId') : null;
+
       if (chatState.currentConversationId) {
         const still = mapped.some((c) => c.id === chatState.currentConversationId);
         if (!still) {
           chatState.currentConversationId = null;
           chatState.currentConversation = null;
           chatState.messages = [];
-          hideChatSidebars();
           showEmptyChatState();
           hideChatInput();
+        } else {
+          const fresh = mapped.find((c) => c.id === chatState.currentConversationId);
+          if (fresh) {
+            chatState.currentConversation = fresh;
+            applyBlockedUi();
+            refreshModerationButtons();
+          }
+        }
+      } else if (requestedUserId) {
+        try {
+          const existing = chatState.conversations.find((c) => String(c.userId) === String(requestedUserId));
+          if (existing) {
+            await selectConversation(existing.id);
+            scrollActiveConversationIntoView();
+          } else if (API.messages && typeof API.messages.getConversation === 'function') {
+            const resConv = await API.messages.getConversation(requestedUserId);
+            const conv = resConv && resConv.conversation ? resConv.conversation : null;
+            if (conv) {
+              const mappedConv = mapConversation(conv, currentUserId);
+              const already = chatState.conversations.find((c) => c.id === mappedConv.id);
+              if (!already) {
+                chatState.conversations.unshift(mappedConv);
+                sortConversations(chatState.conversations);
+              }
+              renderMessageList();
+              await selectConversation(mappedConv.id);
+              scrollActiveConversationIntoView();
+            } else {
+              showEmptyChatState();
+              hideChatInput();
+            }
+          } else {
+            showEmptyChatState();
+            hideChatInput();
+          }
+        } catch (openErr) {
+          console.error('Open requested chat error:', openErr);
+          showToast(openErr.message || 'Could not open this chat', 'error');
         }
       } else if (mapped.length > 0 && !skipAutoSelect) {
-        selectConversation(mapped[0].id);
+        await selectConversation(mapped[0].id);
       } else if (mapped.length === 0) {
         showEmptyChatState();
         hideChatInput();
@@ -647,21 +525,16 @@
     if (!conv) return;
     chatState.currentConversationId = conversationId;
     chatState.currentConversation = conv;
-    chatState.currentFieldInfo = null;
-    chatState.currentPlayerSummary = null;
-    resetPlayerSidebarStats();
 
     const headerInfoClear = document.querySelector('#chatHeader .chat-header-info');
     if (headerInfoClear) headerInfoClear.title = '';
     const headerElClear = document.getElementById('chatHeader');
     if (headerElClear) headerElClear.title = '';
-    applyFieldOwnerSidebarPresence(null);
 
     document.querySelectorAll('.message-item').forEach((item) => {
       item.classList.toggle('active', item.dataset.chatId === conversationId);
     });
     updateChatHeader(conv);
-    hideChatSidebars();
     ensureModerationToolbar();
     applyBlockedUi();
     refreshModerationButtons();
@@ -676,50 +549,6 @@
     } catch (_) {}
 
     await loadMessagesInitial(conversationId);
-
-    const role = conv.otherUser ? String(conv.otherUser.role || '').toUpperCase() : '';
-    const chatHeaderInfo = document.querySelector('#chatHeader .chat-header-info');
-    const chatHeader = document.getElementById('chatHeader');
-    if (chatHeader) chatHeader.title = '';
-
-    if (VARIANT === 'owner') {
-      if (role === 'PLAYER') {
-        chatState.currentPlayerSummary = conv;
-        updatePlayerInfoSidebar(conv);
-        if (chatHeaderInfo) chatHeaderInfo.title = 'Click name or avatar to show player info';
-        await enrichPlayerSidebar(conv);
-      } else if (role === 'OWNER' && API && API.fields) {
-        try {
-          const res = await API.fields.getByOwner(conv.userId);
-          const fields = res.fields || [];
-          const field = fields.length > 0 ? fields[0] : null;
-          chatState.currentFieldInfo = { field, owner: conv };
-          updateFieldInfoSidebar(chatState.currentFieldInfo);
-        } catch (err) {
-          chatState.currentFieldInfo = { field: null, owner: conv };
-          updateFieldInfoSidebar(chatState.currentFieldInfo);
-        }
-        if (chatHeaderInfo) chatHeaderInfo.title = 'Click name or avatar to show field info';
-      } else if (chatHeaderInfo) {
-        chatHeaderInfo.title = '';
-      }
-    } else {
-      if (role === 'OWNER' && API && API.fields) {
-        try {
-          const res = await API.fields.getByOwner(conv.userId);
-          const fields = res.fields || [];
-          const field = fields.length > 0 ? fields[0] : null;
-          chatState.currentFieldInfo = { field, owner: conv };
-          updateFieldInfoSidebar(chatState.currentFieldInfo);
-        } catch (err) {
-          chatState.currentFieldInfo = { field: null, owner: conv };
-          updateFieldInfoSidebar(chatState.currentFieldInfo);
-        }
-      }
-      if (chatHeaderInfo) {
-        chatHeaderInfo.title = chatState.currentFieldInfo ? 'Click name or avatar to show field info' : '';
-      }
-    }
 
     const inputContainer = document.getElementById('chatInputContainer');
     if (inputContainer) inputContainer.style.display = 'flex';
@@ -745,7 +574,7 @@
         <div class="message-list-empty">
           <i class="fi fi-rr-messages"></i>
           <p>No conversations yet</p>
-          <p class="message-list-empty-hint">Click "+ Add Friend" to start chatting with players or field owners</p>
+          <p class="message-list-empty-hint">Click "Start Chatting" to start chatting with players or field owners</p>
         </div>`;
       return;
     }
@@ -839,7 +668,7 @@
       <div class="empty-chat-state">
         <i class="fi fi-rr-messages"></i>
         <p>Select a conversation to start chatting</p>
-        <p class="empty-chat-hint">Or use "+ Add Friend" to start a new conversation</p>
+        <p class="empty-chat-hint">Or use "Start Chatting" to start a new conversation</p>
       </div>`;
   }
 
@@ -998,13 +827,6 @@
       const uid = chatState.currentConversation.userId;
       chatState.currentConversation.status = onlineUsers.has(uid) ? 'online' : 'offline';
       updateChatHeader(chatState.currentConversation);
-      if (VARIANT === 'owner' && chatState.currentPlayerSummary) {
-        applyPlayerSidebarPresence(chatState.currentConversation);
-      }
-      if (chatState.currentFieldInfo && chatState.currentFieldInfo.owner && chatState.currentConversation) {
-        chatState.currentFieldInfo.owner.status = chatState.currentConversation.status;
-        applyFieldOwnerSidebarPresence(chatState.currentFieldInfo.owner);
-      }
     }
     renderMessageList();
     document.querySelectorAll('.message-item').forEach((item) => {
@@ -1016,7 +838,7 @@
     const input = document.getElementById('chatInput');
     if (!input || !chatState.currentConversationId || !chatState.currentConversation) return;
     if (chatState.currentConversation.blockedAt) {
-      showToast('This conversation is blocked', 'error');
+      showToast('This conversation is restricted — you cannot send messages', 'error');
       return;
     }
 
@@ -1048,7 +870,7 @@
       console.error(upErr);
       showToast(upErr.message || 'Upload failed', 'error');
       chatState.isSending = false;
-      if (sendBtn) sendBtn.disabled = false;
+      applyBlockedUi();
       return;
     }
 
@@ -1106,7 +928,7 @@
       input.value = text;
     } finally {
       chatState.isSending = false;
-      if (sendBtn) sendBtn.disabled = false;
+      applyBlockedUi();
     }
   }
 
@@ -1317,57 +1139,6 @@
       emojiBtn.addEventListener('click', (e) => {
         e.preventDefault();
         toggleEmojiPicker();
-      });
-    }
-
-    const chatHeader = document.getElementById('chatHeader');
-    const chatHeaderInfo = document.querySelector('#chatHeader .chat-header-info');
-    if (chatHeader && chatHeaderInfo) {
-      chatHeader.style.cursor = '';
-      chatHeaderInfo.style.cursor = 'pointer';
-      chatHeader.addEventListener('click', (e) => {
-        if (!e.target.closest('.chat-header-info')) return;
-        if (VARIANT === 'owner') {
-          const playerSb = document.getElementById('playerInfoSidebar');
-          const fieldSb = document.getElementById('fieldInfoSidebar');
-          if (chatState.currentPlayerSummary && playerSb) {
-            playerSb.classList.toggle('visible');
-            return;
-          }
-          if (chatState.currentFieldInfo && fieldSb) {
-            fieldSb.classList.toggle('visible');
-            return;
-          }
-          showToast('Select a conversation to see details', 'info');
-        } else {
-          const sidebar = document.getElementById('fieldInfoSidebar');
-          if (chatState.currentFieldInfo && sidebar) sidebar.classList.toggle('visible');
-          else showToast('Field info appears when chatting with a field owner', 'info');
-        }
-      });
-    }
-
-    const viewFieldPageBtn = document.getElementById('viewFieldPageBtn');
-    if (viewFieldPageBtn) {
-      viewFieldPageBtn.addEventListener('click', () => {
-        if (chatState.currentFieldInfo && chatState.currentFieldInfo.field) {
-          window.location.href = getFieldInfoUrl(chatState.currentFieldInfo.field.id);
-        } else showToast('No field information available', 'info');
-      });
-    }
-    const bookNowBtn = getFieldBookNowButton();
-    if (bookNowBtn) {
-      bookNowBtn.addEventListener('click', () => {
-        if (chatState.currentFieldInfo && chatState.currentFieldInfo.field) {
-          window.location.href = getFieldInfoUrl(chatState.currentFieldInfo.field.id);
-        } else showToast('No field information available', 'info');
-      });
-    }
-
-    const fieldAddFriendBtn = document.getElementById('fieldAddFriendBtn');
-    if (fieldAddFriendBtn) {
-      fieldAddFriendBtn.addEventListener('click', () => {
-        showToast('Friend list is not connected yet.', 'info');
       });
     }
 

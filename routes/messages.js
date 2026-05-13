@@ -9,6 +9,7 @@ const {
   mongoMarkMessageRead,
   mongoMarkAllUnreadAsRead,
   mongoConversationViewerMeta,
+  mongoConversationGlobalBlockActive,
   mongoConversationSetStarred,
   mongoConversationSetBlocked
 } = require('../lib/mongoMessageWrite');
@@ -251,6 +252,18 @@ router.post('/conversation/:conversationId/messages', authenticate, async (req, 
 
     if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const roleUpper = String(req.user.role || '').toUpperCase();
+    if (roleUpper !== 'ADMIN') {
+      const prismaBlocked = !!conversation.blockedAt;
+      const mongoGlobalBlocked = await mongoConversationGlobalBlockActive(conversationId);
+      if (prismaBlocked || mongoGlobalBlocked) {
+        return res.status(403).json({
+          error:
+            'This conversation has been restricted by support. You cannot send new messages here.'
+        });
+      }
     }
 
     const viewerMeta = await mongoConversationViewerMeta(conversationId, req.user.id);

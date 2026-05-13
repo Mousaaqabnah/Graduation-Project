@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Fields - Field Owner Admin | MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -295,15 +296,20 @@
                                 <div class="form-group">
                                     <label>Sport Category</label>
                                     <select id="manageSportCategory">
-                                        <option selected>Football</option>
-                                        <option>Basketball</option>
-                                        <option>Tennis</option>
-                                        <option>Padel</option>
-                                        <option>Futsal</option>
-                                        <option>Volleyball</option>
-                                        <option>Badminton</option>
+                                        <option value="football">Football</option>
+                                        <option value="basketball">Basketball</option>
+                                        <option value="tennis">Tennis</option>
+                                        <option value="padel">Padel</option>
+                                        <option value="futsal">Futsal</option>
+                                        <option value="volleyball">Volleyball</option>
+                                        <option value="badminton">Badminton</option>
+                                        <option value="other">Other</option>
                                     </select>
                                 </div>
+                            </div>
+                            <div class="form-group" id="manageSportCustomGroup" style="display: none;">
+                                <label for="manageSportCustom">Specify sport <span class="required">*</span></label>
+                                <input type="text" id="manageSportCustom" name="manageSportCustom" placeholder="e.g. Handball, Cricket">
                             </div>
                             
                             <div class="form-row">
@@ -716,28 +722,6 @@
                                     </label>
                                 </div>
                             </div>
-                            
-                            <div class="form-group" style="margin-bottom: 20px;">
-                                <label>Advance Booking Period</label>
-                                <select id="manageAdvanceBooking">
-                                    <option value="1">1 day in advance</option>
-                                    <option value="3" selected>3 days in advance</option>
-                                    <option value="7">7 days in advance</option>
-                                    <option value="14">14 days in advance</option>
-                                    <option value="30">30 days in advance</option>
-                                    <option value="unlimited">Unlimited</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Cancellation Policy</label>
-                                <select id="manageCancellationPolicy">
-                                    <option value="flexible">Flexible (Full refund up to 24h before)</option>
-                                    <option value="moderate" selected>Moderate (Full refund up to 48h before)</option>
-                                    <option value="strict">Strict (Full refund up to 7 days before)</option>
-                                    <option value="no-refund">No Refund</option>
-                                </select>
-                            </div>
                         </div>
                         
                         <div class="form-step-section">
@@ -986,20 +970,6 @@
                                 <textarea id="fieldDescription" name="fieldDescription" rows="4" required placeholder="Describe your field..."></textarea>
                             </div>
                             
-                            <div class="form-group">
-                                <label>Venue response message</label>
-                                <textarea id="fieldVenueResponse" name="fieldVenueResponse" rows="2" placeholder="e.g. Usually replies within 15 minutes."></textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label>Highlights (Key Selling Points)</label>
-                                <div class="highlights-container">
-                                    <input type="text" id="highlightInput" placeholder="Add a highlight (e.g. Professional lighting, Locker rooms)">
-                                    <button type="button" class="btn-add-highlight" onclick="addHighlight()">Add</button>
-                                </div>
-                                <div id="highlightsList" class="highlights-list"></div>
-                            </div>
-                            
                             <div class="form-row" style="margin-bottom: 0;">
                                 <div class="form-group">
                                     <label>Type of Field <span class="required">*</span></label>
@@ -1019,6 +989,10 @@
                                     <label>Capacity (Max Players) <span class="required">*</span></label>
                                     <input type="number" id="capacity" name="capacity" required min="1" placeholder="e.g. 22">
                                 </div>
+                            </div>
+                            <div class="form-group" id="fieldSportCustomGroup" style="display: none;">
+                                <label for="fieldSportCustom">Specify sport <span class="required">*</span></label>
+                                <input type="text" id="fieldSportCustom" name="fieldSportCustom" placeholder="e.g. Handball, Cricket">
                             </div>
                         </div>
                     </div>
@@ -1325,28 +1299,6 @@
                                         </span>
                                     </label>
                                 </div>
-                            </div>
-                            
-                            <div class="form-group" style="margin-bottom: 20px;">
-                                <label>Advance Booking Period</label>
-                                <select id="advanceBooking" name="advanceBooking">
-                                    <option value="1">1 day in advance</option>
-                                    <option value="3" selected>3 days in advance</option>
-                                    <option value="7">7 days in advance</option>
-                                    <option value="14">14 days in advance</option>
-                                    <option value="30">30 days in advance</option>
-                                    <option value="unlimited">Unlimited</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Cancellation Policy</label>
-                                <select id="cancellationPolicy" name="cancellationPolicy">
-                                    <option value="flexible">Flexible (Full refund up to 24h before)</option>
-                                    <option value="moderate" selected>Moderate (Full refund up to 48h before)</option>
-                                    <option value="strict">Strict (Full refund up to 7 days before)</option>
-                                    <option value="no-refund">No Refund</option>
-                                </select>
                             </div>
                         </div>
                         

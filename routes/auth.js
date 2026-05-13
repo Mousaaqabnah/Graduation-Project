@@ -1,11 +1,12 @@
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
-const { authenticate } = require('../middleware/auth');
-const { mongoUserSetFields } = require('../lib/mongoUserWrite');
+const { authenticate, authenticateAllowSuspended } = require('../middleware/auth');
+const { mongoUserSetFields, mongoUserFindByPasswordResetToken } = require('../lib/mongoUserWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -14,6 +15,23 @@ const prisma = new PrismaClient();
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
+
+const RESET_TOKEN_BYTES = 32;
+const RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+
+function hashPasswordResetToken(rawToken) {
+  return crypto.createHash('sha256').update(String(rawToken), 'utf8').digest('hex');
+}
+
+function appBaseUrl(req) {
+  const fromEnv = process.env.APP_BASE_URL && String(process.env.APP_BASE_URL).trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  const host = req.get('host') || `localhost:${process.env.PORT || 3000}`;
+  const proto = req.protocol || 'http';
+  return `${proto}://${host}`;
+}
 
 async function createUserWithNativeMongo(data) {
   const client = new MongoClient(process.env.DATABASE_URL);
@@ -24,7 +42,7 @@ async function createUserWithNativeMongo(data) {
     const roleValue = data.role || 'PLAYER';
     const userDoc = {
       email: data.email,
-      password_hash: data.passwordHash,
+      password_hash: data.passwordHash != null && data.passwordHash !== '' ? data.passwordHash : null,
       full_name: data.fullName,
       phone: data.phone || null,
       date_of_birth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
@@ -175,8 +193,104 @@ router.post('/login', [
   }
 });
 
-// Get current user
-router.get('/me', authenticate, async (req, res) => {
+// Request password reset (stores token; email delivery not wired — see response in non-production)
+router.post(
+  '/forgot-password',
+  [body('email').trim().isEmail()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const email = String(req.body.email).trim().toLowerCase();
+      const generic = {
+        message:
+          'If an account exists for that email, you will receive password reset instructions shortly.'
+      };
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, passwordHash: true }
+      });
+
+      if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
+        return res.json(generic);
+      }
+
+      const rawToken = crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
+      const tokenHash = hashPasswordResetToken(rawToken);
+      const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
+
+      await mongoUserSetFields(user.id, {
+        password_reset_token_hash: tokenHash,
+        password_reset_expires: expiresAt
+      });
+
+      const resetPath = `/pages/auth/reset-password.html?token=${encodeURIComponent(rawToken)}`;
+      const resetUrl = `${appBaseUrl(req)}${resetPath}`;
+
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({
+          ...generic,
+          devResetUrl: resetUrl,
+          devNote:
+            'Email is not configured. Use devResetUrl to complete reset (development only; omitted in production).'
+        });
+      }
+
+      res.json(generic);
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      res.status(500).json({ error: 'Could not process reset request' });
+    }
+  }
+);
+
+// Complete password reset with token from email (or dev link)
+router.post(
+  '/reset-password',
+  [
+    body('token').trim().isLength({ min: 32 }),
+    body('newPassword').isLength({ min: 8 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const rawToken = String(req.body.token).trim();
+      const { newPassword } = req.body;
+      const tokenHash = hashPasswordResetToken(rawToken);
+
+      const user = await mongoUserFindByPasswordResetToken(tokenHash);
+
+      if (!user) {
+        return res.status(400).json({
+          error: 'Reset link is invalid or has expired. Request a new one from the login page.'
+        });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await mongoUserSetFields(user.id, {
+        password_hash: passwordHash,
+        password_reset_token_hash: null,
+        password_reset_expires: null
+      });
+
+      res.json({ message: 'Password reset successfully. You can log in with your new password.' });
+    } catch (error) {
+      console.error('Reset password error:', error);
+      res.status(500).json({ error: 'Could not reset password' });
+    }
+  }
+);
+
+// Get current user (allows SUSPENDED so the app can show contact-only mode)
+router.get('/me', authenticateAllowSuspended, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { MongoClient, ObjectId } = require('mongodb');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { mongoCreateMessageAndTouchConversation, mongoConversationGlobalBlockActive } = require('../lib/mongoMessageWrite');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -81,6 +82,54 @@ async function linkSubmissionToConversation(mongoId, conversationId) {
   }
 }
 
+async function findOrCreateSupportConversation(userId, adminId) {
+  const userIdStr = String(userId || '').trim();
+  const adminIdStr = String(adminId || '').trim();
+  if (!ObjectId.isValid(userIdStr) || !ObjectId.isValid(adminIdStr)) {
+    throw new Error('Invalid support conversation user ids');
+  }
+
+  const userOid = new ObjectId(userIdStr);
+  const adminOid = new ObjectId(adminIdStr);
+  const client = new MongoClient(process.env.DATABASE_URL);
+  await client.connect();
+  try {
+    const db = client.db();
+    const conversations = db.collection('conversations');
+    const now = new Date();
+
+    let conversation = await conversations.findOne({
+      $or: [
+        { user1_id: userOid, user2_id: adminOid },
+        { user1_id: adminOid, user2_id: userOid }
+      ]
+    });
+
+    if (!conversation) {
+      const inserted = await conversations.insertOne({
+        user1_id: userOid,
+        user2_id: adminOid,
+        is_support_thread: true,
+        created_at: now,
+        updated_at: now,
+        blocked_at: null,
+        starred_at: null
+      });
+      conversation = await conversations.findOne({ _id: inserted.insertedId });
+    } else if (conversation.is_support_thread !== true) {
+      await conversations.updateOne(
+        { _id: conversation._id },
+        { $set: { is_support_thread: true, updated_at: now } }
+      );
+      conversation = await conversations.findOne({ _id: conversation._id });
+    }
+
+    return String(conversation._id);
+  } finally {
+    await client.close();
+  }
+}
+
 // Public contact endpoint – works even if account is suspended
 router.post(
   '/contact',
@@ -108,6 +157,31 @@ router.post(
       // Try to link to an existing user (even if suspended)
       const authUser = await getUserFromToken(req);
 
+      let admin = null;
+      let supportConversationId = null;
+      if (authUser) {
+        admin = await prisma.user.findFirst({
+          where: { role: 'ADMIN' },
+          select: { id: true, email: true }
+        });
+        if (admin) {
+          supportConversationId = await findOrCreateSupportConversation(authUser.id, admin.id);
+          const convFlags = await prisma.conversation.findUnique({
+            where: { id: supportConversationId },
+            select: { blockedAt: true }
+          });
+          const threadLocked =
+            !!(convFlags && convFlags.blockedAt) ||
+            (await mongoConversationGlobalBlockActive(supportConversationId));
+          if (threadLocked) {
+            return res.status(403).json({
+              error:
+                'This support channel is restricted and cannot accept new messages. Use the email or phone on this page to reach our team.'
+            });
+          }
+        }
+      }
+
       const submissionMongoId = await saveContactSubmission({
         fullName,
         email,
@@ -117,42 +191,9 @@ router.post(
         userId: authUser?.id || null
       });
 
-      // Best-effort: mirror into admin support chat when both parties exist
+      // Best-effort: mirror into admin support chat when both parties exist (thread not locked — checked above)
       try {
-        const admin = await prisma.user.findFirst({
-          where: { role: 'ADMIN' },
-          select: { id: true, email: true }
-        });
-
-        if (authUser && admin) {
-          let conversation = await prisma.conversation.findFirst({
-            where: {
-              OR: [
-                { user1Id: authUser.id, user2Id: admin.id },
-                { user1Id: admin.id, user2Id: authUser.id }
-              ]
-            }
-          });
-
-          if (!conversation) {
-            conversation = await prisma.conversation.create({
-              data: {
-                user1Id: authUser.id,
-                user2Id: admin.id,
-                isSupportThread: true
-              }
-            });
-          } else if (!conversation.isSupportThread) {
-            try {
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { isSupportThread: true }
-              });
-            } catch (_) {
-              // best effort
-            }
-          }
-
+        if (authUser && admin && supportConversationId) {
           const contentParts = [];
           if (topic) contentParts.push(`Topic: ${topic}`);
           contentParts.push(message);
@@ -161,20 +202,13 @@ router.post(
             contentParts.push(`Contact email: ${email}`);
           }
 
-          await prisma.message.create({
-            data: {
-              conversationId: conversation.id,
-              senderId: authUser.id,
-              content: contentParts.join('\n\n')
-            }
-          });
+          await mongoCreateMessageAndTouchConversation(
+            supportConversationId,
+            authUser.id,
+            contentParts.join('\n\n')
+          );
 
-          await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { updatedAt: new Date() }
-          });
-
-          await linkSubmissionToConversation(submissionMongoId, conversation.id);
+          await linkSubmissionToConversation(submissionMongoId, supportConversationId);
         }
       } catch (mirrorErr) {
         console.error('Support contact: admin chat mirror failed (submission was saved):', mirrorErr);

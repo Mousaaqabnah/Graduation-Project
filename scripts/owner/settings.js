@@ -6,12 +6,6 @@ var FIXED_OWNER_PREFS = {
     currency: 'TRY',
     timezone: 'Europe/Istanbul'
 };
-var PRIVACY_VISIBILITY_ALLOWED = ['public', 'private'];
-var privacySecurityState = {
-    profileVisibility: 'public',
-    dataSharing: true,
-    isSaving: false
-};
 var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
 var accountSettingsState = {
     emailNotifications: true,
@@ -54,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadSettings();
 
     const toggles = document.querySelectorAll(
-        '.toggle-switch input:not(#dataSharing):not(#emailNotifications):not(#twoFactorAuth)' +
+        '.toggle-switch input:not(#emailNotifications):not(#twoFactorAuth)' +
         ':not(#bookingNotifications):not(#paymentNotifications):not(#fieldUpdates):not(#marketingEmails)'
     );
     toggles.forEach(function(toggle) {
@@ -63,14 +57,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     });
 
-    const selects = document.querySelectorAll('.settings-select:not(#profileVisibility)');
+    const selects = document.querySelectorAll('.settings-select');
     selects.forEach(function(select) {
         select.addEventListener('change', function() {
             saveSettings();
         });
     });
 
-    initializePrivacySecurityHandlers();
     initializeAccountSettingsHandlers();
     initializeOwnerNotificationPreferenceHandlers();
 
@@ -207,32 +200,47 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const deleteAccountBtn = document.getElementById('deleteAccountBtn');
     if (deleteAccountBtn) {
-        deleteAccountBtn.addEventListener('click', function() {
-            if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) return;
-            if (!confirm('This will permanently delete all your data. Are you absolutely sure?')) return;
+        deleteAccountBtn.addEventListener('click', async function() {
+            if (!(await MatchFieldDialog.confirm('Are you sure you want to delete your account? This action cannot be undone.', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete Account'
+            }))) return;
+            if (!(await MatchFieldDialog.confirm('This will permanently delete all your data. Are you absolutely sure?', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete permanently'
+            }))) return;
 
             if (typeof API === 'undefined' || !API.auth || !API.auth.deleteAccount) {
-                alert('Account deletion service is unavailable. Please refresh the page.');
+                await MatchFieldDialog.alert('Account deletion service is unavailable. Please refresh the page.', { type: 'danger', title: 'Error' });
                 return;
             }
 
-            var currentPwd = prompt('Please enter your current password to confirm account deletion:');
+            var currentPwd = await MatchFieldDialog.prompt('Please enter your current password to confirm account deletion.', {
+                type: 'danger',
+                title: 'Confirm password',
+                inputType: 'password',
+                placeholder: 'Current password',
+                okText: 'Continue',
+                cancelText: 'Cancel'
+            });
             if (currentPwd == null) return;
             currentPwd = String(currentPwd).trim();
             if (!currentPwd) {
-                alert('Current password is required to delete your account.');
+                await MatchFieldDialog.alert('Current password is required to delete your account.', { type: 'warning', title: 'Password required' });
                 return;
             }
 
             deleteAccountBtn.disabled = true;
             deleteAccountBtn.textContent = 'Deleting...';
             API.auth.deleteAccount(currentPwd)
-                .then(function() {
-                    alert('Your account has been deleted successfully.');
+                .then(async function() {
+                    await MatchFieldDialog.alert('Your account has been deleted successfully.', { type: 'success', title: 'Deleted' });
                     API.auth.logout();
                 })
-                .catch(function(err) {
-                    alert((err && err.message) ? err.message : 'Failed to delete account.');
+                .catch(async function(err) {
+                    await MatchFieldDialog.alert((err && err.message) ? err.message : 'Failed to delete account.', { type: 'danger', title: 'Error' });
                 })
                 .finally(function() {
                     deleteAccountBtn.disabled = false;
@@ -282,15 +290,6 @@ async function loadSettings() {
     if (settings.marketingEmails !== undefined) {
         document.getElementById('marketingEmails').checked = settings.marketingEmails;
     }
-    if (settings.dataSharing !== undefined && document.getElementById('dataSharing')) {
-        document.getElementById('dataSharing').checked = Boolean(settings.dataSharing);
-    }
-    if (document.getElementById('profileVisibility')) {
-        var visibility = PRIVACY_VISIBILITY_ALLOWED.indexOf(settings.profileVisibility) !== -1
-            ? settings.profileVisibility
-            : 'public';
-        document.getElementById('profileVisibility').value = visibility;
-    }
     if (settings.language) {
         document.getElementById('language').value = settings.language;
     }
@@ -300,13 +299,6 @@ async function loadSettings() {
     if (settings.timezone) {
         document.getElementById('timezone').value = settings.timezone;
     }
-
-    privacySecurityState.profileVisibility = document.getElementById('profileVisibility')
-        ? document.getElementById('profileVisibility').value
-        : 'public';
-    privacySecurityState.dataSharing = document.getElementById('dataSharing')
-        ? Boolean(document.getElementById('dataSharing').checked)
-        : true;
 
     accountSettingsState.emailNotifications = document.getElementById('emailNotifications')
         ? Boolean(document.getElementById('emailNotifications').checked)
@@ -338,8 +330,6 @@ function saveSettings(options) {
         paymentNotifications: document.getElementById('paymentNotifications').checked,
         fieldUpdates: document.getElementById('fieldUpdates').checked,
         marketingEmails: document.getElementById('marketingEmails').checked,
-        dataSharing: document.getElementById('dataSharing').checked,
-        profileVisibility: document.getElementById('profileVisibility').value,
         language: FIXED_OWNER_PREFS.language,
         currency: FIXED_OWNER_PREFS.currency,
         timezone: FIXED_OWNER_PREFS.timezone
@@ -363,87 +353,6 @@ function saveSettings(options) {
             });
         }
     }, 400);
-}
-
-function initializePrivacySecurityHandlers() {
-    var profileVisibilityEl = document.getElementById('profileVisibility');
-    var dataSharingEl = document.getElementById('dataSharing');
-
-    if (profileVisibilityEl) {
-        profileVisibilityEl.addEventListener('change', function() {
-            var nextValue = profileVisibilityEl.value;
-            if (PRIVACY_VISIBILITY_ALLOWED.indexOf(nextValue) === -1) {
-                profileVisibilityEl.value = privacySecurityState.profileVisibility;
-                return;
-            }
-            saveOwnerPrivacySecuritySettings({
-                profileVisibility: nextValue,
-                dataSharing: dataSharingEl ? Boolean(dataSharingEl.checked) : privacySecurityState.dataSharing
-            });
-        });
-    }
-
-    if (dataSharingEl) {
-        dataSharingEl.addEventListener('change', function() {
-            saveOwnerPrivacySecuritySettings({
-                profileVisibility: profileVisibilityEl ? profileVisibilityEl.value : privacySecurityState.profileVisibility,
-                dataSharing: Boolean(dataSharingEl.checked)
-            });
-        });
-    }
-}
-
-function setOwnerPrivacyControlsDisabled(disabled) {
-    var profileVisibilityEl = document.getElementById('profileVisibility');
-    var dataSharingEl = document.getElementById('dataSharing');
-    if (profileVisibilityEl) profileVisibilityEl.disabled = disabled;
-    if (dataSharingEl) dataSharingEl.disabled = disabled;
-}
-
-function saveOwnerPrivacySecuritySettings(nextPrefs) {
-    var profileVisibilityEl = document.getElementById('profileVisibility');
-    var dataSharingEl = document.getElementById('dataSharing');
-    if (!profileVisibilityEl || !dataSharingEl) return;
-    if (privacySecurityState.isSaving) return;
-
-    var nextVisibility = PRIVACY_VISIBILITY_ALLOWED.indexOf(nextPrefs.profileVisibility) !== -1
-        ? nextPrefs.profileVisibility
-        : privacySecurityState.profileVisibility;
-    var nextDataSharing = Boolean(nextPrefs.dataSharing);
-
-    var prevState = {
-        profileVisibility: privacySecurityState.profileVisibility,
-        dataSharing: privacySecurityState.dataSharing
-    };
-
-    privacySecurityState.profileVisibility = nextVisibility;
-    privacySecurityState.dataSharing = nextDataSharing;
-    profileVisibilityEl.value = nextVisibility;
-    dataSharingEl.checked = nextDataSharing;
-    saveSettings({ skipRemote: true });
-
-    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
-        return;
-    }
-
-    privacySecurityState.isSaving = true;
-    setOwnerPrivacyControlsDisabled(true);
-    API.users.patchMyPreferences({
-        profileVisibility: nextVisibility,
-        dataSharing: nextDataSharing
-    })
-        .catch(function(err) {
-            privacySecurityState.profileVisibility = prevState.profileVisibility;
-            privacySecurityState.dataSharing = prevState.dataSharing;
-            profileVisibilityEl.value = prevState.profileVisibility;
-            dataSharingEl.checked = prevState.dataSharing;
-            saveSettings({ skipRemote: true });
-            alert((err && err.message) ? err.message : 'Failed to save privacy settings. Changes were reverted.');
-        })
-        .finally(function() {
-            privacySecurityState.isSaving = false;
-            setOwnerPrivacyControlsDisabled(false);
-        });
 }
 
 function initializeOwnerNotificationPreferenceHandlers() {

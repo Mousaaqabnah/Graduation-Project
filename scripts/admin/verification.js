@@ -272,7 +272,9 @@ async function approveVerification(userId) {
     const user = allVerificationRequests.find(u => String(u.id) === String(userId));
     if (!user) return;
     
-    if (confirm(`Verify ${user.name} as a field owner?`)) {
+    if (await MatchFieldDialog.confirm(`Verify ${user.name} as a field owner?`, {
+        okText: 'Verify'
+    })) {
         try {
             await API.admin.verifyOwner(String(userId), 'APPROVED', '');
             allVerificationRequests = allVerificationRequests.filter(u => String(u.id) !== String(userId));
@@ -292,8 +294,20 @@ async function rejectVerification(userId) {
     const user = allVerificationRequests.find(u => String(u.id) === String(userId));
     if (!user) return;
     
-    const reason = prompt('Please provide a reason for rejection (optional):');
-    if (confirm(`Reject verification for ${user.name}?`)) {
+    const reason =
+        typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.prompt
+            ? await MatchFieldDialog.prompt('Please provide a reason for rejection (optional):', {
+                  title: 'Reason for rejection',
+                  type: 'warning',
+                  okText: 'OK',
+                  cancelText: 'Cancel',
+                  placeholder: 'Optional note…'
+              }) ?? ''
+            : prompt('Please provide a reason for rejection (optional):') || '';
+    if (await MatchFieldDialog.confirm(`Reject verification for ${user.name}?`, {
+        type: 'danger',
+        okText: 'Reject'
+    })) {
         try {
             await API.admin.verifyOwner(String(userId), 'REJECTED', reason || '');
             allVerificationRequests = allVerificationRequests.filter(u => String(u.id) !== String(userId));
