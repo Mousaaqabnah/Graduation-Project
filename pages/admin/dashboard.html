@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -163,22 +164,22 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-card-title">Total users</div>
-                        <div class="stat-card-value">1,248</div>
-                        <div class="stat-card-subtext">+32 this week</div>
+                        <div class="stat-card-value" id="statTotalUsers">-</div>
+                        <div class="stat-card-subtext" id="statUsersSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Active field owners</div>
-                        <div class="stat-card-value">46</div>
-                        <div class="stat-card-subtext">3 pending approval</div>
+                        <div class="stat-card-value" id="statActiveOwners">-</div>
+                        <div class="stat-card-subtext" id="statOwnersSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Bookings (7 days)</div>
-                        <div class="stat-card-value">187</div>
-                        <div class="stat-card-subtext">+14% vs last week</div>
+                        <div class="stat-card-value" id="statBookings">-</div>
+                        <div class="stat-card-subtext" id="statBookingsSubtext">-</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Revenue (7 days)</div>
-                        <div class="stat-card-value">₺72,350</div>
+                        <div class="stat-card-value" id="statRevenue">-</div>
                         <div class="stat-card-subtext">Estimated payout</div>
                     </div>
                 </div>
@@ -215,20 +216,20 @@
 
                             <div class="form-group">
                                 <label>Audience</label>
-                                <div class="tag-selector">
-                                    <button class="tag-btn active" data-audience="all">All users</button>
-                                    <button class="tag-btn" data-audience="players">Players</button>
-                                    <button class="tag-btn" data-audience="owners">Field owners</button>
-                                    <button class="tag-btn" data-audience="admins">Admins</button>
-                                    <button class="tag-btn" data-audience="private">Private</button>
+                                <div class="tag-selector" id="notificationAudienceSelector" role="group" aria-label="Notification audience">
+                                    <button type="button" class="tag-btn active" data-audience="all">All users</button>
+                                    <button type="button" class="tag-btn" data-audience="players">Players</button>
+                                    <button type="button" class="tag-btn" data-audience="owners">Field owners</button>
+                                    <button type="button" class="tag-btn" data-audience="admins">Admins</button>
+                                    <button type="button" class="tag-btn" data-audience="private">Private</button>
                                 </div>
                             </div>
 
                             <div class="form-group">
                                 <label>Channel</label>
-                                <div class="tag-selector">
-                                    <button class="tag-btn active" data-channel="inapp">In-app</button>
-                                    <button class="tag-btn" data-channel="email">Email</button>
+                                <div class="tag-selector" id="notificationChannelSelector" role="group" aria-label="Notification channel">
+                                    <button type="button" class="tag-btn active" data-channel="inapp">In-app</button>
+                                    <button type="button" class="tag-btn" data-channel="email">Email</button>
                                 </div>
                             </div>
 
@@ -283,53 +284,7 @@
                     </div>
 
                     <div class="notifications-list" id="recentNotifications">
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
-                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
-                                <p class="notification-list-time">5 min ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Players</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Payouts processed</h3>
-                                <p class="notification-list-message">Weekly payouts have been processed for eligible field owners.</p>
-                                <p class="notification-list-time">1 hour ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Field owners</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">New feature: Map filters</h3>
-                                <p class="notification-list-message">You can now filter sports fields by price, rating and surface.</p>
-                                <p class="notification-list-time">5 min ago</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Email</span>
-                            </div>
-                        </div>
-
-                        <div class="notification-list-item">
-                            <div class="notification-list-content">
-                                <h3 class="notification-list-title">Weekend tournament reminder</h3>
-                                <p class="notification-list-message">Don't forget to book your fields for this weekend's matches!</p>
-                                <p class="notification-list-time">Yesterday</p>
-                            </div>
-                            <div class="notification-list-tags">
-                                <span class="notification-tag">In-app</span>
-                                <span class="notification-tag">Players</span>
-                            </div>
-                        </div>
+                        <!-- Loaded from API -->
                     </div>
                 </div>
                 </div>
@@ -344,29 +299,7 @@
                             </div>
                         </div>
                         <div class="chart-container">
-                            <div class="bar-chart">
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Players</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 72%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">72%</span>
-                                </div>
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Field owners</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 20%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">20%</span>
-                                </div>
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Admins</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 1%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">1%</span>
-                                </div>
-                            </div>
+                            <div class="bar-chart" id="notificationsAudienceChart"></div>
                         </div>
                     </div>
 
@@ -378,29 +311,7 @@
                             </div>
                         </div>
                         <div class="chart-container">
-                            <div class="bar-chart">
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Istanbul</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 72%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">72%</span>
-                                </div>
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Beirut</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 18%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">18%</span>
-                                </div>
-                                <div class="bar-chart-item">
-                                    <div class="bar-chart-label">Other</div>
-                                    <div class="bar-chart-bar-wrapper">
-                                        <div class="bar-chart-bar" style="width: 10%"></div>
-                                    </div>
-                                    <span class="bar-chart-value">10%</span>
-                                </div>
-                            </div>
+                            <div class="bar-chart" id="bookingsRegionsChart"></div>
                         </div>
                     </div>
                 </div>
@@ -460,7 +371,67 @@
             </div>
         </div>
     </div>
+
+    <!-- Invite Admin Modal -->
+    <div class="modal-overlay" id="inviteAdminModal" aria-hidden="true">
+        <div class="modal-box invite-admin-modal" role="dialog" aria-modal="true" aria-labelledby="inviteAdminTitle">
+            <button class="modal-close" id="closeInviteAdminModal" aria-label="Close invite admin modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+
+            <div class="modal-title" id="inviteAdminTitle">Invite admin</div>
+
+            <div class="invite-admin-modal-content">
+                <form id="inviteAdminForm" class="invite-admin-form">
+                    <div class="invite-admin-inline-error" id="inviteAdminError" style="display:none;"></div>
+                    <div class="form-group">
+                        <label for="inviteAdminEmail">Admin email</label>
+                        <input type="email" id="inviteAdminEmail" placeholder="admin@example.com" required autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="inviteAdminName">Full name (optional)</label>
+                        <input type="text" id="inviteAdminName" placeholder="Admin User" maxlength="200" autocomplete="off">
+                    </div>
+
+                    <div class="invite-admin-actions">
+                        <button type="button" class="btn invite-admin-cancel" id="cancelInviteAdminBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="submitInviteAdminBtn">Create admin</button>
+                    </div>
+                </form>
+
+                <div class="invite-admin-result" id="inviteAdminResult" style="display:none;">
+                    <div class="invite-admin-result-title">Admin created</div>
+                    <div class="invite-admin-result-row">
+                        <div class="invite-admin-result-label">Email</div>
+                        <div class="invite-admin-result-value" id="inviteAdminCreatedEmail">—</div>
+                    </div>
+                    <div class="invite-admin-result-row">
+                        <div class="invite-admin-result-label">Temporary password</div>
+                        <div class="invite-admin-password-wrap">
+                            <input id="inviteAdminTempPassword" class="invite-admin-password" type="password" value="" readonly>
+                            <button type="button" class="btn invite-admin-copy invite-admin-toggle" id="toggleInviteAdminPasswordBtn" aria-label="Show password">Show</button>
+                            <button type="button" class="btn invite-admin-copy" id="copyInviteAdminPasswordBtn">Copy</button>
+                        </div>
+                        <div class="invite-admin-hint">Share this password securely. The admin can change it in Settings.</div>
+                    </div>
+                    <div class="invite-admin-actions">
+                        <button type="button" class="btn btn-primary" id="doneInviteAdminBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/admin-guard.js"></script>
+    <script src="../../scripts/admin/header-user.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/admin/dashboard.js"></script>
 </body>
 </html>

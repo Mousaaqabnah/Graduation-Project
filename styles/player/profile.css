@@ -200,30 +200,6 @@
     margin: 0 0 16px 0;
 }
 
-.profile-badges {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.profile-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: white;
-    border: 1px solid #E5E7EB;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #059669;
-}
-
-.profile-badge i {
-    font-size: 14px;
-    color: #10B981;
-}
-
 /* Profile Card Body */
 .profile-card-body {
     padding: 40px;
@@ -443,7 +419,7 @@
     .stats-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .profile-section {
         margin-bottom: 32px;
     }

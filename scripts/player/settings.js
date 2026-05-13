@@ -1,102 +1,245 @@
 // Settings Page JavaScript
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Get popup elements
+var savePrefsTimer = null;
+var FIXED_PLAYER_PREFS = {
+    language: 'en',
+    currency: 'TRY',
+    timezone: 'Europe/Istanbul'
+};
+var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
+var accountSettingsState = {
+    emailNotifications: true,
+    twoFactorAuth: false,
+    isSaving: false
+};
+var NOTIFICATION_PREF_KEYS = [
+    'bookingConfirmations',
+    'reminders',
+    'venueUpdates',
+    'marketingEmails'
+];
+var notificationPrefsState = {
+    bookingConfirmations: true,
+    reminders: true,
+    venueUpdates: true,
+    marketingEmails: false,
+    isSaving: false
+};
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Get popup elements (notification handled by notifications.js)
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    // Notification popup toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
-        });
-    }
     
     // Profile popup toggle
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
     }
     
-    // Close popups when clicking outside
+    // Close profile popup when clicking outside
     document.addEventListener('click', function(e) {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
-        }
         if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
             profilePopup.classList.remove('active');
         }
     });
     
-    // Load saved settings
-    loadSettings();
+    await loadSettings();
     
-    // Toggle switches event listeners
-    const toggles = document.querySelectorAll('.toggle-switch input');
+    const toggles = document.querySelectorAll('.toggle-switch input:not(#emailNotifications):not(#twoFactorAuth):not(#bookingConfirmations):not(#reminders):not(#venueUpdates):not(#marketingEmails)');
     toggles.forEach(toggle => {
         toggle.addEventListener('change', function() {
             saveSettings();
         });
     });
     
-    // Select dropdowns event listeners
     const selects = document.querySelectorAll('.settings-select');
     selects.forEach(select => {
         select.addEventListener('change', function() {
             saveSettings();
         });
     });
+
+    initializeAccountSettingsHandlers();
+    initializeNotificationPreferenceHandlers();
     
-    // Change Password Button
+    // Change Password Button & Modal
     const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordModalClose = document.getElementById('changePasswordModalClose');
+    const changePasswordCancel = document.getElementById('changePasswordCancel');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const changePasswordError = document.getElementById('changePasswordError');
+
+    function openChangePasswordModal() {
+        if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+            alert('Please log in to change your password.');
+            return;
+        }
+        if (changePasswordModal) {
+            changePasswordModal.classList.add('active');
+            if (changePasswordForm) changePasswordForm.reset();
+            if (changePasswordError) changePasswordError.textContent = '';
+            var cur = document.getElementById('currentPassword');
+            if (cur) cur.focus();
+        }
+    }
+
+    function closeChangePasswordModal() {
+        if (changePasswordModal) changePasswordModal.classList.remove('active');
+    }
+
     if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', function() {
-            // TODO: Open change password modal
-            alert('Change password functionality will be implemented soon!');
+        changePasswordBtn.addEventListener('click', openChangePasswordModal);
+    }
+    if (changePasswordModalClose) {
+        changePasswordModalClose.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordCancel) {
+        changePasswordCancel.addEventListener('click', closeChangePasswordModal);
+    }
+    if (changePasswordModal) {
+        changePasswordModal.addEventListener('click', function(e) {
+            if (e.target === changePasswordModal) closeChangePasswordModal();
         });
     }
-    
-    // Manage Sessions Button
-    const manageSessionsBtn = document.getElementById('manageSessionsBtn');
-    if (manageSessionsBtn) {
-        manageSessionsBtn.addEventListener('click', function() {
-            // TODO: Open session management modal
-            alert('Session management functionality will be implemented soon!');
+
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var currentPwd = document.getElementById('currentPassword').value;
+            var newPwd = document.getElementById('newPassword').value;
+            var confirmPwd = document.getElementById('confirmPassword').value;
+
+            if (changePasswordError) changePasswordError.textContent = '';
+
+            if (newPwd.length < 8) {
+                if (changePasswordError) changePasswordError.textContent = 'New password must be at least 8 characters.';
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                if (changePasswordError) changePasswordError.textContent = 'New passwords do not match.';
+                return;
+            }
+            if (newPwd === currentPwd) {
+                if (changePasswordError) changePasswordError.textContent = 'New password must be different from current password.';
+                return;
+            }
+
+            var submitBtn = document.getElementById('changePasswordSubmit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Updating...';
+            }
+
+            if (typeof API === 'undefined' || !API.auth || !API.auth.updatePassword) {
+                if (changePasswordError) {
+                    changePasswordError.textContent = 'Password service is unavailable. Please refresh the page.';
+                }
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Update Password';
+                }
+                return;
+            }
+
+            API.auth.updatePassword(currentPwd, newPwd)
+                .then(function() {
+                    closeChangePasswordModal();
+                    alert('Your password has been updated successfully.');
+                })
+                .catch(function(err) {
+                    if (changePasswordError) {
+                        changePasswordError.textContent = err.message || 'Failed to update password. Please check your current password.';
+                    }
+                })
+                .finally(function() {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Update Password';
+                    }
+                });
         });
     }
-    
     // Delete Account Button
     const deleteAccountBtn = document.getElementById('deleteAccountBtn');
     if (deleteAccountBtn) {
-        deleteAccountBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                if (confirm('This will permanently delete all your data. Are you absolutely sure?')) {
-                    // TODO: Implement account deletion
-                    alert('Account deletion functionality will be implemented soon!');
-                }
+        deleteAccountBtn.addEventListener('click', async function() {
+            if (!(await MatchFieldDialog.confirm('Are you sure you want to delete your account? This action cannot be undone.', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete Account'
+            }))) return;
+            if (!(await MatchFieldDialog.confirm('This will permanently delete all your data. Are you absolutely sure?', {
+                type: 'danger',
+                title: 'Delete account',
+                okText: 'Delete permanently'
+            }))) return;
+
+            if (typeof API === 'undefined' || !API.auth || !API.auth.deleteAccount) {
+                await MatchFieldDialog.alert('Account deletion service is unavailable. Please refresh the page.', { type: 'danger', title: 'Error' });
+                return;
             }
+
+            var currentPwd = await MatchFieldDialog.prompt('Please enter your current password to confirm account deletion.', {
+                type: 'danger',
+                title: 'Confirm password',
+                inputType: 'password',
+                placeholder: 'Current password',
+                okText: 'Continue',
+                cancelText: 'Cancel'
+            });
+            if (currentPwd == null) return;
+            currentPwd = String(currentPwd).trim();
+            if (!currentPwd) {
+                await MatchFieldDialog.alert('Current password is required to delete your account.', { type: 'warning', title: 'Password required' });
+                return;
+            }
+
+            deleteAccountBtn.disabled = true;
+            deleteAccountBtn.textContent = 'Deleting...';
+            API.auth.deleteAccount(currentPwd)
+                .then(async function() {
+                    await MatchFieldDialog.alert('Your account has been deleted successfully.', { type: 'success', title: 'Deleted' });
+                    API.auth.logout();
+                })
+                .catch(async function(err) {
+                    await MatchFieldDialog.alert((err && err.message) ? err.message : 'Failed to delete account.', { type: 'danger', title: 'Error' });
+                })
+                .finally(function() {
+                    deleteAccountBtn.disabled = false;
+                    deleteAccountBtn.textContent = 'Delete Account';
+                });
         });
     }
 });
 
-// Load settings from localStorage
-function loadSettings() {
-    const settings = JSON.parse(localStorage.getItem('playerSettings') || '{}');
-    
-    // Load toggle states
+async function loadSettings() {
+    const local = JSON.parse(localStorage.getItem('playerSettings') || '{}');
+    var remote = {};
+    try {
+        if (typeof API !== 'undefined' && API.users && API.users.getMyPreferences) {
+            var data = await API.users.getMyPreferences();
+            if (data && data.player && typeof data.player === 'object') {
+                remote = data.player;
+            }
+        }
+    } catch (err) {
+        console.warn('Player settings: could not load from API', err);
+    }
+    const settings = {
+        ...local,
+        ...remote,
+        language: FIXED_PLAYER_PREFS.language,
+        currency: FIXED_PLAYER_PREFS.currency,
+        timezone: FIXED_PLAYER_PREFS.timezone
+    };
+    localStorage.setItem('playerSettings', JSON.stringify(settings));
+
     if (settings.emailNotifications !== undefined) {
         document.getElementById('emailNotifications').checked = settings.emailNotifications;
     }
@@ -115,14 +258,6 @@ function loadSettings() {
     if (settings.marketingEmails !== undefined) {
         document.getElementById('marketingEmails').checked = settings.marketingEmails;
     }
-    if (settings.dataSharing !== undefined) {
-        document.getElementById('dataSharing').checked = settings.dataSharing;
-    }
-    
-    // Load select values
-    if (settings.profileVisibility) {
-        document.getElementById('profileVisibility').value = settings.profileVisibility;
-    }
     if (settings.language) {
         document.getElementById('language').value = settings.language;
     }
@@ -132,10 +267,30 @@ function loadSettings() {
     if (settings.timezone) {
         document.getElementById('timezone').value = settings.timezone;
     }
+
+    accountSettingsState.emailNotifications = document.getElementById('emailNotifications')
+        ? Boolean(document.getElementById('emailNotifications').checked)
+        : true;
+    accountSettingsState.twoFactorAuth = document.getElementById('twoFactorAuth')
+        ? Boolean(document.getElementById('twoFactorAuth').checked)
+        : false;
+
+    notificationPrefsState.bookingConfirmations = document.getElementById('bookingConfirmations')
+        ? Boolean(document.getElementById('bookingConfirmations').checked)
+        : true;
+    notificationPrefsState.reminders = document.getElementById('reminders')
+        ? Boolean(document.getElementById('reminders').checked)
+        : true;
+    notificationPrefsState.venueUpdates = document.getElementById('venueUpdates')
+        ? Boolean(document.getElementById('venueUpdates').checked)
+        : true;
+    notificationPrefsState.marketingEmails = document.getElementById('marketingEmails')
+        ? Boolean(document.getElementById('marketingEmails').checked)
+        : false;
 }
 
-// Save settings to localStorage
-function saveSettings() {
+function saveSettings(options) {
+    var opts = options || {};
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
         twoFactorAuth: document.getElementById('twoFactorAuth').checked,
@@ -143,17 +298,176 @@ function saveSettings() {
         reminders: document.getElementById('reminders').checked,
         venueUpdates: document.getElementById('venueUpdates').checked,
         marketingEmails: document.getElementById('marketingEmails').checked,
-        dataSharing: document.getElementById('dataSharing').checked,
-        profileVisibility: document.getElementById('profileVisibility').value,
-        language: document.getElementById('language').value,
-        currency: document.getElementById('currency').value,
-        timezone: document.getElementById('timezone').value
+        language: FIXED_PLAYER_PREFS.language,
+        currency: FIXED_PLAYER_PREFS.currency,
+        timezone: FIXED_PLAYER_PREFS.timezone
     };
-    
+
     localStorage.setItem('playerSettings', JSON.stringify(settings));
-    
-    // TODO: Send to API
-    console.log('Settings saved:', settings);
+
+    if (savePrefsTimer) {
+        clearTimeout(savePrefsTimer);
+        savePrefsTimer = null;
+    }
+    if (opts.skipRemote === true) {
+        return;
+    }
+
+    savePrefsTimer = setTimeout(function () {
+        savePrefsTimer = null;
+        if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
+            API.users.patchMyPreferences(settings).catch(function (err) {
+                console.warn('Player settings: API save failed', err);
+            });
+        }
+    }, 400);
+}
+
+function initializeNotificationPreferenceHandlers() {
+    NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.addEventListener('change', function() {
+            var nextState = getNotificationPrefsFromDom();
+            saveNotificationPreferences(nextState);
+        });
+    });
+}
+
+function getNotificationPrefsFromDom() {
+    return {
+        emailNotifications: Boolean(document.getElementById('emailNotifications') && document.getElementById('emailNotifications').checked),
+        bookingConfirmations: Boolean(document.getElementById('bookingConfirmations') && document.getElementById('bookingConfirmations').checked),
+        reminders: Boolean(document.getElementById('reminders') && document.getElementById('reminders').checked),
+        venueUpdates: Boolean(document.getElementById('venueUpdates') && document.getElementById('venueUpdates').checked),
+        marketingEmails: Boolean(document.getElementById('marketingEmails') && document.getElementById('marketingEmails').checked)
+    };
+}
+
+function setNotificationControlsDisabled(disabled) {
+    NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (el) el.disabled = disabled;
+    });
+}
+
+function applyNotificationPrefsToDom(prefs) {
+    NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.checked = Boolean(prefs[key]);
+    });
+}
+
+function saveNotificationPreferences(nextPrefs) {
+    if (notificationPrefsState.isSaving) return;
+
+    var prev = {
+        bookingConfirmations: notificationPrefsState.bookingConfirmations,
+        reminders: notificationPrefsState.reminders,
+        venueUpdates: notificationPrefsState.venueUpdates,
+        marketingEmails: notificationPrefsState.marketingEmails
+    };
+
+    NOTIFICATION_PREF_KEYS.forEach(function(key) {
+        notificationPrefsState[key] = Boolean(nextPrefs[key]);
+    });
+    applyNotificationPrefsToDom(notificationPrefsState);
+    saveSettings({ skipRemote: true });
+
+    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
+        return;
+    }
+
+    notificationPrefsState.isSaving = true;
+    setNotificationControlsDisabled(true);
+    API.users.patchMyPreferences({
+        bookingConfirmations: notificationPrefsState.bookingConfirmations,
+        reminders: notificationPrefsState.reminders,
+        venueUpdates: notificationPrefsState.venueUpdates,
+        marketingEmails: notificationPrefsState.marketingEmails
+    })
+        .catch(function(err) {
+            NOTIFICATION_PREF_KEYS.forEach(function(key) {
+                notificationPrefsState[key] = Boolean(prev[key]);
+            });
+            applyNotificationPrefsToDom(notificationPrefsState);
+            saveSettings({ skipRemote: true });
+            alert((err && err.message) ? err.message : 'Failed to save notification preferences. Changes were reverted.');
+        })
+        .finally(function() {
+            notificationPrefsState.isSaving = false;
+            setNotificationControlsDisabled(false);
+        });
+}
+
+function initializeAccountSettingsHandlers() {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.addEventListener('change', function() {
+            var next = getAccountSettingsFromDom();
+            saveAccountSettings(next);
+        });
+    });
+}
+
+function getAccountSettingsFromDom() {
+    return {
+        emailNotifications: Boolean(document.getElementById('emailNotifications') && document.getElementById('emailNotifications').checked),
+        twoFactorAuth: Boolean(document.getElementById('twoFactorAuth') && document.getElementById('twoFactorAuth').checked)
+    };
+}
+
+function applyAccountSettingsToDom(values) {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (!el) return;
+        el.checked = Boolean(values[key]);
+    });
+}
+
+function setAccountControlsDisabled(disabled) {
+    ACCOUNT_PREF_KEYS.forEach(function(key) {
+        var el = document.getElementById(key);
+        if (el) el.disabled = disabled;
+    });
+}
+
+function saveAccountSettings(nextValues) {
+    if (accountSettingsState.isSaving) return;
+
+    var prev = {
+        emailNotifications: accountSettingsState.emailNotifications,
+        twoFactorAuth: accountSettingsState.twoFactorAuth
+    };
+
+    accountSettingsState.emailNotifications = Boolean(nextValues.emailNotifications);
+    accountSettingsState.twoFactorAuth = Boolean(nextValues.twoFactorAuth);
+    applyAccountSettingsToDom(accountSettingsState);
+    saveSettings({ skipRemote: true });
+
+    if (typeof API === 'undefined' || !API.users || !API.users.patchMyPreferences) {
+        return;
+    }
+
+    accountSettingsState.isSaving = true;
+    setAccountControlsDisabled(true);
+    API.users.patchMyPreferences({
+        emailNotifications: accountSettingsState.emailNotifications,
+        twoFactorAuth: accountSettingsState.twoFactorAuth
+    })
+        .catch(function(err) {
+            accountSettingsState.emailNotifications = prev.emailNotifications;
+            accountSettingsState.twoFactorAuth = prev.twoFactorAuth;
+            applyAccountSettingsToDom(accountSettingsState);
+            saveSettings({ skipRemote: true });
+            alert((err && err.message) ? err.message : 'Failed to save account settings. Changes were reverted.');
+        })
+        .finally(function() {
+            accountSettingsState.isSaving = false;
+            setAccountControlsDisabled(false);
+        });
 }
 
 

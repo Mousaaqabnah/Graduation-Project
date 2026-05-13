@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Field Owner - Contact Us | MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -149,13 +150,6 @@
                                         <span>Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
-                                    <a href="bookings.html" class="profile-menu-item">
-                                        <div class="profile-menu-icon">
-                                            <i class="fi fi-rr-calendar-day"></i>
-                                        </div>
-                                        <span>My Bookings</span>
-                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
-                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -204,15 +198,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="topic" class="form-label">Topic</label>
-                                    <select id="topic" name="topic" class="form-input">
-                                        <option value="">Select a topic</option>
-                                        <option value="field-management">Field Management</option>
-                                        <option value="bookings">Bookings & Reservations</option>
-                                        <option value="payments">Payments & Payouts</option>
-                                        <option value="account">Account Settings</option>
-                                        <option value="technical">Technical Support</option>
-                                        <option value="other">Other</option>
-                                    </select>
+                                    <input type="text" id="topic" name="topic" class="form-input" placeholder="Booking problem">
                                 </div>
                             </div>
                             
@@ -238,7 +224,7 @@
                             </div>
                             <div class="support-content">
                                 <h3 class="support-item-title">Email support</h3>
-                                <p class="support-item-text">MatchField@gmail.com</p>
+                                <p class="support-item-text" id="supportEmailText">MatchField@gmail.com</p>
                             </div>
                         </div>
                         
@@ -248,7 +234,7 @@
                             </div>
                             <div class="support-content">
                                 <h3 class="support-item-title">Whatsapp</h3>
-                                <p class="support-item-text">+90 (5xx) xxx xx xx</p>
+                                <p class="support-item-text" id="supportWhatsappText">+90 (5xx) xxx xx xx</p>
                             </div>
                         </div>
                         
@@ -258,7 +244,7 @@
                             </div>
                             <div class="support-content">
                                 <h3 class="support-item-title">Phone</h3>
-                                <p class="support-item-text">+90 (212) xxx xx xx. 09:00-22:00</p>
+                                <p class="support-item-text" id="supportPhoneText">+90 (212) xxx xx xx. 09:00-22:00</p>
                             </div>
                         </div>
                     </div>
@@ -267,6 +253,12 @@
         </main>
     </div>
 
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/owner-guard.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/owner/contact-us.js"></script>
 </body>
 </html>

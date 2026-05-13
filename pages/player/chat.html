@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Chat</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="../../styles/player/chat.css">
+    <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
 </head>
 <body>
     <div class="app-container">
@@ -150,6 +152,13 @@
                                         <span>My Bookings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
+                                    <a href="#" class="profile-menu-item" id="favoriteFieldsMenuItem">
+                                        <div class="profile-menu-icon">
+                                            <i class="fi fi-rr-heart"></i>
+                                        </div>
+                                        <span>Favorite Fields</span>
+                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
+                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -172,7 +181,7 @@
                         <h2>Messages</h2>
                         <button class="add-friend-btn" id="addFriendBtn">
                             <i class="fi fi-rr-user-add"></i>
-                            <span>+ Add Friend</span>
+                            <span>Start Chatting</span>
                         </button>
                     </div>
                     
@@ -223,69 +232,35 @@
                         </button>
                     </div>
                 </div>
-
-                <!-- Right Sidebar - Field Owner Info -->
-                <aside class="field-info-sidebar" id="fieldInfoSidebar" style="display: none;">
-            <div class="field-image-container">
-                <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=300&fit=crop&auto=format" alt="Field Image" id="fieldImage">
-            </div>
-            
-            <div class="field-owner-section">
-                <h3>Field Owner</h3>
-                <div class="field-owner-card">
-                    <div class="field-owner-avatar">
-                        <img src="https://ui-avatars.com/api/?name=Mousa+Aqabnah&background=007BFF&color=fff&size=128" alt="Field Owner" id="fieldOwnerAvatar">
-                        <span class="online-indicator"></span>
-                    </div>
-                    <div class="field-owner-info">
-                        <h4 id="fieldOwnerName">Mousa Aqabnah</h4>
-                        <p class="field-owner-status" id="fieldOwnerStatus">Online</p>
-                    </div>
-                </div>
-                
-                <div class="field-owner-actions">
-                    <button class="field-action-btn" id="addToFriendBtn">
-                        <i class="fi fi-rr-user-add"></i>
-                        <span>+ Add To Friend</span>
-                    </button>
-                    <button class="field-action-btn" id="viewFieldPageBtn">
-                        <i class="fi fi-rr-eye"></i>
-                        <span>View Field Page</span>
-                    </button>
-                    <button class="field-action-btn primary">
-                        <i class="fi fi-rr-calendar-day"></i>
-                        <span>Book Now</span>
-                    </button>
-                </div>
-            </div>
-            
-            <div class="field-information-section">
-                <h3>Field Information</h3>
-                <div class="field-info-grid">
-                    <div class="field-info-item">
-                        <span class="field-info-label">Type:</span>
-                        <span class="field-info-value" id="fieldType">Football Field</span>
-                    </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Rate:</span>
-                        <span class="field-info-value" id="fieldRate">₺1500/h</span>
-                    </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Size:</span>
-                        <span class="field-info-value" id="fieldSize">Standard (45x22m)</span>
-                    </div>
-                    <div class="field-info-item">
-                        <span class="field-info-label">Surface:</span>
-                        <span class="field-info-value" id="fieldSurface">Artificial Turf</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
             </div>
         </main>
     </div>
 
-    <script src="../../scripts/player/chat.js"></script>
+    <div class="favorite-fields-modal" id="favoriteFieldsModal">
+        <div class="favorite-fields-modal-overlay"></div>
+        <div class="favorite-fields-modal-content">
+            <div class="favorite-fields-modal-header">
+                <h2>Favorite Fields</h2>
+                <button type="button" class="modal-close" id="closeFavoriteFieldsModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="favorite-fields-modal-body" id="favoriteFieldsModalBody"></div>
+        </div>
+    </div>
+
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/profile-popup-favorites.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>window.MATCHFIELD_CHAT_VARIANT = 'player';</script>
+    <script src="../../scripts/shared/matchfield-chat.js"></script>
 </body>
 </html>
 

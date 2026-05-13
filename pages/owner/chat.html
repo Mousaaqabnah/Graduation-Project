@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Chat</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -71,7 +72,7 @@
             <header class="main-header">
                 <div class="header-actions">
                     <div class="notification-wrapper">
-                        <button class="icon-btn notification-btn">
+                        <button type="button" class="icon-btn notification-btn" id="notificationBtn">
                             <i class="fi fi-rs-bell"></i>
                         </button>
                         
@@ -148,13 +149,6 @@
                                         <span>Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
-                                    <a href="bookings.html" class="profile-menu-item">
-                                        <div class="profile-menu-icon">
-                                            <i class="fi fi-rr-calendar-day"></i>
-                                        </div>
-                                        <span>My Bookings</span>
-                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
-                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -177,12 +171,12 @@
                         <h2>Messages</h2>
                         <button class="add-friend-btn" id="addFriendBtn">
                             <i class="fi fi-rr-user-add"></i>
-                            <span>+ Add Friend</span>
+                            <span>Start Chatting</span>
                         </button>
                     </div>
                     
                     <div class="message-search">
-                        <input type="text" placeholder="Search Player..." id="messageSearch">
+                        <input type="text" placeholder="Search Player or Field..." id="messageSearch">
                         <i class="fi fi-rr-search search-icon"></i>
                     </div>
                     
@@ -201,7 +195,7 @@
                             </div>
                             <div class="chat-user-details">
                                 <h3 id="chatUserName">Select a conversation</h3>
-                                <p id="chatUserStatus">Start chatting with players</p>
+                                <p id="chatUserStatus">Start chatting with players or field owners</p>
                             </div>
                         </div>
                     </div>
@@ -228,60 +222,19 @@
                         </button>
                     </div>
                 </div>
-
-                <!-- Right Sidebar - Player Info -->
-                <aside class="player-info-sidebar" id="playerInfoSidebar" style="display: none;">
-                    <div class="player-avatar-container">
-                        <div class="player-avatar-large">
-                            <img src="https://ui-avatars.com/api/?name=Sarah+Johnson&background=EF4444&color=fff&size=128" alt="Player Avatar" id="playerAvatar">
-                            <span class="online-indicator"></span>
-                        </div>
-                    </div>
-                    
-                    <div class="player-info-section">
-                        <h3>Player Information</h3>
-                        <div class="player-info-card">
-                            <div class="player-info-details">
-                                <h4 id="playerName">Sarah Johnson</h4>
-                                <p class="player-status" id="playerStatus">Online</p>
-                            </div>
-                        </div>
-                        
-                        <div class="player-actions">
-                            <button class="player-action-btn" id="addToFriendBtn">
-                                <i class="fi fi-rr-user-add"></i>
-                                <span>+ Add To Friend</span>
-                            </button>
-                            <button class="player-action-btn" id="viewPlayerProfileBtn">
-                                <i class="fi fi-rr-eye"></i>
-                                <span>View Profile</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="player-stats-section">
-                        <h3>Player Stats</h3>
-                        <div class="player-stats-grid">
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Total Bookings:</span>
-                                <span class="player-stat-value" id="totalBookings">12</span>
-                            </div>
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Member Since:</span>
-                                <span class="player-stat-value" id="memberSince">Jan 2024</span>
-                            </div>
-                            <div class="player-stat-item">
-                                <span class="player-stat-label">Rating:</span>
-                                <span class="player-stat-value" id="playerRating">4.8 ⭐</span>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
             </div>
         </main>
     </div>
 
-    <script src="../../scripts/owner/chat.js"></script>
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/owner-guard.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>window.MATCHFIELD_CHAT_VARIANT = 'owner';</script>
+    <script src="../../scripts/shared/matchfield-chat.js"></script>
 </body>
 </html>
 

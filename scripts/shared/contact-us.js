@@ -2,86 +2,115 @@
 document.addEventListener('DOMContentLoaded', function() {
     setupForm();
     setupPopups();
+    loadSupportDisplayInfo();
+    prefillContactForm();
 });
+
+async function loadSupportDisplayInfo() {
+    const emailEl = document.getElementById('supportEmailText');
+    const waEl = document.getElementById('supportWhatsappText');
+    const phoneEl = document.getElementById('supportPhoneText');
+    if (!emailEl && !waEl && !phoneEl) return;
+    try {
+        if (window.API && window.API.support && window.API.support.getContactInfo) {
+            const data = await window.API.support.getContactInfo();
+            if (emailEl && data.email) emailEl.textContent = data.email;
+            if (waEl && data.whatsapp) waEl.textContent = data.whatsapp;
+            if (phoneEl && data.phoneLine) phoneEl.textContent = data.phoneLine;
+        }
+    } catch (e) {
+        console.warn('Contact page: could not load support display info', e);
+    }
+}
+
+async function prefillContactForm() {
+    const nameInput = document.getElementById('fullName');
+    const emailInput = document.getElementById('email');
+    const phoneInput = document.getElementById('phone');
+    if (!nameInput || !emailInput || !window.API) return;
+
+    let user = typeof API.getCurrentUser === 'function' ? API.getCurrentUser() : null;
+    try {
+        if (typeof API.getAuthToken === 'function' && API.getAuthToken() && API.auth && API.auth.getCurrentUser) {
+            const res = await API.auth.getCurrentUser();
+            if (res && res.user) {
+                user = res.user;
+                if (typeof API.setCurrentUser === 'function') API.setCurrentUser(user);
+            }
+        }
+    } catch (_) {
+        /* keep cached user */
+    }
+
+    if (!user) return;
+    if (!String(nameInput.value || '').trim() && user.fullName) nameInput.value = user.fullName;
+    if (!String(emailInput.value || '').trim() && user.email) emailInput.value = user.email;
+    if (phoneInput && !String(phoneInput.value || '').trim() && user.phone) phoneInput.value = user.phone;
+}
 
 // Setup contact form
 function setupForm() {
     const contactForm = document.getElementById('contactForm');
     
     if (contactForm) {
-        contactForm.addEventListener('submit', function(e) {
+        contactForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // Get form data
             const formData = {
-                fullName: document.getElementById('fullName').value,
-                email: document.getElementById('email').value,
-                phone: document.getElementById('phone').value,
-                topic: document.getElementById('topic').value,
-                message: document.getElementById('message').value
+                fullName: String(document.getElementById('fullName').value || '').trim(),
+                email: String(document.getElementById('email').value || '').trim(),
+                phone: String(document.getElementById('phone').value || '').trim(),
+                topic: String(document.getElementById('topic').value || '').trim(),
+                message: String(document.getElementById('message').value || '').trim()
             };
             
-            // Validate form
             if (!formData.fullName || !formData.email || !formData.message) {
                 alert('Please fill in all required fields.');
                 return;
             }
             
-            // Validate email format
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(formData.email)) {
                 alert('Please enter a valid email address.');
                 return;
             }
             
-            // Simulate form submission
-            console.log('Form submitted:', formData);
-            
-            // Show success message
-            alert('Thank you for your message! We will get back to you soon.');
-            
-            // Reset form (optional - you might want to keep the values)
-            // contactForm.reset();
-        });
-    }
-}
-
-// Setup popups (notifications and profile)
-function setupPopups() {
-    // Notification popup
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
+            const submitBtn = contactForm.querySelector('.btn-submit') || contactForm.querySelector('button[type=\"submit\"]');
+            const originalText = submitBtn ? submitBtn.textContent : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Sending...';
             }
-        });
-        
-        // Close notification button
-        if (closeNotificationBtn) {
-            closeNotificationBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                notificationPopup.classList.remove('active');
-            });
-        }
-        
-        // Close popup when clicking outside
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
+            
+            try {
+                if (!(window.API && window.API.support && window.API.support.contact)) {
+                    throw new Error('Contact API is not available. Reload the page and ensure the server is running.');
+                }
+                const payload = {
+                    fullName: formData.fullName,
+                    email: formData.email,
+                    message: formData.message,
+                    ...(formData.phone ? { phone: formData.phone } : {}),
+                    ...(formData.topic ? { topic: formData.topic } : {})
+                };
+                const res = await window.API.support.contact(payload);
+                alert((res && res.message) || 'Thank you for your message! We will get back to you soon.');
+                contactForm.reset();
+            } catch (err) {
+                console.error('Contact form error:', err);
+                alert(err.message || 'Failed to send your message. Please try again later.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText || 'Send message';
                 }
             }
         });
     }
-    
+}
+
+// Setup popups (notification handled by notifications.js for player)
+function setupPopups() {
     // Profile popup
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
@@ -90,10 +119,8 @@ function setupPopups() {
         profileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
         });
         
         // Close popup when clicking outside

@@ -1,10 +1,103 @@
-// Venue data loaded from API
+// Venue data loaded from API (full lists for current location; homepage shows first 6 per section)
 const venues = { popular: [], nearby: [] };
+const HOME_SECTION_PREVIEW_LIMIT = 6;
+/** Match routes/fields.js parsePositiveIntOr max for list endpoints */
+const HOME_SECTION_FETCH_LIMIT = 48;
+const DEFAULT_LOCATION = { name: 'Istanbul', lat: 41.0082, lng: 28.9784, source: 'default' };
+const LOCATION_STORAGE_KEY = 'playerSelectedLocation';
+const LOCATION_OPTIONS = [
+  { name: 'Istanbul', lat: 41.0082, lng: 28.9784 }
+];
+let activeLocation = null;
+let currentPageBySection = { nearby: 1, popular: 1 };
+/** Last successful favorites.getAll() ids (never derived from field lat/lng). */
+let lastApiFavoriteIdsForHome = [];
+const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
-function mapFieldToVenue(field, favoriteIds) {
-  var id = field.id;
+function getFavoriteIdsSet() {
+  try {
+    const saved = localStorage.getItem('favoriteVenues');
+    const parsed = saved ? JSON.parse(saved) : [];
+    return new Set((Array.isArray(parsed) ? parsed : []).map(String));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function persistFavoriteIdsSet(set) {
+  const favorites = Array.from(set);
+  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  try {
+    window.dispatchEvent(new CustomEvent('matchfield:favorites-updated', { detail: { favorites: favorites } }));
+  } catch (_) {}
+}
+
+function applyFavoriteIdsToVenueState(favoriteIds) {
+  const set = new Set((favoriteIds || []).map(String));
+  venues.popular.forEach(function(v) { v.isFavorite = set.has(String(v.id)); });
+  venues.nearby.forEach(function(v) { v.isFavorite = set.has(String(v.id)); });
+}
+
+function syncFavoriteButtonsFromState() {
+  const popularRoot = document.getElementById('popularVenues');
+  const nearbyRoot = document.getElementById('nearbyVenues');
+  var buttons;
+  if (popularRoot && nearbyRoot) {
+    buttons = [].slice.call(popularRoot.querySelectorAll('.favorite-btn[data-venue-id]')).concat(
+      [].slice.call(nearbyRoot.querySelectorAll('.favorite-btn[data-venue-id]'))
+    );
+  } else {
+    buttons = [].slice.call(document.querySelectorAll('.favorite-btn[data-venue-id]'));
+  }
+  buttons.forEach(function(btn) {
+    const id = String(btn.getAttribute('data-venue-id') || '');
+    const venue = venues.popular.find(function(v) { return String(v.id) === id; })
+      || venues.nearby.find(function(v) { return String(v.id) === id; });
+    btn.classList.toggle('active', !!(venue && venue.isFavorite));
+  });
+}
+
+function updateReviewRowForCard(card, venue) {
+  const reviewSpan = card.querySelector('.venue-rating span:last-child');
+  if (!reviewSpan) return;
+  reviewSpan.textContent = venue.rating + ' (' + venue.reviews + ') . ' + venue.location + ' . ' + venue.distance;
+}
+
+async function refreshFieldReviewStats(fieldId) {
+  if (typeof API === 'undefined' || !API.fields || !API.fields.getById) return;
+  const idStr = String(fieldId);
+  try {
+    const res = await API.fields.getById(idStr);
+    const field = res && res.field ? res.field : null;
+    if (!field) return;
+    const rating = field.rating != null ? field.rating : 0;
+    const reviews = field.reviewCount != null ? field.reviewCount : 0;
+    venues.popular.forEach(function(v) { if (String(v.id) === idStr) { v.rating = rating; v.reviews = reviews; } });
+    venues.nearby.forEach(function(v) { if (String(v.id) === idStr) { v.rating = rating; v.reviews = reviews; } });
+    document.querySelectorAll('.venue-card[data-venue-id="' + idStr + '"]').forEach(function(card) {
+      const venue = venues.popular.find(function(v) { return String(v.id) === idStr; }) || venues.nearby.find(function(v) { return String(v.id) === idStr; });
+      if (venue) updateReviewRowForCard(card, venue);
+    });
+  } catch (_) {}
+}
+
+function consumeDirtyReviewFields() {
+  try {
+    const raw = localStorage.getItem(REVIEW_DIRTY_STORAGE_KEY);
+    const ids = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(ids) || !ids.length) return [];
+    localStorage.removeItem(REVIEW_DIRTY_STORAGE_KEY);
+    return ids.map(String);
+  } catch (_) {
+    return [];
+  }
+}
+
+function mapFieldToVenue(field, favoriteIdSet) {
+  var id = String(field.id);
   var images = field.images && field.images.length ? field.images : [];
   var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
+  var favSet = favoriteIdSet instanceof Set ? favoriteIdSet : new Set((favoriteIdSet || []).map(String));
   return {
     id: id,
     name: field.name,
@@ -13,42 +106,204 @@ function mapFieldToVenue(field, favoriteIds) {
     rating: field.rating != null ? field.rating : 0,
     reviews: field.reviewCount != null ? field.reviewCount : 0,
     location: field.location || '',
-    distance: 'N/A',
+    distance: field.distanceKm != null ? field.distanceKm.toFixed(1) + ' km' : 'N/A',
+    distanceKm: field.distanceKm != null && Number.isFinite(Number(field.distanceKm)) ? Number(field.distanceKm) : null,
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
-    isFavorite: favoriteIds.indexOf(id) !== -1
+    isFavorite: favSet.has(id)
   };
 }
 
-function loadVenuesFromAPI() {
-  return Promise.all([
-    typeof API !== 'undefined' ? API.fields.getAll({ limit: 24 }) : Promise.resolve({ fields: [] }),
-    typeof API !== 'undefined' && API.getAuthToken() ? API.favorites.getAll().catch(function() { return { favorites: [] }; }) : Promise.resolve({ favorites: [] })
-  ]).then(function(results) {
-    var fieldsRes = results[0];
-    var favRes = results[1];
-    var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
-    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
-    var list = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
-    venues.popular = list.slice(0, 6);
-    venues.nearby = list.slice(6, 15);
-    return venues;
+function saveSelectedLocation(loc) {
+  try {
+    localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(loc));
+  } catch (_) {}
+}
+
+function readSelectedLocation() {
+  try {
+    const raw = localStorage.getItem(LOCATION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) return parsed;
+  } catch (_) {}
+  return null;
+}
+
+function updateLocationLabel() {
+  var label = document.querySelector('.location-selector span');
+  if (label && activeLocation) label.textContent = activeLocation.name || 'Selected location';
+}
+
+function getCurrentCoords() {
+  if (!activeLocation) return null;
+  return { lat: activeLocation.lat, lng: activeLocation.lng };
+}
+
+function resolveActiveLocation() {
+  const saved = readSelectedLocation();
+  if (saved) {
+    activeLocation = { ...saved, source: 'selected' };
+    return Promise.resolve(activeLocation);
+  }
+  return new Promise(function(resolve) {
+    if (!navigator.geolocation) {
+      activeLocation = { ...DEFAULT_LOCATION };
+      return resolve(activeLocation);
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        activeLocation = {
+          name: 'My Location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          source: 'geolocation'
+        };
+        resolve(activeLocation);
+      },
+      function() {
+        activeLocation = { ...DEFAULT_LOCATION };
+        resolve(activeLocation);
+      },
+      { timeout: 6000, enableHighAccuracy: true }
+    );
   });
+}
+
+function getFavoriteIdsFromResponse(favRes) {
+  return (favRes && favRes.favorites)
+    ? favRes.favorites
+      .map(function(f) { return String(f.fieldId || (f.field && f.field.id) || ''); })
+      .filter(Boolean)
+    : [];
+}
+
+/**
+ * Load the user's favorite field ids from the API only (no map coordinates).
+ * When logged in, mirrors the result to localStorage so hearts never depend on which lat/lng loaded fields.
+ */
+function fetchFavoriteIdsForHome() {
+  if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
+    lastApiFavoriteIdsForHome = [];
+    return Promise.resolve(new Set(Array.from(getFavoriteIdsSet())));
+  }
+  return API.favorites.getAll()
+    .then(function(favRes) {
+      const apiIds = getFavoriteIdsFromResponse(favRes);
+      lastApiFavoriteIdsForHome = apiIds.slice();
+      persistFavoriteIdsSet(new Set(lastApiFavoriteIdsForHome));
+      return new Set(lastApiFavoriteIdsForHome);
+    })
+    .catch(function() {
+      lastApiFavoriteIdsForHome = Array.from(getFavoriteIdsSet());
+      return new Set(lastApiFavoriteIdsForHome);
+    });
+}
+
+function dedupeVenues(venueList) {
+  const seenIds = new Set();
+  const seenFields = new Set();
+  return (venueList || []).filter(function(venue) {
+    const id = String(venue && venue.id || '').trim();
+    const fieldKey = [
+      String(venue && venue.name || '').trim().toLowerCase(),
+      String(venue && venue.location || '').trim().toLowerCase(),
+      String(venue && venue.sport || '').trim().toLowerCase(),
+      String(venue && venue.price || '')
+    ].join('|');
+    if ((id && seenIds.has(id)) || seenFields.has(fieldKey)) return false;
+    if (id) seenIds.add(id);
+    seenFields.add(fieldKey);
+    return true;
+  });
+}
+
+function loadSectionDataWithLocation(section, favoriteIdSet, page) {
+  if (typeof API === 'undefined' || !API.fields || !activeLocation) return Promise.resolve([]);
+  const baseParams = {
+    lat: activeLocation.lat,
+    lng: activeLocation.lng,
+    page: page || 1,
+    limit: HOME_SECTION_FETCH_LIMIT
+  };
+  const req = section === 'nearby'
+    ? API.fields.getNearby({ ...baseParams, radiusKm: 35 })
+    : API.fields.getPopularNow({ ...baseParams });
+  return req.then(function(res) {
+    const fields = (res && res.fields) ? res.fields : [];
+    const mapped = fields.map(function(f) { return mapFieldToVenue(f, favoriteIdSet); });
+    return dedupeVenues(mapped);
+  });
+}
+
+function loadVenuesFromAPI() {
+  return fetchFavoriteIdsForHome().then(function(favoriteIdSet) {
+    return Promise.all([
+      loadSectionDataWithLocation('popular', favoriteIdSet, currentPageBySection.popular),
+      loadSectionDataWithLocation('nearby', favoriteIdSet, currentPageBySection.nearby)
+    ]).then(function(results) {
+      venues.popular = results[0];
+      venues.nearby = results[1];
+      return venues;
+    });
+  });
+}
+
+function refreshHomepageByLocation() {
+  currentPageBySection = { nearby: 1, popular: 1 };
+  return loadVenuesFromAPI().then(function() {
+    loadFavoritesFromStorage();
+    updateLocationLabel();
+    renderVenues('popular', venues.popular);
+    renderVenues('nearby', venues.nearby);
+  });
+}
+
+function chooseLocationFromSelector(option) {
+  if (option === 'my-location') {
+    return new Promise(function(resolve) {
+      if (!navigator.geolocation) return resolve();
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        activeLocation = {
+          name: 'My Location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          source: 'selected'
+        };
+        saveSelectedLocation(activeLocation);
+        refreshHomepageByLocation().finally(resolve);
+      }, function() { resolve(); }, { timeout: 6000, enableHighAccuracy: true });
+    });
+  }
+  activeLocation = { ...LOCATION_OPTIONS[0], source: 'selected' };
+  saveSelectedLocation(activeLocation);
+  return refreshHomepageByLocation();
 }
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
+  const hasHomeSections = !!(document.getElementById('popularVenues') && document.getElementById('nearbyVenues'));
+  if (!hasHomeSections) {
+    // home.js is also loaded on other player pages for shared booking utilities.
+    setupEventListeners();
+    initializeBookingModal();
+    initializePaymentModal();
+    return;
+  }
+
   function initUI() {
+    updateLocationLabel();
     renderVenues('popular', venues.popular);
     renderVenues('nearby', venues.nearby);
     setupEventListeners();
     initializeBookingModal();
     initializePaymentModal();
     handleInviteLink();
-    var allCards = document.querySelectorAll('.venue-card');
+    var allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
     allCards.forEach(function(card) { card.style.display = 'block'; });
   }
-  loadVenuesFromAPI()
+  resolveActiveLocation()
+    .then(function() { return loadVenuesFromAPI(); })
     .then(function() {
       loadFavoritesFromStorage();
       initUI();
@@ -73,8 +328,11 @@ function handleInviteLink() {
     
     if (venue) {
       // Show invitation message
-      setTimeout(() => {
-        if (confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`)) {
+      setTimeout(async () => {
+        if (await MatchFieldDialog.confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`, {
+          type: 'info',
+          okText: 'View Booking'
+        })) {
           openBookingModal(venue);
         }
       }, 500);
@@ -91,7 +349,20 @@ window.handleImageError = function(img, sportName) {
   }
 }
 
-// Render venue cards
+/** Ordered list for homepage grid: popular = API popularity order; nearby = nearest first */
+function getVenuesForHomepagePreview(containerId, venueList) {
+  var list = Array.isArray(venueList) ? venueList.slice() : [];
+  if (containerId === 'nearby') {
+    list.sort(function (a, b) {
+      var da = a && a.distanceKm != null ? a.distanceKm : 1e9;
+      var db = b && b.distanceKm != null ? b.distanceKm : 1e9;
+      return da - db;
+    });
+  }
+  return list.slice(0, HOME_SECTION_PREVIEW_LIMIT);
+}
+
+// Render venue cards (homepage sections only show first HOME_SECTION_PREVIEW_LIMIT)
 function renderVenues(containerId, venueList) {
   const containerName = containerId === 'popular' ? 'popularVenues' : 'nearbyVenues';
   const container = document.getElementById(containerName);
@@ -102,8 +373,11 @@ function renderVenues(containerId, venueList) {
   }
   
   container.innerHTML = '';
-  
-  venueList.forEach(venue => {
+  const toShow = (containerId === 'popular' || containerId === 'nearby')
+    ? getVenuesForHomepagePreview(containerId, venueList)
+    : (venueList || []);
+
+  toShow.forEach(venue => {
       try {
           const card = createVenueCard(venue);
           container.appendChild(card);
@@ -173,16 +447,20 @@ function toggleFavorite(venueId) {
     alert('Please log in to add favorites.');
     return;
   }
-  var popularVenue = venues.popular.find(function(v) { return v.id === venueId; });
-  var nearbyVenue = venues.nearby.find(function(v) { return v.id === venueId; });
+  var venueIdStr = String(venueId);
+  var popularVenue = venues.popular.find(function(v) { return String(v.id) === venueIdStr; });
+  var nearbyVenue = venues.nearby.find(function(v) { return String(v.id) === venueIdStr; });
   var isCurrentlyFavorite = (popularVenue && popularVenue.isFavorite) || (nearbyVenue && nearbyVenue.isFavorite);
-  var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
+  var promise = isCurrentlyFavorite ? API.favorites.remove(venueIdStr) : API.favorites.add(venueIdStr);
   promise.then(function() {
-    if (popularVenue) popularVenue.isFavorite = !popularVenue.isFavorite;
-    if (nearbyVenue) nearbyVenue.isFavorite = !nearbyVenue.isFavorite;
-    var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
-    if (favoriteBtn) favoriteBtn.classList.toggle('active');
-    saveFavoritesToStorage();
+    venues.popular.forEach(function(v) { if (String(v.id) === venueIdStr) v.isFavorite = !isCurrentlyFavorite; });
+    venues.nearby.forEach(function(v) { if (String(v.id) === venueIdStr) v.isFavorite = !isCurrentlyFavorite; });
+    var favoriteButtons = document.querySelectorAll('.favorite-btn[data-venue-id="' + venueIdStr + '"]');
+    favoriteButtons.forEach(function(btn) { btn.classList.toggle('active', !isCurrentlyFavorite); });
+    const set = getFavoriteIdsSet();
+    if (!isCurrentlyFavorite) set.add(venueIdStr);
+    else set.delete(venueIdStr);
+    persistFavoriteIdsSet(set);
   }).catch(function(err) {
     alert(err.message || 'Failed to update favorite.');
   });
@@ -268,9 +546,6 @@ function openBookingModal(venue) {
     dateInput.min = today;
   }
 
-  // Generate invite link
-  generateInviteLink();
-
   // Initialize step navigation
   updateStepDisplay();
   
@@ -311,15 +586,6 @@ function populateFieldDetails(venue) {
       </div>
     </div>
   `;
-}
-
-// Generate invite link
-function generateInviteLink() {
-  const inviteLink = document.getElementById('inviteLink');
-  if (inviteLink && bookingState.field) {
-    const link = `${window.location.origin}${window.location.pathname}?invite=${bookingState.field.id}&organizer=${bookingState.organizer.id}`;
-    inviteLink.value = link;
-  }
 }
 
 // Update step display
@@ -473,7 +739,7 @@ function loadPaymentStep() {
 }
 
 // Load available time slots
-function loadTimeSlots() {
+async function loadTimeSlots() {
   const container = document.getElementById('timeSlotsGrid');
   if (!container) {
     console.error('Time slots container not found');
@@ -485,15 +751,81 @@ function loadTimeSlots() {
     return;
   }
 
-  // Generate time slots (9 AM to 10 PM, hourly)
+  // Fetch real availability from API if a date is selected
   const slots = [];
-  for (let hour = 9; hour < 22; hour++) {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
+  let bookedSlots = [];
+  let workingSlots = [];
+  let dayLocked = false;
+  
+  if (bookingState.selectedDate && typeof API !== 'undefined') {
+    try {
+      container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+      console.log('Fetching availability for field:', bookingState.field.id, 'date:', bookingState.selectedDate);
+      const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
+      console.log('Availability response:', availability);
+      
+      if (!availability.available && availability.lockedByOwner) {
+        // Entire day is locked by owner
+        dayLocked = true;
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: #dc3545;">
+            <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+            <p>${availability.message || 'This field is not available on the selected date.'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (!availability.available && availability.closedBySchedule) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: #dc3545;">
+            <i class="fi fi-rr-calendar" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+            <p>${availability.message || 'This field is closed on the selected day.'}</p>
+          </div>
+        `;
+        return;
+      }
+      
+      bookedSlots = availability.bookedSlots || [];
+      workingSlots = Array.isArray(availability.workingSlots) ? availability.workingSlots : [];
+      console.log('Booked slots:', bookedSlots);
+    } catch (error) {
+      console.error('Failed to fetch availability:', error);
+      // Continue with all slots available if API fails
+    }
+  }
+
+  const baseSlots = workingSlots.length
+    ? workingSlots
+    : Array.from({ length: 13 }, function (_, i) {
+        const hour = 9 + i;
+        return `${hour.toString().padStart(2, '0')}:00`;
+      });
+
+  baseSlots.forEach(function(startTime) {
+    const hour = parseInt(startTime.split(':')[0], 10);
     slots.push({
       start: startTime,
-      end: endTime,
-      available: Math.random() > 0.3 // 70% availability for demo
+      end: `${(hour + 1).toString().padStart(2, '0')}:00`,
+      available: true
+    });
+  });
+
+  // Mark booked slots as unavailable
+  slots.forEach(slot => {
+    if (bookedSlots.includes(slot.start)) {
+      slot.available = false;
+    }
+  });
+
+  // Same calendar day: cannot book slots starting before the current hour (local)
+  const nowForSlots = new Date();
+  const todayYmdLocal = `${nowForSlots.getFullYear()}-${String(nowForSlots.getMonth() + 1).padStart(2, '0')}-${String(nowForSlots.getDate()).padStart(2, '0')}`;
+  if (bookingState.selectedDate === todayYmdLocal) {
+    const minHour = nowForSlots.getHours();
+    slots.forEach((slot) => {
+      const h = parseInt(String(slot.start).split(':')[0], 10);
+      if (!Number.isNaN(h) && h < minHour) slot.available = false;
     });
   }
 
@@ -549,18 +881,24 @@ function updatePlayersList() {
   if (!container) return;
 
   if (bookingState.players.length === 0) {
-    container.innerHTML = '<p class="no-players">No players added yet. Add players by username or share the invite link.</p>';
+    container.innerHTML = '<p class="no-players">No players added yet. Add players by username.</p>';
     return;
   }
 
   container.innerHTML = bookingState.players.map((player, index) => `
-    <div class="player-item">
-      <div class="player-info">
-        <i class="fi fi-rr-user"></i>
-        <span>${player.name}</span>
-        <span class="player-id">ID: ${player.id}</span>
+    <div class="player-item" style="display: flex; align-items: center; padding: 10px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px;">
+      <div class="player-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 12px; overflow: hidden;">
+        ${player.avatar 
+          ? `<img src="${player.avatar}" style="width: 100%; height: 100%; object-fit: cover;">` 
+          : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
       </div>
-      <button class="remove-player-btn" data-index="${index}">
+      <div class="player-info" style="flex: 1;">
+        <div style="font-weight: 500; color: #333;">${player.name}</div>
+      </div>
+      <div class="player-payment-status" style="margin-right: 12px; padding: 4px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px;">
+        <i class="fi fi-rr-clock" style="font-size: 10px;"></i> Payment Pending
+      </div>
+      <button class="remove-player-btn" data-index="${index}" style="background: none; border: none; color: #dc3545; cursor: pointer; padding: 4px;">
         <i class="fi fi-rr-cross-small"></i>
       </button>
     </div>
@@ -894,13 +1232,7 @@ function initializeBookingModal() {
     });
   }
 
-  // Submit payment button
-  const submitPaymentBtn = document.getElementById('submitPaymentBtn');
-  if (submitPaymentBtn) {
-    submitPaymentBtn.addEventListener('click', () => {
-      handlePaymentSubmission();
-    });
-  }
+  // Submit payment button - handled by initializePaymentModal to avoid duplicate listeners
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
@@ -928,29 +1260,31 @@ function initializeBookingModal() {
   }
 
   if (playerSearchInput) {
-    playerSearchInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addPlayer();
-      }
-    });
-  }
+    playerSearchInput.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
 
-  // Copy invite link
-  const copyLinkBtn = document.getElementById('copyInviteLink');
-  if (copyLinkBtn) {
-    copyLinkBtn.addEventListener('click', function() {
-      const inviteLink = document.getElementById('inviteLink');
-      if (inviteLink) {
-        inviteLink.select();
-        document.execCommand('copy');
-        this.innerHTML = '<i class="fi fi-rr-check"></i> Copied!';
-        setTimeout(() => {
-          this.innerHTML = '<i class="fi fi-rr-copy"></i> Copy';
-        }, 2000);
+      const resultsContainer = document.getElementById('playerSearchResults');
+      const firstResult = resultsContainer
+        ? resultsContainer.querySelector('.search-result-item')
+        : null;
+
+      // Prefer selected dropdown result when available, then fallback to search/add flow.
+      if (firstResult) {
+        const userData = JSON.parse(firstResult.dataset.user);
+        addPlayerFromSearch(userData);
+        if (resultsContainer) resultsContainer.style.display = 'none';
+        playerSearchInput.value = '';
+        selectedSearchUser = null;
+        return;
       }
+
+      addPlayer();
     });
   }
+  
+  // Setup real-time user search
+  setupPlayerSearch();
 
   // Payment method selection
   const paymentRadios = document.querySelectorAll('input[name="paymentMethod"]');
@@ -1106,34 +1440,216 @@ function validatePaymentForm() {
   return true;
 }
 
-// Add player
-function addPlayer() {
+// Search timeout for debouncing
+let searchTimeout = null;
+let selectedSearchUser = null;
+let latestSearchRequestId = 0;
+
+function getOrCreatePlayerSearchResultsContainer() {
   const input = document.getElementById('playerSearchInput');
+  if (!input) return null;
+
+  let resultsContainer = document.getElementById('playerSearchResults');
+  if (resultsContainer) return resultsContainer;
+
+  const parent = input.parentElement;
+  if (!parent) return null;
+
+  const parentStyle = window.getComputedStyle(parent);
+  if (parentStyle.position === 'static') {
+    parent.style.position = 'relative';
+  }
+
+  resultsContainer = document.createElement('div');
+  resultsContainer.id = 'playerSearchResults';
+  resultsContainer.className = 'search-results-dropdown';
+  resultsContainer.style.display = 'none';
+  resultsContainer.style.position = 'absolute';
+  resultsContainer.style.top = '100%';
+  resultsContainer.style.left = '0';
+  resultsContainer.style.right = '0';
+  resultsContainer.style.background = 'white';
+  resultsContainer.style.border = '1px solid #e0e0e0';
+  resultsContainer.style.borderRadius = '8px';
+  resultsContainer.style.maxHeight = '200px';
+  resultsContainer.style.overflowY = 'auto';
+  resultsContainer.style.zIndex = '1000';
+  resultsContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+
+  parent.appendChild(resultsContainer);
+  return resultsContainer;
+}
+
+// Search users as user types
+function setupPlayerSearch() {
+  const input = document.getElementById('playerSearchInput');
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
+  
+  if (!input || !resultsContainer) return;
+  
+  input.addEventListener('input', function() {
+    const query = this.value.trim();
+    selectedSearchUser = null;
+    
+    // Clear previous timeout
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    // Hide results if query is too short
+    if (query.length < 2) {
+      resultsContainer.style.display = 'none';
+      return;
+    }
+    
+    // Debounce search
+    searchTimeout = setTimeout(() => {
+      searchUsers(query);
+    }, 300);
+  });
+  
+  // Hide results when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !resultsContainer.contains(e.target)) {
+      resultsContainer.style.display = 'none';
+    }
+  });
+}
+
+// Search users via API
+async function searchUsers(query) {
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
+  if (!resultsContainer) return;
+
+  if (typeof API === 'undefined' || !API.users || !API.users.search) {
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
+    resultsContainer.style.display = 'block';
+    return [];
+  }
+
+  const requestId = ++latestSearchRequestId;
+  
+  try {
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
+    resultsContainer.style.display = 'block';
+    
+    const response = await API.users.search(query, { playersOnly: true });
+    // Ignore stale responses from older debounced searches.
+    if (requestId !== latestSearchRequestId) return [];
+
+    const users = response.users || [];
+    
+    // Filter out current user, non-players, and already added players
+    const currentUser = API.getCurrentUser();
+    const filteredUsers = users.filter(user => {
+      if (user.role !== 'PLAYER') return false;
+      if (currentUser && user.id === currentUser.id) return false;
+      if (bookingState.players.some(p => p.id === user.id)) return false;
+      return true;
+    });
+    
+    if (filteredUsers.length === 0) {
+      resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No users found</div>';
+      return [];
+    }
+    
+    resultsContainer.innerHTML = filteredUsers.map(user => `
+      <div class="search-result-item" data-user='${JSON.stringify(user).replace(/'/g, "&#39;")}' 
+           style="display: flex; align-items: center; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;"
+           onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 10px; overflow: hidden;">
+          ${user.avatar 
+            ? `<img src="${user.avatar}" style="width: 100%; height: 100%; object-fit: cover;">` 
+            : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 500; color: #333;">${user.fullName}</div>
+        </div>
+        <i class="fi fi-rr-plus" style="color: #007bff;"></i>
+      </div>
+    `).join('');
+    
+    // Add click handlers to results
+    resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', function() {
+        const userData = JSON.parse(this.dataset.user);
+        addPlayerFromSearch(userData);
+        resultsContainer.style.display = 'none';
+        document.getElementById('playerSearchInput').value = '';
+      });
+    });
+    return filteredUsers;
+  } catch (error) {
+    console.error('Search error:', error);
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+    resultsContainer.style.display = 'block';
+    return [];
+  }
+}
+
+// Add player from search result
+function addPlayerFromSearch(user) {
+  if (!user || user.role !== 'PLAYER') {
+    alert('Only players can be added to a booking. Field owners and admins cannot be invited as players.');
+    return;
+  }
+
+  // Check if player already added
+  if (bookingState.players.some(p => p.id === user.id)) {
+    alert('This player is already added.');
+    return;
+  }
+  
+  const player = {
+    id: user.id,
+    name: user.fullName,
+    email: user.email,
+    avatar: user.avatar
+  };
+  
+  bookingState.players.push(player);
+  updatePlayersList();
+  updateCostSplit();
+}
+
+// Add player (fallback for manual entry - now shows search prompt)
+async function addPlayer() {
+  const input = document.getElementById('playerSearchInput');
+  const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   if (!input) return;
 
   const searchValue = input.value.trim();
   if (!searchValue) {
-    alert('Please enter a username or Player ID.');
+    alert('Please enter a username or email to search.');
     return;
   }
-
-  // Simulate player lookup (in real app, this would be an API call)
-  const player = {
-    id: 'player_' + Date.now(),
-    name: searchValue,
-    email: searchValue.toLowerCase().replace(/\s+/g, '.') + '@example.com'
-  };
-
-  // Check if player already added
-  if (bookingState.players.some(p => p.id === player.id || p.name.toLowerCase() === player.name.toLowerCase())) {
-    alert('This player is already added.');
+  
+  // If user selected from search, add them
+  if (selectedSearchUser) {
+    addPlayerFromSearch(selectedSearchUser);
+    input.value = '';
+    selectedSearchUser = null;
+    if (resultsContainer) resultsContainer.style.display = 'none';
     return;
   }
+  
+  // Otherwise, perform search and guide next action.
+  if (searchValue.length >= 2) {
+    const results = await searchUsers(searchValue);
+    if (!results || results.length === 0) {
+      alert('No players found. Try searching by full name or email.');
+      return;
+    }
 
-  bookingState.players.push(player);
-  input.value = '';
-  updatePlayersList();
-  updateCostSplit();
+    if (results.length === 1) {
+      addPlayerFromSearch(results[0]);
+      input.value = '';
+      if (resultsContainer) resultsContainer.style.display = 'none';
+      return;
+    }
+
+    alert('Multiple players found. Please select one from the list.');
+  } else {
+    alert('Please enter at least 2 characters to search.');
+  }
 }
 
 // Confirm booking
@@ -1195,20 +1711,50 @@ function confirmBooking() {
   saveBookingAndSendInvitations(booking);
 }
 
+// Guard to prevent duplicate API create (double-click)
+var isBookingSubmissionInProgress = false;
+
 // Save booking via API and show confirmation
 function saveBookingAndSendInvitations(booking) {
   if (typeof API === 'undefined' || !API.getAuthToken()) {
     alert('Please log in to create a booking.');
     return;
   }
-  var slots = bookingState.selectedTimeSlots || [];
+  if (isBookingSubmissionInProgress) {
+    return; // Prevent double submission
+  }
+  var slots = (bookingState.selectedTimeSlots || []).slice().sort();
   if (slots.length === 0) {
     alert('Please select at least one time slot.');
     return;
   }
-  var timeSlotStart = slots[0];
-  var lastHour = parseInt(slots[slots.length - 1].split(':')[0], 10);
-  var timeSlotEnd = (lastHour + 1).toString().padStart(2, '0') + ':00';
+  isBookingSubmissionInProgress = true;
+  var confirmBtn = document.getElementById('confirmBookingBtn');
+  var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Creating...'; }
+  if (submitPaymentBtn) { submitPaymentBtn.disabled = true; }
+
+  // Group consecutive hours into ranges (supports non-contiguous: e.g. 13:00-14:00 and 20:00-21:00)
+  var ranges = [];
+  for (var i = 0; i < slots.length; i++) {
+    var start = slots[i];
+    var startHour = parseInt(start.split(':')[0], 10);
+    var endHour = startHour + 1;
+    while (i + 1 < slots.length) {
+      var next = slots[i + 1];
+      var nextHour = parseInt(next.split(':')[0], 10);
+      if (nextHour !== endHour) break;
+      endHour++;
+      i++;
+    }
+    ranges.push({ start: start, end: endHour.toString().padStart(2, '0') + ':00' });
+  }
+
+  var timeSlotStart = ranges[0].start;
+  var timeSlotEnd = ranges[0].end;
+  if (ranges.length > 1) {
+    timeSlotEnd = ranges[ranges.length - 1].end;
+  }
   var payload = {
     fieldId: bookingState.field.id,
     date: bookingState.selectedDate,
@@ -1217,39 +1763,230 @@ function saveBookingAndSendInvitations(booking) {
     paymentMethod: (bookingState.paymentMethod || 'SPLIT').toUpperCase().replace('ORGANIZER', 'ORGANIZER').replace('SPLIT', 'SPLIT').replace('MIXED', 'MIXED'),
     teamSize: (bookingState.players.length + 1) || 1
   };
+  if (ranges.length > 1) {
+    payload.timeSlotRanges = ranges;
+  }
   if (payload.paymentMethod === 'MIXED' && bookingState.mixedPaymentDistribution) {
     payload.mixedPaymentDistribution = bookingState.mixedPaymentDistribution;
   }
   API.bookings.create(payload)
-    .then(function(res) {
-      var isFullyPaid = false;
-      showBookingConfirmation(booking, isFullyPaid);
+    .then(async function(res) {
+      const createdBooking = res.booking;
+      console.log('Booking created:', createdBooking);
+      
+      // If organizer already paid during booking flow, remember it locally
+      try {
+        if (booking.organizerPaymentStatus === 'paid' && createdBooking && createdBooking.id) {
+          var organizerPaidKey = 'organizerPaidBookings';
+          var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+          organizerPaid[String(createdBooking.id)] = true;
+          localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
+
+          // Also store a local copy of the booking with organizerPaymentStatus so merge can pick it up
+          var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+          var existingIdx = allBookings.findIndex(function(b) { return String(b.id) === String(createdBooking.id); });
+          var mergedLocal = Object.assign({}, createdBooking, { organizerPaymentStatus: 'paid' });
+          if (existingIdx !== -1) {
+            allBookings[existingIdx] = mergedLocal;
+          } else {
+            allBookings.push(mergedLocal);
+          }
+          localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+        }
+      } catch (e) {
+        console.warn('Failed to persist initial organizer payment state', e);
+      }
+      
+      // Add participants to the booking if there are any players
+      if (bookingState.players.length > 0 && createdBooking && createdBooking.id) {
+        try {
+          // Add each player as a participant
+          for (const player of bookingState.players) {
+            try {
+              await API.bookings.addParticipant(createdBooking.id, player.id);
+              console.log('Added participant:', player.name);
+            } catch (partErr) {
+              console.error('Failed to add participant:', player.name, partErr);
+            }
+          }
+          
+          // Create notifications for invited players
+          createPaymentNotifications(createdBooking, bookingState.players);
+        } catch (err) {
+          console.error('Error adding participants:', err);
+        }
+      }
+
+      const fld = (createdBooking && createdBooking.field) || bookingState.field;
+      let fullyPaidNow = checkFullPayment(booking);
+      let didAutoConfirm = false;
+      if (fullyPaidNow && createdBooking && createdBooking.id && fieldUsesInstantBooking(fld)) {
+        try {
+          didAutoConfirm = await tryAutoConfirmPaidInstantBooking(createdBooking.id, fld);
+        } catch (e) {
+          console.warn('Instant booking auto-confirm failed', e);
+        }
+        if (didAutoConfirm) createdBooking.status = 'CONFIRMED';
+      }
+      const isFullyPaidUi = !!(fullyPaidNow && fieldUsesInstantBooking(fld) && didAutoConfirm);
+      showBookingConfirmation(booking, isFullyPaidUi);
       closeBookingModal();
       setTimeout(function() { window.location.href = 'bookings.html'; }, 2000);
     })
     .catch(function(err) {
+      isBookingSubmissionInProgress = false;
+      var confirmBtn = document.getElementById('confirmBookingBtn');
+      var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Booking'; }
+      if (submitPaymentBtn) { submitPaymentBtn.disabled = false; }
       alert(err.message || 'Failed to create booking.');
     });
 }
 
-// Check if full payment is received
-function checkFullPayment(booking) {
-  if (booking.paymentMethod === 'organizer') {
-    // If organizer pays full amount, check if organizer has paid
-    return booking.organizerPaymentStatus === 'paid';
-  } else if (booking.paymentMethod === 'split') {
-    // If split payment, check if all players (including organizer) have paid
-    const allPlayersPaid = booking.players.length === 0 || booking.players.every(p => p.paymentStatus === 'paid');
-    const organizerPaid = booking.organizerPaymentStatus === 'paid';
-    return allPlayersPaid && organizerPaid;
-  } else if (booking.paymentMethod === 'mixed') {
-    // If mixed payment, check if all players (including organizer) have paid their assigned amounts
-    const allPlayersPaid = booking.players.length === 0 || booking.players.every(p => p.paymentStatus === 'paid');
-    const organizerPaid = booking.organizerPaymentStatus === 'paid';
-    return allPlayersPaid && organizerPaid;
-  }
+// Create payment notifications for invited players
+function createPaymentNotifications(booking, players) {
+  const totalPlayers = players.length + 1; // +1 for organizer
+  const equalShare = Math.round(booking.totalCost / totalPlayers);
+  const organizerName = bookingState.organizer?.name || 'The organizer';
+  const fieldName = bookingState.field?.name || booking.field?.name || 'the field';
+  const fieldImage = bookingState.field?.image
+    || (booking.field && booking.field.images && booking.field.images[0])
+    || booking.fieldImage
+    || '';
+  const isMixed = (bookingState.paymentMethod || booking.paymentMethod || '').toLowerCase() === 'mixed';
+  const mixedDist = booking.mixedPaymentDistribution || bookingState.mixedPaymentDistribution || {};
   
+  players.forEach(player => {
+    const amount = isMixed
+      ? (mixedDist[player.id] ?? mixedDist[String(player.id)] ?? equalShare)
+      : equalShare;
+    const notification = {
+      id: 'notif_' + Date.now() + '_' + player.id,
+      type: 'booking_payment_request',
+      playerId: player.id,
+      playerName: player.name || '',
+      bookingId: booking.id,
+      fieldName: fieldName,
+      fieldImage: fieldImage,
+      title: 'Payment Required',
+      message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ₺${amount}.`,
+      date: bookingState.selectedDate,
+      time: bookingState.selectedTimeSlots.join(', '),
+      paymentAmount: amount,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Store notification in localStorage (will be replaced with real notification system later)
+    const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+    notifications.push(notification);
+    localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
+
+    console.log('Created payment notification for:', player.name, notification);
+  });
+}
+
+// Check if full payment is received
+function paymentMarkedPaid(status) {
+  return String(status || '').toLowerCase() === 'paid';
+}
+
+function bookingIdString(b) {
+  if (!b) return '';
+  var id = b.id != null ? b.id : b._id;
+  return id != null ? String(id) : '';
+}
+
+function organizerPaidFromLocalStorage(bookingId) {
+  var bid = String(bookingId || '');
+  if (!bid) return false;
+  try {
+    var m = JSON.parse(localStorage.getItem('organizerPaidBookings') || '{}');
+    return !!m[bid];
+  } catch (e) {
+    return false;
+  }
+}
+
+function participantPaidFromLocalStorage(bookingId, userId) {
+  var bid = String(bookingId || '');
+  var uid = String(userId || '');
+  if (!bid || !uid) return false;
+  try {
+    var m = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+    return !!m[bid + '_' + uid];
+  } catch (e) {
+    return false;
+  }
+}
+
+function participantRecordUserId(p) {
+  if (!p) return '';
+  return String(p.userId || p.id || (p.user && (p.user.id || p.user._id)) || '');
+}
+
+function checkFullPayment(booking) {
+  if (!booking) return false;
+  const bid = bookingIdString(booking);
+  const pm = String(booking.paymentMethod || '').toLowerCase();
+  if (pm === 'organizer') {
+    return paymentMarkedPaid(booking.organizerPaymentStatus) || organizerPaidFromLocalStorage(bid);
+  }
+  if (pm === 'split' || pm === 'mixed') {
+    const parts = booking.players || booking.participants || [];
+    const organizerPaid =
+      paymentMarkedPaid(booking.organizerPaymentStatus) || organizerPaidFromLocalStorage(bid);
+    const allPlayersPaid =
+      parts.length === 0 ||
+      parts.every(function (p) {
+        const pid = participantRecordUserId(p);
+        if (!pid) return true;
+        return (
+          paymentMarkedPaid(p.paymentStatus) ||
+          participantPaidFromLocalStorage(bid, pid)
+        );
+      });
+    return organizerPaid && allPlayersPaid;
+  }
+
   return false;
+}
+
+function isBookingApprovedLocal(status) {
+  const s = String(status || '').toLowerCase();
+  return s === 'confirmed' || s === 'upcoming' || s === 'completed';
+}
+
+function fieldUsesInstantBooking(field) {
+  if (!field) return true;
+  const t = String(field.bookingType != null ? field.bookingType : 'instant').toLowerCase();
+  return t !== 'request';
+}
+
+/** After full payment: confirm on server for instant-booking fields (no owner approval). */
+function tryAutoConfirmPaidInstantBooking(bookingId, bookingOrFieldHint) {
+  if (!bookingId || typeof API === 'undefined' || !API.bookings) return Promise.resolve(false);
+  const fieldHint = bookingOrFieldHint && bookingOrFieldHint.field ? bookingOrFieldHint.field : bookingOrFieldHint;
+  if (fieldHint && fieldHint.bookingType !== undefined && fieldHint.bookingType !== null) {
+    if (!fieldUsesInstantBooking(fieldHint)) return Promise.resolve(false);
+    return API.bookings.updateStatus(String(bookingId), 'CONFIRMED')
+      .then(function () { return true; })
+      .catch(function (e) {
+        console.warn('Auto-confirm booking failed', e);
+        return false;
+      });
+  }
+  return API.bookings.getById(String(bookingId))
+    .then(function (res) {
+      const fld = res && res.booking && res.booking.field;
+      if (!fieldUsesInstantBooking(fld)) return false;
+      return API.bookings.updateStatus(String(bookingId), 'CONFIRMED').then(function () { return true; });
+    })
+    .catch(function (e) {
+      console.warn('Auto-confirm booking failed', e);
+      return false;
+    });
 }
 
 // Show booking confirmation message
@@ -1355,6 +2092,28 @@ function closeConfirmationModal() {
 window.closeConfirmationModal = closeConfirmationModal;
 
 // Notify field owner
+function notifyOrganizerOfPayment(booking, payerData, amount) {
+  const organizerId = String((booking.organizer && booking.organizer.id) || booking.organizerId || '');
+  if (!organizerId) return;
+  const fieldName = (booking.field && booking.field.name) || booking.fieldName || 'the field';
+  const payerName = payerData && (payerData.fullName || payerData.name || payerData.email || 'A player');
+  const notification = {
+    id: 'notif_' + Date.now(),
+    type: 'player_paid_booking',
+    playerId: organizerId,
+    bookingId: booking.id,
+    title: 'Player Paid Their Share',
+    message: payerName + ' has paid ₺' + amount + ' for your booking at ' + fieldName + '.',
+    date: booking.date,
+    status: 'unread',
+    createdAt: new Date().toISOString()
+  };
+  const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+  notifications.push(notification);
+  localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+  try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
+}
+
 function notifyFieldOwner(booking) {
   // In a real app, this would send a notification/email to the field owner
   // For now, we'll store it in localStorage for the owner to see
@@ -1410,6 +2169,7 @@ function sendPlayerInvitations(booking) {
     const notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
     notifications.push(notification);
     localStorage.setItem('playerNotifications', JSON.stringify(notifications));
+    try { if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge(); } catch (_) {}
   });
 
   console.log('Invitations sent to players:', booking.players.map(p => p.name));
@@ -1420,7 +2180,8 @@ let paymentState = {
   amount: 0,
   bookingId: null,
   isOrganizer: false,
-  booking: null
+  booking: null,
+  coverLeftShare: null
 };
 
 // Open payment modal
@@ -1429,7 +2190,8 @@ function openPaymentModal(options) {
     amount: options.amount || 0,
     bookingId: options.bookingId || null,
     isOrganizer: options.isOrganizer || false,
-    booking: options.booking || null
+    booking: options.booking || null,
+    coverLeftShare: options.coverLeftShare || null
   };
 
   const modal = document.getElementById('paymentModal');
@@ -1446,12 +2208,16 @@ function openPaymentModal(options) {
         </div>
         ${paymentState.booking ? `
           <div class="payment-details">
-            <p><strong>${paymentState.booking.fieldName}</strong></p>
+            <p><strong>${(paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || 'Field'}</strong></p>
             <p>${formatDate(paymentState.booking.date)}</p>
-            <p>${paymentState.booking.timeSlots.map(slot => {
-              const hour = parseInt(slot.split(':')[0]);
-              return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
-            }).join(', ')}</p>
+            <p>${(paymentState.booking.timeSlots && paymentState.booking.timeSlots.length
+              ? paymentState.booking.timeSlots.map(slot => {
+                  const hour = parseInt(String(slot).split(':')[0], 10);
+                  return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
+                }).join(', ')
+              : (paymentState.booking.timeSlotStart && paymentState.booking.timeSlotEnd)
+                ? (paymentState.booking.timeSlotStart + ' - ' + paymentState.booking.timeSlotEnd)
+                : paymentState.booking.time || 'Not specified')}</p>
           </div>
         ` : ''}
       </div>
@@ -1477,7 +2243,8 @@ function closePaymentModal() {
       amount: 0,
       bookingId: null,
       isOrganizer: false,
-      booking: null
+      booking: null,
+      coverLeftShare: null
     };
   }
 }
@@ -1584,17 +2351,29 @@ function formatExpiryDate(e) {
   e.target.value = value;
 }
 
-// Handle payment submission (from booking modal step)
+// Handle payment submission (booking modal step 5 OR Pay Your Share for existing booking)
 function handlePaymentSubmission() {
   const form = document.getElementById('paymentForm');
   if (!form) return;
+
+  // If account is suspended, block payment and show message
+  try {
+    if (window.API && typeof window.API.getCurrentUser === 'function') {
+      const currentUser = window.API.getCurrentUser();
+      if (currentUser && currentUser.status && String(currentUser.status).toUpperCase() !== 'ACTIVE') {
+        alert('Your account is suspended. You cannot complete payments. Please contact support to resolve this.');
+        return;
+      }
+    }
+  } catch (e) {
+    // If we can't read user, continue to normal validation below
+  }
 
   // Validate form
   if (!validatePaymentForm()) {
     return;
   }
 
-  // Get form data
   const formData = {
     cardholderName: document.getElementById('cardholderName').value,
     cardNumber: document.getElementById('cardNumber').value.replace(/\s/g, ''),
@@ -1604,32 +2383,36 @@ function handlePaymentSubmission() {
     billingCity: document.getElementById('billingCity').value,
     billingPostalCode: document.getElementById('billingPostalCode').value,
     billingCountry: document.getElementById('billingCountry').value,
-    amount: bookingState.paymentAmount || bookingState.totalCost
+    amount: paymentState.bookingId ? paymentState.amount : (bookingState.paymentAmount || bookingState.totalCost)
   };
 
-  // Store payment data
-  bookingState.paymentData = formData;
-
-  // Show processing state
   const submitBtn = document.getElementById('submitPaymentBtn');
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Processing...';
   }
 
-  // Simulate payment processing (in real app, this would be an API call)
+  // Paying for EXISTING booking (Pay Your Share from bookings page)
+  if (paymentState.bookingId) {
+    setTimeout(function() {
+      processPayment(formData);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Pay & Confirm Booking';
+      }
+    }, 1500);
+    return;
+  }
+
+  // New booking flow (step 5)
+  bookingState.paymentData = formData;
   setTimeout(() => {
-    // Payment successful, move to confirmation step
     bookingState.currentStep = 6;
     updateStepDisplay();
-    
-    // Reset button
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = 'Pay & Confirm Booking';
     }
-    
-    // Show success message
     const summary = document.getElementById('paymentInfoSummary');
     if (summary) {
       const paymentSummary = summary.querySelector('.payment-summary');
@@ -1646,31 +2429,13 @@ function handlePaymentSubmission() {
   }, 2000);
 }
 
-// Validate card number (Luhn algorithm)
+// Validate card number (accept any 12–19 digits for now; restore Luhn/real validation later)
 function validateCardNumber(cardNumber) {
   const number = cardNumber.replace(/\s/g, '');
-  if (number.length < 13 || number.length > 19) {
+  if (number.length < 12 || number.length > 19) {
     return false;
   }
-
-  let sum = 0;
-  let isEven = false;
-
-  for (let i = number.length - 1; i >= 0; i--) {
-    let digit = parseInt(number.charAt(i));
-
-    if (isEven) {
-      digit *= 2;
-      if (digit > 9) {
-        digit -= 9;
-      }
-    }
-
-    sum += digit;
-    isEven = !isEven;
-  }
-
-  return sum % 10 === 0;
+  return /^\d+$/.test(number);
 }
 
 // Validate expiry date
@@ -1692,6 +2457,29 @@ function validateExpiryDate(expiryDate) {
 }
 
 // Process payment
+function markOrganizerCoveredLeftSharePayment(bookingId, coverLeftShare) {
+  if (!bookingId || !coverLeftShare) return;
+  var notificationId = String(coverLeftShare.notificationId || ('covered_' + Date.now()));
+  var paidMap = JSON.parse(localStorage.getItem('playerPaidBookings') || '{}');
+  paidMap[String(bookingId) + '_covered_' + notificationId] = true;
+  localStorage.setItem('playerPaidBookings', JSON.stringify(paidMap));
+
+  var covered = JSON.parse(localStorage.getItem('organizerCoveredLeftPlayerShares') || '{}');
+  covered[notificationId] = {
+    bookingId: String(bookingId),
+    amount: Number(coverLeftShare.amount || paymentState.amount || 0),
+    leftPlayerName: coverLeftShare.leftPlayerName || 'Player',
+    coveredAt: new Date().toISOString()
+  };
+  localStorage.setItem('organizerCoveredLeftPlayerShares', JSON.stringify(covered));
+
+  var notifications = JSON.parse(localStorage.getItem('playerNotifications') || '[]');
+  var remainingNotifications = notifications.filter(function(n) {
+    return String(n.id || '') !== notificationId;
+  });
+  localStorage.setItem('playerNotifications', JSON.stringify(remainingNotifications));
+}
+
 function processPayment(paymentData) {
   // In a real app, this would send payment data to a secure payment gateway
   console.log('Processing payment:', {
@@ -1703,76 +2491,134 @@ function processPayment(paymentData) {
   });
 
   let updatedBooking = null;
+  let bookingForConfirm = null;
+  let bookingsArrayForSave = null;
+  const isCoveringLeftShare = !!paymentState.coverLeftShare;
 
-  // Update booking payment status
+  // Update booking payment status (paying for an EXISTING booking - do NOT create a new one)
   if (paymentState.booking) {
-    if (paymentState.isOrganizer) {
+    if (isCoveringLeftShare) {
+      markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
+    } else if (paymentState.isOrganizer) {
       paymentState.booking.organizerPaymentStatus = 'paid';
+      var organizerPaidKey = 'organizerPaidBookings';
+      var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+      organizerPaid[String(paymentState.bookingId)] = true;
+      localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
     } else {
       // Update player payment status
       const playerData = getPlayerData();
-      const player = paymentState.booking.players.find(p => p.id === playerData.id);
+      const uid = String((playerData && (playerData.id || playerData._id)) || '');
+      const players = paymentState.booking.players || paymentState.booking.participants || [];
+      const player = players.find(function (p) {
+        return participantRecordUserId(p) === uid;
+      });
       if (player) {
         player.paymentStatus = 'paid';
       }
+      // Notify organizer that participant paid
+      notifyOrganizerOfPayment(paymentState.booking, playerData, paymentState.amount);
+      // Store in dedicated key so refresh always shows paid (works with API + localStorage)
+      var paidKey = 'playerPaidBookings';
+      var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
+      paid[String(paymentState.bookingId) + '_' + uid] = true;
+      localStorage.setItem(paidKey, JSON.stringify(paid));
     }
 
-    // Save booking
-    saveBookingAndSendInvitations(paymentState.booking);
+    // Persist to localStorage (merge into playerBookings so refresh shows updated status)
+    const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+    const idx = allBookings.findIndex(b => String(b.id) === String(paymentState.bookingId));
+    if (idx !== -1) {
+      allBookings[idx] = paymentState.booking;
+    } else {
+      allBookings.push(paymentState.booking);
+    }
+    localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+    // Do NOT call saveBookingAndSendInvitations - that creates a NEW booking and causes duplicates
+    bookingForConfirm = paymentState.booking;
+    bookingsArrayForSave = allBookings;
     updatedBooking = paymentState.booking;
   } else if (paymentState.bookingId) {
     // Update existing booking
     const bookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    const bookingIndex = bookings.findIndex(b => b.id === paymentState.bookingId);
+    const bookingIndex = bookings.findIndex(function (b) {
+      return String(b.id) === String(paymentState.bookingId);
+    });
     
     if (bookingIndex !== -1) {
       const booking = bookings[bookingIndex];
       
-      if (paymentState.isOrganizer) {
+      if (isCoveringLeftShare) {
+        markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
+      } else if (paymentState.isOrganizer) {
         booking.organizerPaymentStatus = 'paid';
+        var organizerPaidKey = 'organizerPaidBookings';
+        var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
+        organizerPaid[String(paymentState.bookingId)] = true;
+        localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
       } else {
         const playerData = getPlayerData();
-        const player = booking.players.find(p => p.id === playerData.id);
+        const uid = String((playerData && (playerData.id || playerData._id)) || '');
+        const players = booking.players || booking.participants || [];
+        const player = players.find(function (p) {
+          return participantRecordUserId(p) === uid;
+        });
         if (player) {
           player.paymentStatus = 'paid';
         }
+        // Notify organizer that participant paid
+        notifyOrganizerOfPayment(booking, playerData, paymentState.amount);
+        var paidKey = 'playerPaidBookings';
+        var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
+        paid[String(paymentState.bookingId) + '_' + uid] = true;
+        localStorage.setItem(paidKey, JSON.stringify(paid));
       }
-      
-      // Check if full payment is received
-      const isFullyPaid = checkFullPayment(booking);
-      if (isFullyPaid && booking.status !== 'confirmed') {
-        booking.status = 'confirmed';
-        booking.confirmedAt = new Date().toISOString();
-        
-        // Notify field owner of confirmation
-        notifyFieldOwner(booking);
-        
-        // Show confirmation message
-        showBookingConfirmation(booking, true);
-      }
-      
+
       localStorage.setItem('playerBookings', JSON.stringify(bookings));
+      bookingForConfirm = booking;
+      bookingsArrayForSave = bookings;
       updatedBooking = booking;
     }
   }
 
-  // Show success message
-  if (updatedBooking && updatedBooking.status === 'confirmed') {
-    // Confirmation message will be shown by showBookingConfirmation
-  } else {
-    alert('Payment successful!');
-  }
-
-  // Close modals
-  closePaymentModal();
-  if (paymentState.booking) {
-    closeBookingModal();
-  }
-
-  // Redirect to bookings page
-  setTimeout(() => {
+  function finishPaymentFlow() {
+    closePaymentModal();
+    if (paymentState.booking) {
+      closeBookingModal();
+    }
+    alert(isCoveringLeftShare
+      ? 'Payment successful! Missing player share has been paid.'
+      : 'Payment successful! Your share has been paid.');
     window.location.href = 'bookings.html';
-  }, updatedBooking && updatedBooking.status === 'confirmed' ? 3000 : 1000);
+  }
+
+  if (
+    bookingForConfirm
+    && checkFullPayment(bookingForConfirm)
+    && !isBookingApprovedLocal(bookingForConfirm.status)
+  ) {
+    const fld = bookingForConfirm.field || {};
+    if (fieldUsesInstantBooking(fld)) {
+      var confirmBookingId = String(paymentState.bookingId || bookingIdString(bookingForConfirm) || '');
+      tryAutoConfirmPaidInstantBooking(confirmBookingId, bookingForConfirm)
+        .then(function (ok) {
+          if (ok) {
+            bookingForConfirm.status = 'CONFIRMED';
+            bookingForConfirm.confirmedAt = new Date().toISOString();
+            if (bookingsArrayForSave) {
+              localStorage.setItem('playerBookings', JSON.stringify(bookingsArrayForSave));
+            }
+            showBookingConfirmation(bookingForConfirm, true);
+          }
+          notifyFieldOwner(bookingForConfirm);
+        })
+        .finally(finishPaymentFlow);
+      return;
+    }
+    notifyFieldOwner(bookingForConfirm);
+  }
+
+  finishPaymentFlow();
 }
 
 // Make functions available globally for use from other pages
@@ -1825,10 +2671,30 @@ function setupEventListeners() {
   
   // Location selector
   const locationSelector = document.querySelector('.location-selector');
-  if (locationSelector) {
-      locationSelector.addEventListener('click', () => {
-          // Show location selection modal (to be implemented)
-          console.log('Select location');
+  const locationMenu = document.getElementById('locationMenu');
+  if (locationSelector && locationMenu) {
+      locationSelector.addEventListener('click', (e) => {
+          e.stopPropagation();
+          locationMenu.classList.toggle('active');
+          locationSelector.setAttribute('aria-expanded', locationMenu.classList.contains('active') ? 'true' : 'false');
+      });
+      locationMenu.addEventListener('click', function(e) {
+        const btn = e.target.closest('[data-location-option]');
+        if (!btn) return;
+        const option = btn.getAttribute('data-location-option');
+        chooseLocationFromSelector(option).catch(function(err) {
+          console.warn('Failed to switch location:', err);
+        }).finally(function() {
+          locationMenu.classList.remove('active');
+          locationSelector.setAttribute('aria-expanded', 'false');
+        });
+      });
+      document.addEventListener('click', function(e) {
+        if (!locationMenu.classList.contains('active')) return;
+        if (!locationMenu.contains(e.target) && !locationSelector.contains(e.target)) {
+          locationMenu.classList.remove('active');
+          locationSelector.setAttribute('aria-expanded', 'false');
+        }
       });
   }
   
@@ -1838,39 +2704,7 @@ function setupEventListeners() {
                      (window.location.pathname.endsWith('/') && !window.location.pathname.includes('bookings.html'));
   
   if (isHomePage) {
-      // Notification popup
-      const notificationBtn = document.querySelector('.notification-btn');
-      const notificationPopup = document.getElementById('notificationPopup');
-      const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-      
-      if (notificationBtn && notificationPopup) {
-          notificationBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              notificationPopup.classList.toggle('active');
-              // Close profile popup if open
-              const profilePopup = document.getElementById('profilePopup');
-              if (profilePopup && profilePopup.classList.contains('active')) {
-                  profilePopup.classList.remove('active');
-              }
-          });
-          
-          // Close notification button
-          if (closeNotificationBtn) {
-              closeNotificationBtn.addEventListener('click', (e) => {
-                  e.stopPropagation();
-                  notificationPopup.classList.remove('active');
-              });
-          }
-          
-          // Close popup when clicking outside
-          document.addEventListener('click', (e) => {
-              if (notificationPopup && notificationPopup.classList.contains('active')) {
-                  if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                      notificationPopup.classList.remove('active');
-                  }
-              }
-          });
-      }
+      // Notification popup is handled by shared notifications.js
       
       // Profile popup
       const profileBtn = document.getElementById('profileBtn');
@@ -1881,6 +2715,7 @@ function setupEventListeners() {
               e.stopPropagation();
               profilePopup.classList.toggle('active');
               // Close notification popup if open
+              const notificationPopup = document.getElementById('notificationPopup');
               if (notificationPopup && notificationPopup.classList.contains('active')) {
                   notificationPopup.classList.remove('active');
               }
@@ -1895,12 +2730,13 @@ function setupEventListeners() {
               }
           });
       }
+
   }
 }
 
 // Filter venues by sport
 function filterVenuesBySport(sport) {
-  const allCards = document.querySelectorAll('.venue-card');
+  const allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
   
   if (sport === 'all') {
       allCards.forEach(card => {
@@ -1920,7 +2756,7 @@ function filterVenuesBySport(sport) {
 
 // Filter venues by search query
 function filterVenuesBySearch(query) {
-  const allCards = document.querySelectorAll('.venue-card');
+  const allCards = document.querySelectorAll('#popularVenues .venue-card, #nearbyVenues .venue-card');
   
   // If query is empty, show all cards
   if (!query) {
@@ -1943,31 +2779,77 @@ function filterVenuesBySearch(query) {
   });
 }
 
-// Save favorites to localStorage
-function saveFavoritesToStorage() {
+function getUnifiedFavoriteIds() {
   const favorites = [];
   venues.popular.forEach(v => {
-      if (v.isFavorite) favorites.push(v.id);
+      const id = String(v.id);
+      if (v.isFavorite && !favorites.includes(id)) favorites.push(id);
   });
   venues.nearby.forEach(v => {
-      if (v.isFavorite && !favorites.includes(v.id)) favorites.push(v.id);
+      const id = String(v.id);
+      if (v.isFavorite && !favorites.includes(id)) favorites.push(id);
   });
-  localStorage.setItem('favoriteVenues', JSON.stringify(favorites));
+  return favorites;
 }
 
-// Load favorites from localStorage
-function loadFavoritesFromStorage() {
-  const saved = localStorage.getItem('favoriteVenues');
-  if (saved) {
-      const favorites = JSON.parse(saved);
-      venues.popular.forEach(v => {
-          v.isFavorite = favorites.includes(v.id);
-      });
-      venues.nearby.forEach(v => {
-          v.isFavorite = favorites.includes(v.id);
-      });
+async function openFavoriteFieldsModal() {
+  if (window.MatchFieldProfileFavorites && typeof window.MatchFieldProfileFavorites.openModal === 'function') {
+    return window.MatchFieldProfileFavorites.openModal({
+      getCachedVenues: function () {
+        return [].concat(venues.popular || [], venues.nearby || []);
+      }
+    });
   }
+  const modal = document.getElementById('favoriteFieldsModal');
+  const body = document.getElementById('favoriteFieldsModalBody');
+  if (!modal || !body) return;
+  body.innerHTML = '<div class="favorite-empty-state">Favorite fields are unavailable.</div>';
+  modal.classList.add('active');
 }
+
+function closeFavoriteFieldsModal() {
+  if (window.MatchFieldProfileFavorites && window.MatchFieldProfileFavorites.closeModal) {
+    window.MatchFieldProfileFavorites.closeModal();
+    return;
+  }
+  const modal = document.getElementById('favoriteFieldsModal');
+  if (modal) modal.classList.remove('active');
+}
+
+// Save favorites to localStorage
+function saveFavoritesToStorage() {
+  const favorites = getUnifiedFavoriteIds();
+  persistFavoriteIdsSet(new Set(favorites.map(String)));
+}
+
+// Apply heart state from localStorage (kept in sync with API when logged in; never derived from map coords).
+function loadFavoritesFromStorage() {
+  applyFavoriteIdsToVenueState(Array.from(getFavoriteIdsSet()));
+  syncFavoriteButtonsFromState();
+}
+
+window.addEventListener('matchfield:favorites-updated', function() {
+  loadFavoritesFromStorage();
+});
+
+window.addEventListener('storage', function(e) {
+  if (e.key !== 'favoriteVenues') return;
+  loadFavoritesFromStorage();
+});
+
+window.addEventListener('pageshow', function() {
+  loadFavoritesFromStorage();
+  const ids = consumeDirtyReviewFields();
+  ids.forEach(function(id) { refreshFieldReviewStats(id); });
+});
+
+window.addEventListener('matchfield:reviews-updated', function(e) {
+  const fieldId = e && e.detail && e.detail.fieldId ? String(e.detail.fieldId) : '';
+  if (!fieldId) return;
+  refreshFieldReviewStats(fieldId);
+});
+
+// Notifications are handled by shared notifications.js (loaded on all player pages)
 
 
 

@@ -276,6 +276,16 @@
     color: #2563EB;
 }
 
+.booking-status.paid {
+    background: #F0FDF4;
+    color: #16A34A;
+}
+
+.booking-status.pending {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
 .booking-status-dot {
     width: 8px;
     height: 8px;
@@ -562,6 +572,7 @@
 }
 
 .player-avatar {
+    position: relative;
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -573,6 +584,31 @@
     font-size: 18px;
     font-weight: 600;
     flex-shrink: 0;
+    overflow: hidden;
+}
+
+.player-avatar .player-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+}
+
+.player-avatar .player-avatar-fallback {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-avatar.is-img-broken .player-avatar-img {
+    display: none;
+}
+
+.player-avatar.is-img-broken .player-avatar-fallback {
+    display: flex;
 }
 
 .player-payment-item.current-user .player-avatar {

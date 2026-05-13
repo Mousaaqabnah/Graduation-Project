@@ -1,8 +1,6 @@
 // Admin Dashboard functionality
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
-const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
 const inviteAdminBtn = document.getElementById('inviteAdminBtn');
@@ -17,40 +15,227 @@ const userDropdown = document.getElementById('userDropdown');
 const selectedUserId = document.getElementById('selectedUserId');
 const selectedUserDisplay = document.getElementById('selectedUserDisplay');
 const removeUserBtn = document.getElementById('removeUserBtn');
+const notificationAudienceSelector = document.getElementById('notificationAudienceSelector');
+const notificationChannelSelector = document.getElementById('notificationChannelSelector');
+const notificationsAudienceChart = document.getElementById('notificationsAudienceChart');
+const bookingsRegionsChart = document.getElementById('bookingsRegionsChart');
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        // Close profile popup if open
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Invite Admin Modal elements
+const inviteAdminModal = document.getElementById('inviteAdminModal');
+const closeInviteAdminModal = document.getElementById('closeInviteAdminModal');
+const cancelInviteAdminBtn = document.getElementById('cancelInviteAdminBtn');
+const inviteAdminForm = document.getElementById('inviteAdminForm');
+const inviteAdminEmail = document.getElementById('inviteAdminEmail');
+const inviteAdminName = document.getElementById('inviteAdminName');
+const submitInviteAdminBtn = document.getElementById('submitInviteAdminBtn');
+const inviteAdminError = document.getElementById('inviteAdminError');
+const inviteAdminResult = document.getElementById('inviteAdminResult');
+const inviteAdminCreatedEmail = document.getElementById('inviteAdminCreatedEmail');
+const inviteAdminTempPassword = document.getElementById('inviteAdminTempPassword');
+const toggleInviteAdminPasswordBtn = document.getElementById('toggleInviteAdminPasswordBtn');
+const copyInviteAdminPasswordBtn = document.getElementById('copyInviteAdminPasswordBtn');
+const doneInviteAdminBtn = document.getElementById('doneInviteAdminBtn');
+
+// Bell + notification list: ../../scripts/player/notifications.js (load after api.js)
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
     profileBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         profilePopup.classList.toggle('active');
-        // Close notification popup if open
+        const notificationPopup = document.getElementById('notificationPopup');
         if (notificationPopup) {
             notificationPopup.classList.remove('active');
         }
     });
 }
 
-// Close popups when clicking outside
+// Close profile popup when clicking outside (bell popup handled in notifications.js)
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
     if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
 });
+
+// Load dashboard stats from API
+async function loadDashboardStats() {
+    const els = {
+        totalUsers: document.getElementById('statTotalUsers'),
+        usersSubtext: document.getElementById('statUsersSubtext'),
+        activeOwners: document.getElementById('statActiveOwners'),
+        ownersSubtext: document.getElementById('statOwnersSubtext'),
+        bookings: document.getElementById('statBookings'),
+        bookingsSubtext: document.getElementById('statBookingsSubtext'),
+        revenue: document.getElementById('statRevenue')
+    };
+    if (!els.totalUsers || !API?.admin?.getStats) return;
+    try {
+        const res = await API.admin.getStats();
+        const s = res.stats || {};
+        const fmt = (n) => (n ?? 0).toLocaleString();
+        els.totalUsers.textContent = fmt(s.totalUsers);
+        els.usersSubtext.textContent = s.usersThisWeek > 0
+            ? `+${s.usersThisWeek} this week`
+            : 'No new users this week';
+        els.activeOwners.textContent = fmt(s.activeOwners);
+        els.ownersSubtext.textContent = s.pendingVerifications > 0
+            ? `${s.pendingVerifications} pending approval`
+            : 'All verified';
+        els.bookings.textContent = fmt(s.recentBookings);
+        els.bookingsSubtext.textContent = s.bookingsPercent >= 0
+            ? `+${s.bookingsPercent}% vs last week`
+            : `${s.bookingsPercent}% vs last week`;
+        const revTry = Math.round((s.totalRevenue || 0) / 100);
+        els.revenue.textContent = '\u20BA' + revTry.toLocaleString();
+    } catch (err) {
+        console.warn('Dashboard stats load failed:', err);
+        els.totalUsers.textContent = '-';
+        els.usersSubtext.textContent = 'Failed to load';
+        els.activeOwners.textContent = '-';
+        els.ownersSubtext.textContent = '-';
+        els.bookings.textContent = '-';
+        els.bookingsSubtext.textContent = '-';
+        els.revenue.textContent = '-';
+    }
+}
+loadDashboardStats();
+
+function renderSimpleBarChart(container, rows) {
+    if (!container) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+        container.innerHTML = '<div class="bar-chart-item"><div class="bar-chart-label">No data</div><div class="bar-chart-bar-wrapper"><div class="bar-chart-bar" style="width: 0%"></div></div><span class="bar-chart-value">0%</span></div>';
+        return;
+    }
+    container.innerHTML = rows.map((row) => {
+        const label = escapeHtml(String(row.label || 'Other'));
+        const value = Math.max(0, Math.min(100, Number(row.percent) || 0));
+        return `
+            <div class="bar-chart-item">
+                <div class="bar-chart-label">${label}</div>
+                <div class="bar-chart-bar-wrapper">
+                    <div class="bar-chart-bar" style="width: ${value}%"></div>
+                </div>
+                <span class="bar-chart-value">${value}%</span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadNotificationsAudienceChart() {
+    if (!notificationsAudienceChart || !API?.admin?.getNotifications) return;
+    try {
+        const res = await API.admin.getNotifications({ limit: 200 });
+        const list = res.notifications || [];
+        const counts = { players: 0, owners: 0, admins: 0 };
+        list.forEach((n) => {
+            const a = String(n.audience || '').toLowerCase();
+            if (a === 'players') counts.players += 1;
+            else if (a === 'owners' || a === 'field-owners') counts.owners += 1;
+            else if (a === 'admins') counts.admins += 1;
+            else if (a === 'all') {
+                counts.players += 1;
+                counts.owners += 1;
+                counts.admins += 1;
+            }
+        });
+        const total = counts.players + counts.owners + counts.admins;
+        const rows = total > 0 ? [
+            { label: 'Players', percent: Math.round((counts.players / total) * 100) },
+            { label: 'Field owners', percent: Math.round((counts.owners / total) * 100) },
+            { label: 'Admins', percent: Math.round((counts.admins / total) * 100) }
+        ] : [
+            { label: 'Players', percent: 0 },
+            { label: 'Field owners', percent: 0 },
+            { label: 'Admins', percent: 0 }
+        ];
+        renderSimpleBarChart(notificationsAudienceChart, rows);
+    } catch (err) {
+        console.warn('Notifications audience chart failed:', err);
+        renderSimpleBarChart(notificationsAudienceChart, []);
+    }
+}
+
+function pickRegionFromBooking(booking) {
+    const field = booking && booking.field ? booking.field : {};
+    const city = (field.city || '').trim();
+    if (city) return city;
+    const location = (field.location || booking.location || '').trim();
+    if (!location) return 'Other';
+    const firstPart = location.split(',')[0].trim();
+    return firstPart || 'Other';
+}
+
+async function loadBookingsRegionsChart() {
+    if (!bookingsRegionsChart || !API?.bookings?.getAll) return;
+    try {
+        const res = await API.bookings.getAll({ limit: 500 });
+        const bookings = res.bookings || [];
+        const counts = {};
+        bookings.forEach((b) => {
+            const region = pickRegionFromBooking(b);
+            counts[region] = (counts[region] || 0) + 1;
+        });
+        const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const total = entries.reduce((sum, [, c]) => sum + c, 0);
+        let rows = [];
+        if (total > 0) {
+            const top = entries.slice(0, 2);
+            const topTotal = top.reduce((sum, [, c]) => sum + c, 0);
+            const other = total - topTotal;
+            rows = top.map(([label, c]) => ({ label, percent: Math.round((c / total) * 100) }));
+            if (other > 0) rows.push({ label: 'Other', percent: Math.round((other / total) * 100) });
+        }
+        renderSimpleBarChart(bookingsRegionsChart, rows);
+    } catch (err) {
+        console.warn('Bookings regions chart failed:', err);
+        renderSimpleBarChart(bookingsRegionsChart, []);
+    }
+}
+
+loadNotificationsAudienceChart();
+loadBookingsRegionsChart();
+
+// Load recent notifications sent by admin (runs after DOM ready)
+async function loadRecentNotifications() {
+    if (!recentNotifications || !API?.admin?.getNotifications) return;
+    try {
+        const res = await API.admin.getNotifications({ limit: 4 });
+        const list = res.notifications || [];
+        recentNotifications.innerHTML = '';
+        if (list.length === 0) {
+            recentNotifications.innerHTML = '<div class="no-results"><p>No notifications sent yet.</p></div>';
+            return;
+        }
+        const audienceDisplay = { all: 'All users', players: 'Players', owners: 'Field owners', admins: 'Admins', private: 'Private' };
+        list.forEach((n) => {
+            const channels = Array.isArray(n.channels) ? n.channels : ['in-app'];
+            const audName = audienceDisplay[n.audience] || n.audience;
+            const timeStr = formatTimeAgo(new Date(n.createdAt));
+            const item = document.createElement('div');
+            item.className = 'notification-list-item';
+            item.innerHTML = `
+                <div class="notification-list-content">
+                    <h3 class="notification-list-title">${escapeHtml(n.title)}</h3>
+                    <p class="notification-list-message">${escapeHtml(n.message)}</p>
+                    <p class="notification-list-time">${escapeHtml(timeStr)}</p>
+                </div>
+                <div class="notification-list-tags">
+                    ${channels.map(c => `<span class="notification-tag">${escapeHtml(formatChannelLabel(c))}</span>`).join('')}
+                    ${n.audience === 'private' ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audName)}</span>`}
+                </div>
+            `;
+            recentNotifications.appendChild(item);
+        });
+    } catch (err) {
+        console.warn('Load recent notifications failed:', err);
+        recentNotifications.innerHTML = '<div class="no-results"><p>Failed to load notifications.</p></div>';
+    }
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => loadRecentNotifications());
+} else {
+    loadRecentNotifications();
+}
 
 // Tag Selector functionality
 tagButtons.forEach(btn => {
@@ -82,8 +267,17 @@ tagButtons.forEach(btn => {
                 }
             }
         } else if (isChannel) {
-            // Handle channel selection (multi-select)
+            // Backend requires in-app for every notification.
+            const isInApp = btn.dataset.channel === 'inapp';
+            if (isInApp) {
+                btn.classList.add('active');
+                return;
+            }
             btn.classList.toggle('active');
+            const inAppBtn = selector.querySelector('[data-channel="inapp"]');
+            if (inAppBtn && !inAppBtn.classList.contains('active')) {
+                inAppBtn.classList.add('active');
+            }
         }
     });
 });
@@ -91,22 +285,46 @@ tagButtons.forEach(btn => {
 // User search functionality
 let searchTimeout;
 
-// Function to perform user search
-function performUserSearch(searchTerm) {
+// Function to perform user search (uses API for real users when available)
+async function performUserSearch(searchTerm) {
     if (!userDropdown) return;
     
     const term = searchTerm.trim().toLowerCase();
     
-    if (term.length === 0) {
+    if (term.length < 2) {
         userDropdown.innerHTML = '';
         userDropdown.classList.remove('active');
         return;
     }
     
-    const filteredUsers = allUsers.filter(user => 
-        user.name.toLowerCase().includes(term) ||
-        user.email.toLowerCase().includes(term)
-    );
+    userDropdown.innerHTML = '<div class="user-dropdown-loading">Searching...</div>';
+    userDropdown.classList.add('active');
+    
+    let filteredUsers = [];
+    if (typeof API !== 'undefined' && API.users && API.users.search) {
+        try {
+            const res = await API.users.search(term);
+            const users = res.users || [];
+            filteredUsers = users.map((u) => ({
+                id: u.id,
+                name: u.fullName || u.email || 'User',
+                email: u.email || '',
+                role: (u.role || '').toLowerCase(),
+                avatar: u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName || 'U')}&background=007BFF&color=fff`
+            }));
+        } catch (e) {
+            console.warn('User search failed, using local:', e);
+            filteredUsers = allUsers.filter((user) =>
+                (user.name || '').toLowerCase().includes(term) ||
+                (user.email || '').toLowerCase().includes(term)
+            );
+        }
+    } else {
+        filteredUsers = allUsers.filter((user) =>
+            (user.name || '').toLowerCase().includes(term) ||
+            (user.email || '').toLowerCase().includes(term)
+        );
+    }
     
     if (filteredUsers.length === 0) {
         userDropdown.innerHTML = '<div class="user-dropdown-empty">No users found</div>';
@@ -130,8 +348,9 @@ function performUserSearch(searchTerm) {
     // Add click handlers to dropdown items
     userDropdown.querySelectorAll('.user-dropdown-item').forEach(item => {
         item.addEventListener('click', () => {
-            const userId = parseInt(item.dataset.userId);
-            selectUser(userId);
+            const userId = item.dataset.userId;
+            const user = filteredUsers.find((u) => u.id === userId || String(u.id) === userId);
+            if (user) selectUser(user);
         });
     });
 }
@@ -169,12 +388,12 @@ if (userSearchInput && userDropdown) {
     });
 }
 
-// Select user function
-function selectUser(userId) {
-    const user = allUsers.find(u => u.id === userId);
+// Select user function (user can be object or id)
+function selectUser(userOrId) {
+    const user = typeof userOrId === 'object' ? userOrId : allUsers.find((u) => u.id === userOrId || String(u.id) === String(userOrId));
     if (!user) return;
     
-    selectedUserId.value = userId;
+    selectedUserId.value = user.id;
     userSearchInput.value = '';
     userDropdown.innerHTML = '';
     userDropdown.classList.remove('active');
@@ -214,19 +433,33 @@ function formatUserRole(role) {
     return roleMap[role] || role;
 }
 
+function normalizeChannelForApi(channel) {
+    const value = String(channel || '').toLowerCase();
+    if (value === 'inapp' || value === 'in-app') return 'in-app';
+    if (value === 'email') return 'email';
+    return value;
+}
+
+function formatChannelLabel(channel) {
+    const normalized = normalizeChannelForApi(channel);
+    if (normalized === 'in-app') return 'In-app';
+    if (normalized === 'email') return 'Email';
+    return String(channel || '');
+}
+
 // Send Notification functionality
 if (sendNotificationBtn) {
-    sendNotificationBtn.addEventListener('click', () => {
+    sendNotificationBtn.addEventListener('click', async () => {
         const title = notificationTitle.value.trim();
         const message = notificationMessage.value.trim();
         
-        // Get selected audience
-        const selectedAudience = document.querySelector('.tag-selector [data-audience].active')?.dataset.audience || 'all';
+        const selectedAudience =
+            notificationAudienceSelector?.querySelector('[data-audience].active')?.dataset.audience || 'all';
         const isPrivate = selectedAudience === 'private';
-        
-        // Get selected channels
-        const selectedChannels = Array.from(document.querySelectorAll('.tag-selector [data-channel].active'))
-            .map(btn => btn.dataset.channel === 'inapp' ? 'In-app' : 'Email');
+
+        const selectedChannels = Array.from(
+            notificationChannelSelector?.querySelectorAll('[data-channel].active') ?? []
+        ).map((btn) => normalizeChannelForApi(btn.dataset.channel));
         
         const selectedUser = selectedUserId ? selectedUserId.value : '';
         
@@ -245,60 +478,73 @@ if (sendNotificationBtn) {
             return;
         }
         
-        // Get selected user details if private
         let selectedUserData = null;
         if (isPrivate && selectedUser) {
-            selectedUserData = allUsers.find(u => u.id === parseInt(selectedUser));
+            const id = typeof selectedUser === 'string' ? selectedUser : String(selectedUser);
+            selectedUserData = (typeof allUsers !== 'undefined' && allUsers) ? allUsers.find(u => u.id === id || u.id === selectedUser) : null;
         }
         
-        // Create notification object
-        const notification = {
-            title,
-            message,
-            audience: selectedAudience,
-            channels: selectedChannels,
-            isPrivate: isPrivate,
-            selectedUser: selectedUserData,
-            time: 'Just now'
-        };
+        const btn = sendNotificationBtn;
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
         
-        // Add to recent notifications
-        addNotificationToList(notification);
-        
-        // Reset form
-        notificationTitle.value = '';
-        notificationMessage.value = '';
-        if (privateUserSelector) {
-            privateUserSelector.style.display = 'none';
+        try {
+            const payload = {
+                title,
+                message,
+                audience: selectedAudience,
+                channels: selectedChannels
+            };
+            if (isPrivate && selectedUser) {
+                payload.targetUserId = typeof selectedUser === 'string' ? selectedUser : String(selectedUser);
+            }
+            
+            await API.admin.sendNotification(payload);
+            
+            const notification = {
+                title,
+                message,
+                audience: selectedAudience,
+                channels: selectedChannels,
+                isPrivate,
+                selectedUser: selectedUserData,
+                time: 'Just now'
+            };
+                addNotificationToList(notification);
+            
+            // Reset form
+            notificationTitle.value = '';
+            notificationMessage.value = '';
+            if (privateUserSelector) privateUserSelector.style.display = 'none';
+            if (selectedUserId) selectedUserId.value = '';
+            if (selectedUserDisplay) selectedUserDisplay.style.display = 'none';
+            if (userSearchInput) userSearchInput.value = '';
+            if (userDropdown) {
+                userDropdown.innerHTML = '';
+                userDropdown.classList.remove('active');
+            }
+            
+            notificationChannelSelector?.querySelectorAll('[data-channel]').forEach((b) => {
+                if (b.dataset.channel === 'inapp') {
+                    b.classList.add('active');
+                } else {
+                    b.classList.remove('active');
+                }
+            });
+            notificationAudienceSelector?.querySelectorAll('[data-audience]').forEach((b) => b.classList.remove('active'));
+            const audBtn = notificationAudienceSelector?.querySelector('[data-audience="all"]');
+            const chBtn = notificationChannelSelector?.querySelector('[data-channel="inapp"]');
+            if (audBtn) audBtn.classList.add('active');
+            if (chBtn) chBtn.classList.add('active');
+            
+            showNotificationSuccess();
+        } catch (err) {
+            console.error('Send notification error:', err);
+            alert(err.message || 'Failed to send notification. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send now';
         }
-        if (selectedUserId) {
-            selectedUserId.value = '';
-        }
-        if (selectedUserDisplay) {
-            selectedUserDisplay.style.display = 'none';
-        }
-        if (userSearchInput) {
-            userSearchInput.value = '';
-        }
-        if (userDropdown) {
-            userDropdown.innerHTML = '';
-            userDropdown.classList.remove('active');
-        }
-        
-        // Reset channel selection
-        document.querySelectorAll('.tag-selector [data-channel]').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Set default: All users and In-app
-        document.querySelectorAll('.tag-selector [data-audience]').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        document.querySelector('.tag-selector [data-audience]').classList.add('active');
-        document.querySelector('.tag-selector [data-channel]').classList.add('active');
-        
-        // Show success message (you can customize this)
-        showNotificationSuccess();
     });
 }
 
@@ -353,9 +599,9 @@ function addNotificationToList(notification) {
             <p class="notification-list-time">${notification.time}</p>
         </div>
         <div class="notification-list-tags">
-            ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
-            ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : ''}
-            ${notification.isPrivate ? userInfo : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
+${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
+                        ${notification.isPrivate && notification.selectedUser ? userInfo : ''}
         </div>
     `;
     
@@ -378,12 +624,26 @@ function escapeHtml(text) {
 
 // Show success notification
 function showNotificationSuccess() {
-    // You can customize this to show a toast notification or similar
     const btn = sendNotificationBtn;
     const originalText = btn.textContent;
     btn.textContent = 'Sent!';
     btn.style.background = '#007A55';
-    
+
+    // Show success toast
+    const existing = document.getElementById('successToast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'successToast';
+    toast.className = 'success-toast';
+    toast.innerHTML = '<i class="fi fi-rr-badge-check"></i><span>Notification sent successfully!</span>';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        toast.style.transition = 'opacity 0.3s, transform 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+
     setTimeout(() => {
         btn.textContent = originalText;
         btn.style.background = '';
@@ -393,13 +653,138 @@ function showNotificationSuccess() {
 // Invite Admin functionality
 if (inviteAdminBtn) {
     inviteAdminBtn.addEventListener('click', () => {
-        // You can implement invite admin modal or redirect here
-        const email = prompt('Enter email address to invite as admin:');
-        if (email && email.includes('@')) {
-            // Here you would typically send an API request to invite the admin
-            alert(`Invitation will be sent to ${email}`);
-        } else if (email) {
-            alert('Please enter a valid email address.');
+        if (!inviteAdminModal) return;
+        if (inviteAdminForm) inviteAdminForm.style.display = 'block';
+        if (inviteAdminResult) inviteAdminResult.style.display = 'none';
+        if (inviteAdminError) {
+            inviteAdminError.style.display = 'none';
+            inviteAdminError.textContent = '';
+        }
+        if (inviteAdminEmail) inviteAdminEmail.value = '';
+        if (inviteAdminName) inviteAdminName.value = '';
+        if (inviteAdminTempPassword) inviteAdminTempPassword.value = '';
+        if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = '—';
+        if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
+        if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+        inviteAdminModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => {
+            if (inviteAdminEmail) inviteAdminEmail.focus();
+        }, 50);
+    });
+}
+
+function closeInviteModal() {
+    if (!inviteAdminModal) return;
+    inviteAdminModal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+if (closeInviteAdminModal) closeInviteAdminModal.addEventListener('click', closeInviteModal);
+if (cancelInviteAdminBtn) cancelInviteAdminBtn.addEventListener('click', closeInviteModal);
+if (doneInviteAdminBtn) doneInviteAdminBtn.addEventListener('click', closeInviteModal);
+
+if (inviteAdminModal) {
+    inviteAdminModal.addEventListener('click', (e) => {
+        if (e.target === inviteAdminModal) closeInviteModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && inviteAdminModal.classList.contains('active')) closeInviteModal();
+    });
+}
+
+if (copyInviteAdminPasswordBtn) {
+    copyInviteAdminPasswordBtn.addEventListener('click', async () => {
+        const pwd = inviteAdminTempPassword ? String(inviteAdminTempPassword.value || '') : '';
+        if (!pwd) return;
+        try {
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(pwd);
+                copyInviteAdminPasswordBtn.textContent = 'Copied';
+                setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+            }
+        } catch (_) {
+            // fallback: select text for manual copy
+            try {
+                inviteAdminTempPassword.focus();
+                inviteAdminTempPassword.select();
+            } catch (_) {}
+        }
+    });
+}
+
+if (toggleInviteAdminPasswordBtn && inviteAdminTempPassword) {
+    toggleInviteAdminPasswordBtn.addEventListener('click', () => {
+        const isHidden = inviteAdminTempPassword.type === 'password';
+        inviteAdminTempPassword.type = isHidden ? 'text' : 'password';
+        toggleInviteAdminPasswordBtn.textContent = isHidden ? 'Hide' : 'Show';
+        toggleInviteAdminPasswordBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+    });
+}
+
+if (inviteAdminForm) {
+    inviteAdminForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (inviteAdminError) {
+            inviteAdminError.style.display = 'none';
+            inviteAdminError.textContent = '';
+        }
+        const email = inviteAdminEmail ? String(inviteAdminEmail.value || '').trim() : '';
+        const fullName = inviteAdminName ? String(inviteAdminName.value || '').trim() : '';
+
+        if (!email || !email.includes('@')) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = 'Please enter a valid email address.';
+                inviteAdminError.style.display = 'block';
+            }
+            return;
+        }
+        if (!API?.admin?.inviteAdmin) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = 'API not available. Make sure you opened this page from the backend server.';
+                inviteAdminError.style.display = 'block';
+            }
+            return;
+        }
+
+        if (submitInviteAdminBtn) {
+            submitInviteAdminBtn.disabled = true;
+            submitInviteAdminBtn.textContent = 'Creating...';
+        }
+
+        try {
+            const res = await API.admin.inviteAdmin(email, fullName);
+            const createdEmail = res && res.user && res.user.email ? String(res.user.email) : email;
+            const pwd = res && res.tempPassword ? String(res.tempPassword) : '';
+
+            if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = createdEmail;
+            if (inviteAdminTempPassword) inviteAdminTempPassword.value = pwd;
+            if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
+            if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+
+            if (inviteAdminForm) inviteAdminForm.style.display = 'none';
+            if (inviteAdminResult) inviteAdminResult.style.display = 'block';
+
+            // auto-copy best effort
+            if (pwd && navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(pwd);
+                    if (copyInviteAdminPasswordBtn) {
+                        copyInviteAdminPasswordBtn.textContent = 'Copied';
+                        setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+                    }
+                } catch (_) {}
+            }
+        } catch (err) {
+            if (inviteAdminError) {
+                inviteAdminError.textContent = (err && err.message) ? err.message : 'Failed to create admin.';
+                inviteAdminError.style.display = 'block';
+            }
+        } finally {
+            if (submitInviteAdminBtn) {
+                submitInviteAdminBtn.disabled = false;
+                submitInviteAdminBtn.textContent = 'Create admin';
+            }
         }
     });
 }
@@ -424,29 +809,49 @@ function formatTimeAgo(date) {
     }
 }
 
-// Initialize greeting with time-based message
-function updateGreeting() {
-    const greetingHeader = document.querySelector('.greeting-header h1');
-    if (greetingHeader) {
-        const hour = new Date().getHours();
-        let greeting;
-        let emoji = '👋';
-        
-        if (hour < 12) {
-            greeting = 'Good morning';
-        } else if (hour < 18) {
-            greeting = 'Good afternoon';
-        } else {
-            greeting = 'Good evening';
-        }
-        
-        // You can get the user's name from your authentication system
-        const userName = 'Mousa'; // This should come from your user data
-        greetingHeader.textContent = `${greeting}, ${userName} ${emoji}`;
-    }
+function getGreetingForHour(hour) {
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
 }
 
-// Update greeting on load
+function getDisplayNameFromUser(user) {
+    const full = (user && (user.fullName || user.name)) ? String(user.fullName || user.name).trim() : '';
+    if (!full) return 'Admin';
+    // Use first name for compact header greeting
+    return full.split(/\s+/)[0] || full;
+}
+
+// Initialize greeting with time-based message + logged-in user's name (no hardcoded name)
+async function updateGreeting() {
+    const greetingHeader = document.querySelector('.greeting-header h1');
+    if (!greetingHeader) return;
+
+    const hour = new Date().getHours();
+    const greeting = getGreetingForHour(hour);
+    const emoji = '👋';
+
+    try {
+        const localUser = API && API.getCurrentUser ? API.getCurrentUser() : null;
+        if (localUser) {
+            greetingHeader.textContent = `${greeting}, ${getDisplayNameFromUser(localUser)} ${emoji}`;
+            return;
+        }
+
+        if (API && API.auth && API.auth.getCurrentUser) {
+            const res = await API.auth.getCurrentUser();
+            const u = res && res.user ? res.user : null;
+            if (u && API.setCurrentUser) API.setCurrentUser(u);
+            greetingHeader.textContent = `${greeting}, ${getDisplayNameFromUser(u)} ${emoji}`;
+            return;
+        }
+    } catch (_) {
+        // ignore, fall back
+    }
+
+    greetingHeader.textContent = `${greeting} ${emoji}`;
+}
+
 updateGreeting();
 
 // Store all notifications (will be populated from existing notifications)
@@ -521,95 +926,38 @@ const notificationSearch = document.getElementById('notificationSearch');
 const filterAudience = document.getElementById('filterAudience');
 const filterChannel = document.getElementById('filterChannel');
 
-// Extract notifications from the page and populate allNotifications array
-function initializeNotifications() {
-    const notificationItems = document.querySelectorAll('#recentNotifications .notification-list-item');
-    allNotifications = Array.from(notificationItems).map(item => {
-        const titleEl = item.querySelector('.notification-list-title');
-        const messageEl = item.querySelector('.notification-list-message');
-        const timeEl = item.querySelector('.notification-list-time');
-        const tags = Array.from(item.querySelectorAll('.notification-tag')).map(tag => tag.textContent.trim());
-        
-        // Determine audience and channels from tags
-        const channels = tags.filter(tag => tag === 'In-app' || tag === 'Email');
-        const audiences = tags.filter(tag => !channels.includes(tag));
-        
-        const isPrivate = tags.some(tag => tag.toLowerCase() === 'private');
-        
-        // Extract user info if private notification
-        const userTag = tags.find(tag => tag.toLowerCase().startsWith('to:'));
-        let selectedUser = null;
-        if (userTag && isPrivate) {
-            const userName = userTag.replace('To:', '').trim();
-            selectedUser = allUsers.find(u => u.name === userName) || { name: userName };
-        }
-        
-        return {
-            title: titleEl ? titleEl.textContent.trim() : '',
-            message: messageEl ? messageEl.textContent.trim() : '',
-            time: timeEl ? timeEl.textContent.trim() : '',
-            channels: channels,
-            audience: audiences.length > 0 ? audiences[0].toLowerCase().replace(' ', '-') : 'all-users',
-            isPrivate: isPrivate,
-            selectedUser: selectedUser,
-            originalElement: item
-        };
-    });
-    
-    // Add some sample notifications for demonstration
-    allNotifications.push(
-        {
-            title: 'System maintenance scheduled',
-            message: 'The platform will be under maintenance on Saturday from 2 AM to 4 AM.',
-            time: '2 hours ago',
-            channels: ['In-app', 'Email'],
-            audience: 'all-users',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'New payment method available',
-            message: 'We now support credit card payments directly on the platform.',
-            time: '3 hours ago',
-            channels: ['In-app'],
-            audience: 'players',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Updated field owner guidelines',
-            message: 'Please review the updated guidelines for field owners in your dashboard.',
-            time: '1 day ago',
-            channels: ['Email'],
-            audience: 'field-owners',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Welcome to MatchField!',
-            message: 'Thank you for joining MatchField. Start exploring fields near you!',
-            time: '2 days ago',
-            channels: ['In-app', 'Email'],
-            audience: 'players',
-            isPrivate: false,
-            selectedUser: null
-        },
-        {
-            title: 'Monthly report available',
-            message: 'Your monthly earnings report is now available in your dashboard.',
-            time: '3 days ago',
-            channels: ['Email'],
-            audience: 'field-owners',
-            isPrivate: false,
-            selectedUser: null
-        }
-    );
+// Load all notifications for View all modal (admin-sent only, excludes Contact Us replies)
+async function initializeNotifications() {
+    if (!API?.admin?.getNotifications) {
+        allNotifications = [];
+        return;
+    }
+    try {
+        const res = await API.admin.getNotifications({ limit: 100 });
+        const list = res.notifications || [];
+        const audienceDisplay = { all: 'all-users', players: 'players', owners: 'field-owners', admins: 'admins', private: 'private' };
+        allNotifications = list.map((n) => {
+            const channels = Array.isArray(n.channels) ? n.channels : ['in-app'];
+            return {
+                title: n.title,
+                message: n.message,
+                time: formatTimeAgo(new Date(n.createdAt)),
+                channels,
+                audience: audienceDisplay[n.audience] || n.audience || 'all-users',
+                isPrivate: n.audience === 'private',
+                selectedUser: null
+            };
+        });
+    } catch (err) {
+        console.warn('Load notifications for View all failed:', err);
+        allNotifications = [];
+    }
 }
 
 // Open modal
 if (viewAllNotificationsBtn && viewAllNotificationsModal) {
-    viewAllNotificationsBtn.addEventListener('click', () => {
-        initializeNotifications();
+    viewAllNotificationsBtn.addEventListener('click', async () => {
+        await initializeNotifications();
         renderAllNotifications();
         viewAllNotificationsModal.classList.add('active');
         document.body.style.overflow = 'hidden';
@@ -650,7 +998,7 @@ function renderAllNotifications(filteredNotifications = null) {
         allNotificationsList.innerHTML = `
             <div class="no-results">
                 <i class="fi fi-rr-search-alt"></i>
-                <p>No notifications found matching your criteria.</p>
+                <p>No notifications sent yet.</p>
             </div>
         `;
         return;
@@ -666,11 +1014,10 @@ function renderAllNotifications(filteredNotifications = null) {
                         <p class="notification-list-time">${escapeHtml(notification.time)}</p>
                     </div>
                     <div class="notification-list-tags">
-                        ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(channel)}</span>`).join('')}
-                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : ''}
+                        ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
                         ${notification.isPrivate && notification.selectedUser 
-                            ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>`
-                            : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
+                            ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>` : ''}
                     </div>
                 </div>
             `).join('')}
@@ -709,7 +1056,7 @@ function filterNotifications() {
         
         // Channel filter
         const matchesChannel = selectedChannel === 'all' ||
-            notification.channels.includes(selectedChannel === 'in-app' ? 'In-app' : 'Email');
+            notification.channels.some((channel) => normalizeChannelForApi(channel) === normalizeChannelForApi(selectedChannel));
         
         return matchesSearch && matchesAudience && matchesChannel;
     });

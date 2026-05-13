@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Field Owner - About Us | MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -149,13 +150,6 @@
                                         <span>Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
-                                    <a href="bookings.html" class="profile-menu-item">
-                                        <div class="profile-menu-icon">
-                                            <i class="fi fi-rr-calendar-day"></i>
-                                        </div>
-                                        <span>My Bookings</span>
-                                        <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
-                                    </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
@@ -174,7 +168,7 @@
             <div class="about-content">
                 <div class="about-header">
                     <h1 class="page-title">About MatchField</h1>
-                    <p class="page-description">MatchField makes it simple for players and venues to connect. As a field owner, you can manage your fields, bookings, and revenue all in one place. Spend less time on administration and more time growing your business.</p>
+                    <p class="page-description">MatchField makes it simple for players and venues to connect. As a field owner, you can manage your fields, bookings, and revenue all in one place. Spend less time on administration and more time growing your business. The platform is implemented as a capstone graduation project (full-stack booking, chat, and venue management).</p>
                 </div>
 
                 <div class="about-wrapper">
@@ -206,7 +200,7 @@
                                     <img src="https://ui-avatars.com/api/?name=Mousa+Aqabnah&background=007BFF&color=fff&size=128" alt="Mousa Aqabnah">
                                 </div>
                                 <h3 class="team-name">Mousa Aqabnah</h3>
-                                <p class="team-role">CEO and the founder</p>
+                                <p class="team-role">Co-founder &amp; CEO</p>
                             </div>
                             
                             <div class="team-member">
@@ -214,15 +208,15 @@
                                     <img src="https://ui-avatars.com/api/?name=Baraa+Qasem&background=007BFF&color=fff&size=128" alt="Baraa Qasem">
                                 </div>
                                 <h3 class="team-name">Baraa Qasem</h3>
-                                <p class="team-role">The founder and the CEO</p>
+                                <p class="team-role">Co-founder &amp; CTO</p>
                             </div>
                             
                             <div class="team-member">
                                 <div class="team-avatar">
-                                    <img src="https://ui-avatars.com/api/?name=Wessam+Tmazih&background=007BFF&color=fff&size=128" alt="Wessam Tmazih">
+                                    <img src="https://ui-avatars.com/api/?name=Wesam+Tomize&background=007BFF&color=fff&size=128" alt="Wesam Tomize">
                                 </div>
-                                <h3 class="team-name">Wessam Tmazih</h3>
-                                <p class="team-role">The head of the MatchField</p>
+                                <h3 class="team-name">Wesam Tomize</h3>
+                                <p class="team-role">Support &amp; Coordination</p>
                             </div>
                         </div>
                     </div>
@@ -231,6 +225,12 @@
         </main>
     </div>
 
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/owner-guard.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/owner/about-us.js"></script>
 </body>
 </html>

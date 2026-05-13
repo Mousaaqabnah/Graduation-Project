@@ -535,8 +535,13 @@
 }
 
 .checkbox-label input[type="checkbox"]:checked + span {
-  color: #007BFF;
+  color: #111827;
   font-weight: 500;
+}
+
+.checkbox-label:has(input[type="checkbox"]:checked) {
+  background: #fff;
+  border-color: #e5e7eb;
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -636,6 +641,21 @@
   position: relative;
   cursor: pointer;
   overflow: hidden;
+}
+
+.map-picker.leaflet-container {
+  border: 1px solid #D1D5DB;
+  background: #E5E7EB;
+  cursor: grab;
+}
+
+.map-picker.leaflet-container:active {
+  cursor: grabbing;
+}
+
+.map-picker.leaflet-container .map-placeholder,
+.map-picker.leaflet-container .map-pin {
+  display: none;
 }
 
 .map-placeholder {
@@ -1106,6 +1126,27 @@
   background: #EF4444;
 }
 
+/* Field list card — admin moderation tag */
+.field-tag.field-tag-mod {
+  font-size: 11px;
+  font-weight: 600;
+}
+.field-tag-mod-pending {
+  background: #FEF3C7 !important;
+  color: #92400E !important;
+  border: 1px solid #FDE68A;
+}
+.field-tag-mod-live {
+  background: #D1FAE5 !important;
+  color: #065F46 !important;
+  border: 1px solid #A7F3D0;
+}
+.field-tag-mod-rejected {
+  background: #FEE2E2 !important;
+  color: #991B1B !important;
+  border: 1px solid #FECACA;
+}
+
 .manage-options-container {
   display: flex;
   flex-direction: column;
@@ -1330,12 +1371,99 @@
   overflow: hidden;
   background: #F3F4F6;
   flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.3s ease;
+}
+
+.view-field-gallery:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .view-field-main-image {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 1;
+  transition: opacity 0.35s ease-in-out, transform 0.3s ease;
+  border-radius: 24px;
+}
+
+.view-field-main-image:hover {
+  transform: scale(1.02);
+}
+
+.view-gallery-controls .gallery-nav-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.view-gallery-dots {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 16px;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.view-gallery-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 0;
+}
+
+.view-gallery-dot.active {
+  background: #ffffff;
+}
+
+.view-field-gallery .gallery-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 20;
+}
+
+.view-field-gallery .gallery-nav-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.view-field-gallery .gallery-nav-left {
+  left: 16px;
+}
+
+.view-field-gallery .gallery-nav-right {
+  right: 16px;
+}
+
+.view-field-gallery .gallery-nav-btn i {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Field Feature Tags */

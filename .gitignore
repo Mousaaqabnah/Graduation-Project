@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Local uploads (chat attachments)
+uploads/
+
 # Environment
 .env
 .env.local

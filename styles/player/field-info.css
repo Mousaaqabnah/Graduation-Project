@@ -10,6 +10,9 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 1200;
 }
 
 .field-title-row {
@@ -59,6 +62,12 @@
     background: #EFF6FF;
     border-color: #007BFF;
     color: #007BFF;
+}
+
+.save-btn.active {
+    background: #fef2f2;
+    border-color: #ef4444;
+    color: #ef4444;
 }
 
 .back-btn {
@@ -255,6 +264,34 @@
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.gallery-dots {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 16px;
+    z-index: 22;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.gallery-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 0;
+}
+
+.gallery-dot.active {
+    background: #fff;
 }
 
 /* Field Feature Tags */
@@ -508,6 +545,15 @@
     color: #4B5563;
 }
 
+.reviews-empty {
+    padding: 18px 12px;
+    text-align: center;
+    color: #6B7280;
+    border: 1px dashed #D1D5DB;
+    border-radius: 12px;
+    background: #FAFAFA;
+}
+
 .review-rating-display {
     display: flex;
     align-items: center;
@@ -759,6 +805,24 @@
     font-size: 14px;
     text-align: center;
     padding: 20px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.booking-map-placeholder .leaflet-container,
+.booking-map-placeholder .leaflet-pane,
+.booking-map-placeholder .leaflet-control-container {
+    z-index: 1;
+}
+
+.booking-map-placeholder .leaflet-control-attribution {
+    font-size: 10px;
+}
+
+.booking-map-empty {
+    color: #9CA3AF;
+    font-size: 14px;
 }
 
 .booking-btn {

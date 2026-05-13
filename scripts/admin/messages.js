@@ -1,472 +1,630 @@
-// Messages Management functionality
+// Admin Support Inbox (shared across admins)
 
-// DOM Elements - will be initialized on DOMContentLoaded
-let notificationBtn, notificationPopup, profileBtn, profilePopup;
+let profileBtn, profilePopup;
 let messageSearch, statusFilter, messagesList;
-let messageModal, closeMessageModal, messageContent;
+let messageModal, closeMessageModalBtn, messageContent;
 let spamBlockedBtn;
 
-// Sample messages data
-let allMessages = [
-    {
-        id: 1,
-        fullName: 'Mousa Aqabnah',
-        email: 'mousa.aqabnah@example.com',
-        phone: '+90 555 123 4567',
-        topic: 'Question about field availability',
-        message: 'Hi, I would like to know if Field A is available for booking next weekend. We are planning a tournament and need to confirm the availability.',
-        date: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        status: 'unread',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 2,
-        fullName: 'Baraa Qasem',
-        email: 'Baraa.Qasem@example.com',
-        phone: '+90 555 234 5678',
-        topic: 'Reservation confirmation issue',
-        message: 'I made a reservation yesterday but haven\'t received a confirmation email yet. My booking reference is #12345. Can you please check?',
-        date: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3 hours ago
-        status: 'pending',
-        starred: true,
-        important: true,
-        blocked: false
-    },
-    {
-        id: 3,
-        fullName: 'Alex Morgan',
-        email: 'alex.morgan@example.com',
-        phone: '+90 555 345 6789',
-        topic: 'Booking problem',
-        message: 'I booked a field for tomorrow but I need to cancel it. How can I do that?',
-        date: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-        status: 'read',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 4,
-        fullName: 'Sarah Johnson',
-        email: 'sarah.johnson@example.com',
-        phone: '+90 555 456 7890',
-        topic: 'Payment issue',
-        message: 'I tried to pay for my booking but the payment failed. Can you help me resolve this?',
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
-        status: 'read',
-        starred: false,
-        important: false,
-        blocked: false
-    },
-    {
-        id: 5,
-        fullName: 'Michael Brown',
-        email: 'michael.brown@example.com',
-        phone: '+90 555 567 8901',
-        topic: 'Field availability',
-        message: 'I want to know if the football field is available this weekend for a tournament.',
-        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        status: 'replied',
-        starred: false,
-        important: false,
-        blocked: false
-    }
-];
+let allThreads = [];
+let isViewingSpam = false;
+let conversationTake = 80;
+let submissionTake = 80;
+let inboxPollTimer = null;
 
-
-// Calculate time ago
-function getTimeAgo(date) {
-    if (!(date instanceof Date)) {
-        date = new Date(date);
-    }
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'Minute' : 'Minutes'} Ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'Hour' : 'Hours'} Ago`;
-    if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'Day' : 'Days'} Ago`;
-    return date.toLocaleDateString();
-}
-
-// Render messages as cards
-function renderMessages(messages = allMessages) {
-    if (!messagesList) {
-        console.error('messagesList element not found!');
-        return;
-    }
-    
-    // Filter out blocked messages unless viewing spam/blocked
-    const filteredMessages = messages.filter(msg => !msg.blocked);
-    
-    console.log('Rendering messages:', filteredMessages.length);
-    
-    if (filteredMessages.length === 0) {
-        messagesList.innerHTML = `
-            <div style="text-align: center; padding: 60px 20px; color: #6B7280;">
-                <p style="font-size: 16px; margin: 0;">No messages found matching your criteria.</p>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = '';
-    filteredMessages.forEach(msg => {
-        try {
-            const isUnread = msg.status === 'unread';
-            const timeAgo = getTimeAgo(msg.date);
-            const badges = [];
-            
-            if (msg.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
-            if (msg.status === 'pending') badges.push({ text: 'Pending', class: 'pending' });
-            if (msg.important) badges.push({ text: 'Important', class: 'important' });
-            
-            const badgesHtml = badges.length > 0 ? `
-                <div class="message-badges">
-                    ${badges.map(badge => `
-                        <span class="status-badge ${badge.class}">${badge.text}</span>
-                    `).join('')}
-                </div>
-            ` : '';
-            
-            html += `
-            <div class="message-card ${isUnread ? 'unread' : ''}">
-                <div class="message-card-content">
-                    <div class="message-sender-info">
-                        <h3 class="message-sender-name">${escapeHtml(msg.fullName)}</h3>
-                        <p class="message-sender-email">${escapeHtml(msg.email)}</p>
-                    </div>
-                    <h4 class="message-subject">${escapeHtml(msg.topic || 'No topic')}</h4>
-                    <p class="message-preview">${escapeHtml(msg.message)}</p>
-                    ${badgesHtml}
-                </div>
-                <div class="message-actions-right">
-                    <div class="message-icon-actions">
-                        <button class="message-icon-btn ${msg.starred ? 'starred' : ''}" onclick="toggleStar(${msg.id})" title="${msg.starred ? 'Unstar' : 'Star'}">
-                            <i class="fi ${msg.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
-                        </button>
-                        <button class="message-icon-btn" onclick="blockMessage(${msg.id})" title="Block/Spam">
-                            <i class="fi fi-rr-circle-xmark"></i>
-                        </button>
-                    </div>
-                    <p class="message-time">${timeAgo}</p>
-                    <button class="btn-view-message" onclick="showMessageDetail(${msg.id})">
-                        View Message
-                    </button>
-                </div>
-            </div>
-            `;
-        } catch (error) {
-            console.error('Error rendering message:', msg, error);
-        }
-    });
-    
-    messagesList.innerHTML = html;
-}
-
-// Format status for display
-function formatStatus(status) {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-// Escape HTML to prevent XSS
 function escapeHtml(text) {
-    if (!text) return '';
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return String(text).replace(/[&<>"']/g, m => map[m]);
+  if (text == null) return '';
+  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
-// Filter messages
-function filterMessages() {
-    const searchTerm = messageSearch ? messageSearch.value.toLowerCase().trim() : '';
-    const selectedStatus = statusFilter ? statusFilter.value : 'all';
-    
-    let filtered = allMessages.filter(msg => {
-        // Search filter
-        const matchesSearch = !searchTerm || 
-            msg.fullName.toLowerCase().includes(searchTerm) ||
-            msg.email.toLowerCase().includes(searchTerm) ||
-            (msg.topic && msg.topic.toLowerCase().includes(searchTerm)) ||
-            msg.message.toLowerCase().includes(searchTerm);
-        
-        // Status filter
-        const matchesStatus = selectedStatus === 'all' || msg.status === selectedStatus;
-        
-        return matchesSearch && matchesStatus;
-    });
-    
-    renderMessages(filtered);
-}
+function parseContactFormContent(rawText, fallback) {
+  const raw = String(rawText || '');
+  const result = {
+    topic: (fallback && fallback.topic) || '',
+    message: raw,
+    phone: (fallback && fallback.phone) || '',
+    email: (fallback && fallback.email) || '',
+    name: (fallback && fallback.fullName) || ''
+  };
 
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const messageLines = [];
 
-// Toggle star
-function toggleStar(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    message.starred = !message.starred;
-    filterMessages(); // Re-render to show updated star state
-}
+  lines.forEach((line) => {
+    const topicMatch = /^Topic:\s*(.+)$/i.exec(line);
+    const phoneMatch = /^Phone:\s*(.+)$/i.exec(line);
+    const fromMatch = /^From:\s*(.+?)(?:\s*<([^>]+)>)?\s*(?:\(via Contact form\))?$/i.exec(line);
 
-// Block/Spam message
-function blockMessage(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    if (confirm(`Block/Spam message from ${message.fullName}?`)) {
-        message.blocked = true;
-        filterMessages(); // Re-render to remove blocked message
-        console.log(`Message from ${message.fullName} blocked`);
+    if (topicMatch) {
+      result.topic = topicMatch[1].trim();
+      return;
     }
+    if (phoneMatch) {
+      result.phone = phoneMatch[1].trim();
+      return;
+    }
+    if (fromMatch) {
+      result.name = fromMatch[1].trim();
+      if (fromMatch[2]) result.email = fromMatch[2].trim();
+      return;
+    }
+    messageLines.push(line);
+  });
+
+  if (messageLines.length) result.message = messageLines.join('\n\n');
+  return result;
 }
 
-// Show message detail modal
-function showMessageDetail(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    // Mark as read when viewing
-    if (message.status === 'unread') {
-        message.status = 'read';
-        filterMessages(); // Re-render to update status
-    }
-    
-    if (messageContent) {
-        const initials = message.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
-        const timeAgo = getTimeAgo(message.date);
-        
-        messageContent.innerHTML = `
-            <div class="message-detail-header">
-                <div class="message-detail-avatar">
-                    ${initials}
-                </div>
-                <div class="message-detail-info">
-                    <h3 class="message-detail-name">${escapeHtml(message.fullName)}</h3>
-                    <p class="message-detail-email">${escapeHtml(message.email)}</p>
-                    ${message.phone ? `<p class="message-detail-phone">${escapeHtml(message.phone)}</p>` : ''}
-                </div>
-            </div>
-            
-            <div class="message-detail-content">
-                <div class="message-detail-topic">
-                    ${escapeHtml(message.topic || 'No topic')}
-                </div>
-                <div class="message-detail-text">
-                    ${escapeHtml(message.message)}
-                </div>
-                <div class="message-detail-meta">
-                    <span>Received: ${timeAgo}</span>
-                    <span class="status-badge ${message.status}">${formatStatus(message.status)}</span>
-                </div>
-            </div>
-            
-            <div class="message-detail-actions">
-                <button class="btn-mark-read" onclick="markAsRead(${message.id}); closeMessageModal();" ${message.status === 'read' || message.status === 'replied' ? 'style="display:none"' : ''}>
-                    <i class="fi fi-rr-check"></i> Mark as Read
-                </button>
-                <button class="btn-reply" onclick="replyToMessage(${message.id})">
-                    <i class="fi fi-rr-envelope"></i> Reply
-                </button>
-                <button class="btn-delete" onclick="deleteMessage(${message.id}); closeMessageModal();">
-                    <i class="fi fi-rr-trash"></i> Delete
-                </button>
-            </div>
-        `;
-    }
-    
-    if (messageModal) {
-        messageModal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
+function looksLikeContactFormContent(rawText) {
+  const raw = String(rawText || '');
+  return /(^|\n)Topic:/i.test(raw) || /(^|\n)Phone:/i.test(raw) || /\(via Contact form\)/i.test(raw);
 }
 
-// Mark message as read
-function markAsRead(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    message.status = 'read';
-    filterMessages(); // Re-render to show updated status
-    console.log(`Message from ${message.fullName} marked as read`);
+function renderContactMessageCard(rawText, fallback) {
+  const data = parseContactFormContent(rawText, fallback || {});
+
+  return `
+    <div class="contact-message-card">
+      ${data.topic ? `
+        <div class="contact-message-topic">
+          <span class="contact-message-label">Topic</span>
+          <strong>${escapeHtml(data.topic)}</strong>
+        </div>
+      ` : ''}
+      <div class="contact-message-main">
+        <span class="contact-message-label">Message</span>
+        <p>${escapeHtml(data.message || 'No message provided.')}</p>
+      </div>
+    </div>
+  `;
 }
 
-// Reply to message
-function replyToMessage(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    // Open email client or show reply form
-    const subject = encodeURIComponent(`Re: ${message.topic || 'Your message'}`);
-    const body = encodeURIComponent(`\n\n--- Original Message ---\nFrom: ${message.fullName} (${message.email})\nDate: ${message.date} ${message.time}\n\n${message.message}`);
-    window.location.href = `mailto:${message.email}?subject=${subject}&body=${body}`;
-    
-    // Mark as replied
-    message.status = 'replied';
-    filterMessages();
+function getTimeAgo(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'Minute' : 'Minutes'} Ago`;
+  if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'Hour' : 'Hours'} Ago`;
+  if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'Day' : 'Days'} Ago`;
+  return d.toLocaleDateString();
 }
 
-// Delete message
-function deleteMessage(messageId) {
-    const message = allMessages.find(m => m.id === messageId);
-    if (!message) return;
-    
-    if (confirm(`Delete message from ${message.fullName}?`)) {
-        allMessages = allMessages.filter(m => m.id !== messageId);
-        filterMessages(); // Re-render table
-        console.log(`Message from ${message.fullName} deleted`);
+function mapConversationToThread(conv, currentUser) {
+  const latest = (conv.messages && conv.messages[0]) || null;
+  const blocked = !!conv.blockedAt;
+  const starred = !!conv.starredAt;
+  const meId = currentUser && currentUser.id ? String(currentUser.id) : '';
+  const otherUser = meId && conv.user1 && String(conv.user1.id) === meId ? conv.user2 : conv.user1;
+  const otherName = otherUser ? (otherUser.fullName || otherUser.email || 'User') : 'User';
+  const otherEmail = otherUser ? (otherUser.email || '') : '';
+  const isFromUser = latest && latest.sender && meId && String(latest.sender.id) !== meId;
+  const isUnread = !!(isFromUser && latest && !latest.readAt);
+  const latestFromAdmin = !!(latest && meId && latest.sender && String(latest.sender.id) === meId);
+  const workflowStatus = latestFromAdmin ? 'replied' : 'pending';
+  return {
+    id: conv.id, // use conversationId as stable id
+    conversationId: conv.id,
+    replyElSuffix: `c${conv.id}`,
+    isContactSubmission: false,
+    latestMessageId: latest ? latest.id : null,
+    fullName: otherName,
+    email: otherEmail,
+    topic: latest ? (String(latest.content).slice(0, 60) + (String(latest.content).length > 60 ? '...' : '')) : 'Conversation',
+    message: latest ? latest.content : 'No messages yet.',
+    messagePreview: latest
+      ? String(latest.content).slice(0, 220) + (String(latest.content).length > 220 ? '…' : '')
+      : 'No messages yet.',
+    date: latest ? latest.createdAt : conv.updatedAt,
+    status: isUnread ? 'unread' : 'read',
+    workflowStatus,
+    starred,
+    blocked
+  };
+}
+
+function mapSubmissionToThread(sub) {
+  const sid = String(sub.id);
+  const date = sub.createdAt || sub.created_at;
+  const rawTopic = sub.topic ? String(sub.topic) : 'Contact form';
+  const topicLine = rawTopic.length > 72 ? `${rawTopic.slice(0, 72)}…` : rawTopic;
+  const rawMsg = sub.message || '';
+  const seen = !!(sub.adminSeenAt);
+  return {
+    id: `submission:${sid}`,
+    conversationId: `submission:${sid}`,
+    replyElSuffix: `s${sid}`,
+    isContactSubmission: true,
+    submissionMongoId: sid,
+    latestMessageId: null,
+    fullName: sub.fullName || 'User',
+    email: sub.email || '',
+    topic: topicLine,
+    message: rawMsg,
+    messagePreview: rawMsg.length > 220 ? `${rawMsg.slice(0, 220)}…` : rawMsg,
+    phone: sub.phone || '',
+    date,
+    status: seen ? 'read' : 'unread',
+    workflowStatus: seen ? 'replied' : 'pending',
+    starred: false,
+    blocked: false
+  };
+}
+
+function renderThreads(threads) {
+  if (!messagesList) return;
+  const list = Array.isArray(threads) ? threads : [];
+  const shown = list.filter((t) => (isViewingSpam ? t.blocked : !t.blocked));
+
+  if (shown.length === 0) {
+    messagesList.innerHTML = `
+      <div style="text-align: center; padding: 60px 20px; color: #6B7280;">
+        <p style="font-size: 16px; margin: 0;">No messages found.</p>
+      </div>
+    `;
+    return;
+  }
+
+  messagesList.innerHTML = shown.map((t) => {
+    const isUnread = t.status === 'unread';
+    const timeAgo = getTimeAgo(t.date);
+    const badges = [];
+    if (t.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
+    else badges.push({ text: 'Read', class: 'read' });
+    if (!t.isContactSubmission && t.workflowStatus === 'pending' && t.status === 'unread') {
+      badges.push({ text: 'Needs your reply', class: 'marked' });
     }
+    if (!t.isContactSubmission && t.workflowStatus === 'replied') {
+      badges.push({ text: 'You replied last', class: 'read' });
+    }
+    if (t.starred) badges.push({ text: '(marked)', class: 'marked' });
+    const badgesHtml = badges.length > 0 ? `
+      <div class="message-badges">
+        ${badges.map(b => `<span class="status-badge ${b.class}">${b.text}</span>`).join('')}
+      </div>` : '';
+
+    return `
+      <div class="message-card ${isUnread ? 'unread' : ''}">
+        <div class="message-card-content">
+          <div class="message-sender-info">
+            <h3 class="message-sender-name">${escapeHtml(t.fullName)}</h3>
+            <p class="message-sender-email">${escapeHtml(t.email)}</p>
+          </div>
+          <h4 class="message-subject">${escapeHtml(t.topic || 'No topic')}</h4>
+          <p class="message-preview">${escapeHtml(t.messagePreview != null ? t.messagePreview : t.message)}</p>
+          ${badgesHtml}
+        </div>
+        <div class="message-actions-right">
+          <div class="message-icon-actions">
+            ${t.isContactSubmission ? `<span class="status-badge unread" title="From Contact Us form">Contact form</span>` : `
+            <button class="message-icon-btn ${t.starred ? 'starred' : ''}" onclick="toggleStar('${escapeHtml(t.id)}')" title="${t.starred ? 'Unstar' : 'Star'}">
+              <i class="fi ${t.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
+            </button>
+            <button class="message-icon-btn ${t.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock('${escapeHtml(t.id)}')" title="${t.blocked ? 'Unblock (move to normal)' : 'Block/Spam'}">
+              <i class="fi ${t.blocked ? 'fi-rr-check-circle' : 'fi-rr-circle-xmark'}"></i>
+            </button>
+            `}
+          </div>
+          <p class="message-time">${escapeHtml(timeAgo)}</p>
+          <button class="btn-view-message" onclick="showMessageDetail('${escapeHtml(t.id)}')">View Message</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
-// Close message modal
-function closeMessageModal() {
-    if (messageModal) {
-        messageModal.classList.remove('active');
-        document.body.style.overflow = '';
+function filterThreads() {
+  const term = messageSearch ? String(messageSearch.value || '').toLowerCase().trim() : '';
+  const selectedStatus = statusFilter ? String(statusFilter.value || 'all') : 'all';
+  const filtered = allThreads.filter((t) => {
+    if (term) {
+      const hay = `${t.fullName} ${t.email} ${t.topic} ${t.message}`.toLowerCase();
+      if (!hay.includes(term)) return false;
     }
+    if (selectedStatus !== 'all') {
+      if (selectedStatus === 'pending' && t.workflowStatus !== 'pending') return false;
+      if (selectedStatus === 'replied' && t.workflowStatus !== 'replied') return false;
+      if (selectedStatus === 'starred' && !t.starred) return false;
+      if (
+        (selectedStatus === 'unread' || selectedStatus === 'read') &&
+        t.status !== selectedStatus
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+  renderThreads(filtered);
 }
 
+async function loadSupportInbox(opts) {
+  if (!messagesList) return;
+  const silent = Boolean(opts && opts.silent);
+  const loadingIndicator = document.getElementById('loadingIndicator');
 
-// Make functions globally available for onclick handlers
-window.showMessageDetail = showMessageDetail;
-window.markAsRead = markAsRead;
-window.replyToMessage = replyToMessage;
-window.deleteMessage = deleteMessage;
-window.closeMessageModal = closeMessageModal;
-window.toggleStar = toggleStar;
-window.blockMessage = blockMessage;
-window.initializeMessages = initializeMessages;
-window.renderMessages = renderMessages;
-
-// Initialize function
-function initializeMessages() {
-    console.log('Messages page loaded, initializing...');
-    
-    // Initialize DOM elements
-    notificationBtn = document.getElementById('notificationBtn');
-    notificationPopup = document.getElementById('notificationPopup');
-    profileBtn = document.getElementById('profileBtn');
-    profilePopup = document.getElementById('profilePopup');
-    messageSearch = document.getElementById('messageSearch');
-    statusFilter = document.getElementById('statusFilter');
-    messagesList = document.getElementById('messagesList');
-    messageModal = document.getElementById('messageModal');
-    closeMessageModal = document.getElementById('closeMessageModal');
-    messageContent = document.getElementById('messageContent');
-    spamBlockedBtn = document.getElementById('spamBlockedBtn');
-    
-    console.log('DOM elements initialized. messagesList:', messagesList);
-    console.log('Total messages:', allMessages.length);
-    
-    if (!messagesList) {
-        console.error('messagesList element not found! Check HTML structure.');
-        return;
-    }
-    
-    // Setup event listeners
-    setupEventListeners();
-    
-    // Remove loading indicator
-    const loadingIndicator = document.getElementById('loadingIndicator');
+  if (!silent) {
     if (loadingIndicator) {
-        loadingIndicator.remove();
+      loadingIndicator.style.display = 'block';
+      loadingIndicator.textContent = 'Loading messages from server...';
     }
-    
-    // Render messages
-    renderMessages();
-    
-    console.log('Initialization complete');
-}
+  }
 
-// Initialize: Render messages on page load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeMessages);
-} else {
-    // DOM is already loaded
-    initializeMessages();
-}
-
-// Setup event listeners
-function setupEventListeners() {
-    // Notification Popup Toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
-        });
+  try {
+    if (!window.API || !API.admin || !API.admin.supportGetConversations) {
+      throw new Error('API not available.');
     }
 
-    // Profile Popup Toggle
-    if (profileBtn && profilePopup) {
-        profileBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            profilePopup.classList.toggle('active');
-            if (notificationPopup) {
-                notificationPopup.classList.remove('active');
-            }
-        });
-    }
-
-    // Close popups when clicking outside
-    document.addEventListener('click', (e) => {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
+    let currentUser = API.getCurrentUser && API.getCurrentUser();
+    if (!currentUser && API.auth && API.auth.getCurrentUser) {
+      try {
+        const me = await API.auth.getCurrentUser();
+        if (me && me.user) {
+          currentUser = me.user;
+          if (API.setCurrentUser) API.setCurrentUser(currentUser);
         }
-        if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
-            profilePopup.classList.remove('active');
-        }
+      } catch (_) {}
+    }
+
+    const res = await API.admin.supportGetConversations({
+      conversationTake,
+      submissionTake
     });
-    
-    // Search functionality
-    if (messageSearch) {
-        messageSearch.addEventListener('input', filterMessages);
+    const conversations = (res && res.conversations) ? res.conversations : [];
+    const backlog = (res && res.submissionBacklog) ? res.submissionBacklog : [];
+    const convThreads = conversations.map((c) => mapConversationToThread(c, currentUser));
+    const subThreads = backlog.map((s) => mapSubmissionToThread(s));
+    allThreads = [...subThreads, ...convThreads];
+    allThreads.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    filterThreads();
+  } catch (e) {
+    console.error('Load support inbox error:', e);
+    if (!silent) {
+      messagesList.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#DC2626"><p style="margin:0">${escapeHtml(e && e.message ? e.message : 'Failed to load messages')}</p></div>`;
     }
+  } finally {
+    if (!silent) {
+      const li = document.getElementById('loadingIndicator');
+      if (li) li.remove();
+    }
+  }
+}
 
-    // Filter functionality
-    if (statusFilter) {
-        statusFilter.addEventListener('change', filterMessages);
-    }
+async function autoMarkSubmissionSeenWhenViewed(t) {
+  if (!t.isContactSubmission || t.status !== 'unread') return;
+  if (!window.API || !API.admin || !API.admin.supportMarkSubmissionSeen) return;
+  try {
+    await API.admin.supportMarkSubmissionSeen(t.submissionMongoId);
+    t.status = 'read';
+    t.workflowStatus = 'replied';
+    filterThreads();
+  } catch (_) {
+    /* leave unread if the request fails */
+  }
+}
 
-    // Spam/Blocked Messages button
-    if (spamBlockedBtn) {
-        spamBlockedBtn.addEventListener('click', () => {
-            const blockedMessages = allMessages.filter(msg => msg.blocked);
-            renderMessages(blockedMessages);
-        });
+async function toggleStar(threadId) {
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || t.isContactSubmission) return;
+  const next = !t.starred;
+  try {
+    await API.admin.supportSetStarred(t.conversationId, next);
+    t.starred = next;
+    filterThreads();
+  } catch (e) {
+    alert(e && e.message ? e.message : 'Failed to update star.');
+  }
+}
+
+async function toggleBlock(threadId) {
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || t.isContactSubmission) return;
+  const next = !t.blocked;
+  const ok = await MatchFieldDialog.confirm(
+    next ? `Block/Spam message from ${t.fullName}?` : `Unblock this message from ${t.fullName}?`,
+    { type: next ? 'danger' : 'warning', okText: next ? 'Block' : 'Unblock' }
+  );
+  if (!ok) return;
+  try {
+    await API.admin.supportSetBlocked(t.conversationId, next);
+    t.blocked = next;
+    filterThreads();
+  } catch (e) {
+    alert(e && e.message ? e.message : 'Failed to update block status.');
+  }
+}
+
+function appendReplyFormToMessageModal(t) {
+  const suf = escapeHtml(t.replyElSuffix);
+  const tid = escapeHtml(t.id);
+  const replyDiv = document.createElement('div');
+  replyDiv.innerHTML = `
+    <div class="reply-section">
+      <h4 class="reply-section-title">Reply to ${escapeHtml(t.fullName)}</h4>
+      <form class="reply-form" id="replyForm-${suf}" onsubmit="handleReplySubmit(event, '${tid}')">
+        <div class="reply-form-group">
+          <label for="replyMessage-${suf}" class="reply-label">Your Reply</label>
+          <textarea id="replyMessage-${suf}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
+        </div>
+        <div class="reply-form-actions">
+          <button type="button" class="btn-cancel-reply" onclick="cancelReply('${tid}')">Cancel</button>
+          <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
+        </div>
+      </form>
+    </div>
+    <div class="message-detail-actions">
+      <button class="btn-reply-toggle" onclick="toggleReplySection('${tid}')"><i class="fi fi-rr-envelope"></i> Reply</button>
+    </div>
+  `;
+  while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
+}
+
+async function showMessageDetail(threadId) {
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !messageContent || !messageModal) return;
+
+  if (!t.isContactSubmission && t.status === 'unread' && t.latestMessageId) {
+    const prevStatus = t.status;
+    t.status = 'read';
+    filterThreads();
+    try {
+      await API.admin.supportMarkAsRead(t.conversationId, t.latestMessageId);
+    } catch (err) {
+      t.status = prevStatus;
+      filterThreads();
+      console.warn('Admin inbox: mark as read failed', err);
+      alert((err && err.message) || 'Could not mark as read on the server. Try again.');
     }
-    
-    // Close message modal
-    if (closeMessageModal && messageModal) {
-        closeMessageModal.addEventListener('click', () => {
-            closeMessageModal();
-        });
-        
-        // Close on overlay click
-        messageModal.addEventListener('click', (e) => {
-            if (e.target === messageModal) {
-                closeMessageModal();
-            }
-        });
-        
-        // Close on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && messageModal.classList.contains('active')) {
-                closeMessageModal();
-            }
-        });
+  }
+
+  const initials = String(t.fullName || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  messageModal.classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  if (t.isContactSubmission) {
+    await autoMarkSubmissionSeenWhenViewed(t);
+    const timeStr = t.date ? getTimeAgo(t.date) : '';
+    messageContent.innerHTML = `
+      <div class="message-detail-header">
+        <div class="message-detail-avatar">${escapeHtml(initials)}</div>
+        <div class="message-detail-info">
+          <h3 class="message-detail-name">${escapeHtml(t.fullName)}</h3>
+          <p class="message-detail-email">${escapeHtml(t.email)}</p>
+        </div>
+      </div>
+      <div class="message-detail-thread" id="messageDetailThread">
+        <div class="message-detail-thread-label">Contact form message</div>
+        <div class="message-detail-item from-user">
+          <div class="message-detail-item-header">${escapeHtml(t.fullName)} · ${escapeHtml(timeStr)}</div>
+          ${renderContactMessageCard(t.message, t)}
+        </div>
+      </div>
+    `;
+    appendReplyFormToMessageModal(t);
+    return;
+  }
+
+  messageContent.innerHTML = `
+    <div class="message-detail-header">
+      <div class="message-detail-avatar">${escapeHtml(initials)}</div>
+      <div class="message-detail-info">
+        <h3 class="message-detail-name">${escapeHtml(t.fullName)}</h3>
+        <p class="message-detail-email">${escapeHtml(t.email)}</p>
+      </div>
+    </div>
+    <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> Loading full conversation...</div>
+    <div class="message-detail-thread" id="messageDetailThread" style="display:none;"></div>
+  `;
+
+  try {
+    const res = await API.admin.supportGetMessages(t.conversationId, { page: 1, limit: 200 });
+    const msgs = (res && res.messages) ? res.messages : [];
+    const threadEl = document.getElementById('messageDetailThread');
+    const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
+    if (loadingEl) loadingEl.remove();
+    if (!threadEl) return;
+    if (msgs.length === 0) {
+      threadEl.innerHTML = '<div class="message-detail-empty">No messages in this conversation.</div>';
+    } else {
+      const me = API.getCurrentUser ? API.getCurrentUser() : null;
+      const meId = me && me.id ? String(me.id) : '';
+      const threadHtml = msgs.map((m) => {
+        const isFromAdmin = meId && m.sender && String(m.sender.id) === meId;
+        const senderName = m.sender ? (m.sender.fullName || 'Unknown') : 'Unknown';
+        const timeStr = m.createdAt ? getTimeAgo(m.createdAt) : '';
+        const contentHtml = !isFromAdmin && looksLikeContactFormContent(m.content)
+          ? renderContactMessageCard(m.content, { fullName: senderName })
+          : `<div class="message-detail-item-text">${escapeHtml(m.content)}</div>`;
+        return `
+          <div class="message-detail-item ${isFromAdmin ? 'from-admin' : 'from-user'}">
+            <div class="message-detail-item-header">${escapeHtml(senderName)} · ${escapeHtml(timeStr)}</div>
+            ${contentHtml}
+          </div>
+        `;
+      }).join('');
+      threadEl.innerHTML = '<div class="message-detail-thread-label">Full conversation history</div>' + threadHtml;
     }
+    threadEl.style.display = 'block';
+  } catch (e) {
+    console.warn('Could not load full conversation:', e);
+    const threadEl = document.getElementById('messageDetailThread');
+    const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
+    if (loadingEl) loadingEl.remove();
+    if (threadEl) {
+      threadEl.innerHTML = '<div class="message-detail-empty">Could not load full conversation.</div>';
+      threadEl.style.display = 'block';
+    }
+  }
+
+  appendReplyFormToMessageModal(t);
+}
+
+function toggleReplySection(threadId) {
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !t.replyElSuffix) return;
+  const form = document.getElementById(`replyForm-${t.replyElSuffix}`);
+  if (!form) return;
+  const replySection = form.closest('.reply-section');
+  if (!replySection) return;
+  replySection.classList.toggle('active');
+  if (replySection.classList.contains('active')) {
+    const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
+    if (ta) ta.focus();
+  }
+}
+
+function cancelReply(threadId) {
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !t.replyElSuffix) return;
+  const form = document.getElementById(`replyForm-${t.replyElSuffix}`);
+  if (!form) return;
+  const replySection = form.closest('.reply-section');
+  if (replySection) replySection.classList.remove('active');
+  const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
+  if (ta) ta.value = '';
+}
+
+async function handleReplySubmit(event, threadId) {
+  event.preventDefault();
+  const t = allThreads.find((x) => String(x.id) === String(threadId));
+  if (!t || !t.replyElSuffix) return;
+  const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
+  const text = ta ? String(ta.value || '').trim() : '';
+  if (!text) return alert('Please enter a reply message.');
+
+  const submitBtn = document.querySelector(`#replyForm-${CSS.escape(t.replyElSuffix)} .btn-send-reply`);
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Sending...';
+  }
+  try {
+    if (t.isContactSubmission) {
+      await API.admin.supportReplyFromSubmission(t.submissionMongoId, text);
+    } else {
+      await API.admin.supportSendMessage(t.conversationId, text);
+    }
+    closeMessageModal();
+    await loadSupportInbox({ silent: true });
+    alert('Reply sent. The user will see it in their notifications.');
+  } catch (e) {
+    alert(e && e.message ? e.message : 'Failed to send reply.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml || '<i class="fi fi-rr-paper-plane"></i> Send Reply';
+    }
+  }
+}
+
+function closeMessageModal() {
+  if (messageModal) {
+    messageModal.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+}
+
+function setupProfilePopup() {
+  // Bell: ../../scripts/player/notifications.js
+  if (profileBtn && profilePopup) {
+    profileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      profilePopup.classList.toggle('active');
+      const notificationPopup = document.getElementById('notificationPopup');
+      if (notificationPopup) notificationPopup.classList.remove('active');
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
+      profilePopup.classList.remove('active');
+    }
+  });
+}
+
+function setupModalHandlers() {
+  if (closeMessageModalBtn && messageModal) {
+    closeMessageModalBtn.addEventListener('click', closeMessageModal);
+    messageModal.addEventListener('click', (e) => {
+      if (e.target === messageModal) closeMessageModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && messageModal.classList.contains('active')) closeMessageModal();
+    });
+  }
+}
+
+function setupSearchAndFilter() {
+  if (messageSearch) messageSearch.addEventListener('input', filterThreads);
+  if (statusFilter) statusFilter.addEventListener('change', filterThreads);
+  if (spamBlockedBtn) {
+    spamBlockedBtn.addEventListener('click', () => {
+      isViewingSpam = !isViewingSpam;
+      spamBlockedBtn.classList.toggle('active', isViewingSpam);
+      filterThreads();
+    });
+  }
+}
+
+function initialize() {
+  profileBtn = document.getElementById('profileBtn');
+  profilePopup = document.getElementById('profilePopup');
+  messageSearch = document.getElementById('messageSearch');
+  statusFilter = document.getElementById('statusFilter');
+  messagesList = document.getElementById('messagesList');
+  messageModal = document.getElementById('messageModal');
+  closeMessageModalBtn = document.getElementById('closeMessageModal');
+  messageContent = document.getElementById('messageContent');
+  spamBlockedBtn = document.getElementById('spamBlockedBtn');
+
+  const loadMoreBtn = document.getElementById('loadMoreInboxBtn');
+  const refreshBtn = document.getElementById('refreshInboxBtn');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', () => {
+      conversationTake = Math.min(300, conversationTake + 60);
+      submissionTake = Math.min(200, submissionTake + 40);
+      if (conversationTake >= 300 && submissionTake >= 200) {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.textContent = 'Maximum loaded';
+      }
+      loadSupportInbox();
+    });
+  }
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      try {
+        await loadSupportInbox({ silent: true });
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    });
+  }
+
+  setupProfilePopup();
+  setupModalHandlers();
+  setupSearchAndFilter();
+  loadSupportInbox();
+
+  if (inboxPollTimer) clearInterval(inboxPollTimer);
+  inboxPollTimer = setInterval(() => {
+    loadSupportInbox({ silent: true });
+  }, 45000);
+}
+
+// Expose for onclick handlers
+window.toggleStar = toggleStar;
+window.toggleBlock = toggleBlock;
+window.showMessageDetail = showMessageDetail;
+window.closeMessageModal = closeMessageModal;
+window.handleReplySubmit = handleReplySubmit;
+window.cancelReply = cancelReply;
+window.toggleReplySection = toggleReplySection;
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize);
+} else {
+  initialize();
 }
 

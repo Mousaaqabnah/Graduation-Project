@@ -1,7 +1,261 @@
-// Fields page functionality
+// Fields page — API.fields.getMine / create / delete / unavailable-dates (same auth + fetch pattern as player).
+// ownerFieldEsc, formatOwnerFieldPrice, view-field modal: scripts/owner/view-field-modal.js (must load before this file)
+
+function setFieldStatusBadgeLoading() {
+    const badge = document.getElementById('fieldStatusBadge');
+    if (!badge) return;
+    badge.className = 'field-status-badge pending';
+    badge.innerHTML =
+        '<span class="status-dot pending"></span><span class="status-text">Loading…</span>';
+}
+
+/** Admin moderation + listing visibility (API: moderationStatus, isActive). */
+function ownerFieldModerationUi(f) {
+    const mod = String(f.moderationStatus || '').toUpperCase();
+    const active = f.isActive !== false;
+    if (mod === 'REJECTED') {
+        return { variant: 'rejected', label: 'Rejected' };
+    }
+    if (mod === 'PENDING') {
+        return { variant: 'pending', label: 'Pending admin approval' };
+    }
+    if (mod === 'APPROVED') {
+        if (active) return { variant: 'approved', label: 'Approved & live' };
+        return { variant: 'pending', label: 'Approved (not visible yet)' };
+    }
+    if (active) {
+        return { variant: 'approved', label: 'Live' };
+    }
+    return { variant: 'pending', label: 'Pending admin approval' };
+}
+
+function setFieldStatusBadgeFromField(f) {
+    const badge = document.getElementById('fieldStatusBadge');
+    if (!badge) return;
+    const ui = ownerFieldModerationUi(f);
+    const v = ui.variant;
+    badge.className = 'field-status-badge' + (v === 'approved' ? '' : ' ' + v);
+    const dotClass = 'status-dot' + (v === 'approved' ? '' : ' ' + v);
+    badge.innerHTML =
+        '<span class="' + dotClass + '"></span><span class="status-text">' + ownerFieldEsc(ui.label) + '</span>';
+}
+
+function detectSportLabel(sportValue) {
+    const raw = String(sportValue || '').trim().toLowerCase();
+    if (!raw) return 'Football';
+    if (raw === 'soccer') return 'Football';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function syncFieldTypeCustomVisibility() {
+    const sel = document.getElementById('fieldType');
+    const group = document.getElementById('fieldSportCustomGroup');
+    const input = document.getElementById('fieldSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+function syncMutuallyExclusiveFieldFeaturesState() {
+    const form = document.getElementById('addFieldForm');
+    if (!form) return;
+    function pair(aSel, bSel) {
+        const a = form.querySelector(aSel);
+        const b = form.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="features"][value="indoor"]', 'input[name="features"][value="outdoor"]');
+    pair('input[name="features"][value="artificial-grass"]', 'input[name="features"][value="natural-grass"]');
+}
+
+function initAddFieldFormEnhancements() {
+    const form = document.getElementById('addFieldForm');
+    if (!form || form.dataset.addFieldEnhancements === '1') return;
+    form.dataset.addFieldEnhancements = '1';
+    const typeSel = document.getElementById('fieldType');
+    if (typeSel) {
+        typeSel.addEventListener('change', function () {
+            syncFieldTypeCustomVisibility();
+        });
+    }
+    form.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'features') {
+            syncMutuallyExclusiveFieldFeaturesState();
+        }
+    });
+    syncFieldTypeCustomVisibility();
+    syncMutuallyExclusiveFieldFeaturesState();
+}
+
+function resolveAddFieldSportForPayload() {
+    const sel = document.getElementById('fieldType');
+    const custom = document.getElementById('fieldSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = custom && custom.value ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
+function syncManageSportCustomVisibility() {
+    const sel = document.getElementById('manageSportCategory');
+    const group = document.getElementById('manageSportCustomGroup');
+    const input = document.getElementById('manageSportCustom');
+    if (!sel || !group || !input) return;
+    const isOther = sel.value === 'other';
+    group.style.display = isOther ? 'block' : 'none';
+    input.required = isOther;
+    if (!isOther) {
+        input.value = '';
+        input.style.borderColor = '';
+    }
+}
+
+function syncMutuallyExclusiveManageFeaturesState() {
+    const root = document.getElementById('editFieldModal');
+    if (!root) return;
+    function pair(aSel, bSel) {
+        const a = root.querySelector(aSel);
+        const b = root.querySelector(bSel);
+        if (!a || !b) return;
+        if (a.checked) {
+            b.checked = false;
+            b.disabled = true;
+            a.disabled = false;
+        } else if (b.checked) {
+            a.checked = false;
+            a.disabled = true;
+            b.disabled = false;
+        } else {
+            a.disabled = false;
+            b.disabled = false;
+        }
+    }
+    pair('input[name="manageFeatures"][value="indoor"]', 'input[name="manageFeatures"][value="outdoor"]');
+    pair('input[name="manageFeatures"][value="artificial-grass"]', 'input[name="manageFeatures"][value="natural-grass"]');
+}
+
+function initManageFieldFormEnhancements() {
+    const modal = document.getElementById('editFieldModal');
+    if (!modal || modal.dataset.manageFormEnhancements === '1') return;
+    modal.dataset.manageFormEnhancements = '1';
+    const sportSel = document.getElementById('manageSportCategory');
+    if (sportSel) {
+        sportSel.addEventListener('change', function () {
+            syncManageSportCustomVisibility();
+        });
+    }
+    modal.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === 'manageFeatures') {
+            syncMutuallyExclusiveManageFeaturesState();
+        }
+    });
+    syncManageSportCustomVisibility();
+    syncMutuallyExclusiveManageFeaturesState();
+}
+
+function resolveManageSportForPayload() {
+    const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
+    if (!sel) return detectSportLabel('football');
+    if (sel.value === 'other') {
+        const raw = custom && custom.value ? String(custom.value).trim() : '';
+        if (!raw) return '';
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return detectSportLabel(sel.value);
+}
+
+function renderOwnerFieldsList(fields) {
+    const list = document.getElementById('fieldsList');
+    if (!list) return;
+    if (!fields || !fields.length) {
+        list.innerHTML = '<p style="padding:24px;color:#6B7280;">No fields yet. Click <strong>Add new field</strong> to create one (requires verified owner account).</p>';
+        return;
+    }
+    list.innerHTML = fields.map(function(f) {
+        const id = String(f.id != null ? f.id : f._id || '');
+        const img = (f.images && f.images[0]) || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop';
+        const typeTag = f.type === 'INDOOR' ? 'Indoor' : 'Outdoor';
+        const rating = f.rating != null ? f.rating : '—';
+        const rc = f.reviewCount != null ? f.reviewCount : 0;
+        const modUi = ownerFieldModerationUi(f);
+        const modTagClass =
+            modUi.variant === 'approved' ? 'field-tag field-tag-mod field-tag-mod-live' :
+            modUi.variant === 'rejected' ? 'field-tag field-tag-mod field-tag-mod-rejected' :
+            'field-tag field-tag-mod field-tag-mod-pending';
+        return (
+            '<div class="field-list-card" data-field-name="' + ownerFieldEsc(f.name) + '" data-field-id="' + ownerFieldEsc(id) + '">' +
+            '<div class="field-list-image"><img src="' + ownerFieldEsc(img) + '" alt=""></div>' +
+            '<div class="field-list-content"><div class="field-list-info">' +
+            '<h3 class="field-list-name">' + ownerFieldEsc(f.name) + '</h3>' +
+            '<p class="field-list-location"><i class="fi fi-rr-marker"></i> ' + ownerFieldEsc(f.location || '') + '</p>' +
+            '<div class="field-list-rating"><span class="field-star-yellow">★</span> ' +
+            '<span class="field-rating-value">' + ownerFieldEsc(rating) + '</span> <span class="field-reviews-count">(' + rc + ')</span></div>' +
+            '<div class="field-list-tags">' +
+            '<span class="field-tag">' + typeTag + '</span>' +
+            '<span class="field-tag">' + ownerFieldEsc(f.sport || '') + '</span>' +
+            '<span class="' + modTagClass + '">' + ownerFieldEsc(modUi.label) + '</span>' +
+            '</div></div>' +
+            '<div class="field-list-actions">' +
+            '<div class="field-list-price-container">' +
+            '<span class="field-list-price-label">Price</span>' +
+            '<span class="field-list-price">' + formatOwnerFieldPrice(f.pricePerHour) + '/h</span>' +
+            '</div>' +
+            '<div class="field-list-buttons">' +
+            '<button type="button" class="manage-btn" onclick="openModal(\'' + id + '\')">Manage</button>' +
+            '<button type="button" class="action-btn" onclick="viewFieldDetails(this)" title="View"><i class="fi fi-rr-eye"></i></button>' +
+            '<button type="button" class="action-btn delete" onclick="deleteField(this)" title="Delete"><i class="fi fi-rr-trash"></i></button>' +
+            '</div></div></div></div>'
+        );
+    }).join('');
+}
+
+async function loadOwnerFieldsFromApi() {
+    const list = document.getElementById('fieldsList');
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getMine) {
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load fields: API is not available. Start the server (<code>npm run dev</code>) and open this page from <code>http://localhost:3000</code>.</p>';
+        }
+        return;
+    }
+    try {
+        const res = await API.fields.getMine();
+        const fields = (res && res.fields) ? res.fields : [];
+        renderOwnerFieldsList(fields);
+    } catch (e) {
+        console.error('loadOwnerFieldsFromApi', e);
+        const msg = (e && e.message) ? String(e.message) : 'Request failed';
+        if (list) {
+            list.innerHTML =
+                '<p style="padding:24px;color:#B45309;">Could not load your fields: ' +
+                ownerFieldEsc(msg) +
+                '. Log in as an <strong>OWNER</strong> (e.g. <code>owner@matchfield.com</code> after <code>npm run db:seed</code>), or check the browser Network tab for <code>/api/fields/me</code>.</p>';
+        }
+    }
+}
 
 // DOM Elements
-const notificationBtn = document.getElementById('notificationBtn');
 const notificationPopup = document.getElementById('notificationPopup');
 const profileBtn = document.getElementById('profileBtn');
 const profilePopup = document.getElementById('profilePopup');
@@ -9,22 +263,12 @@ const fieldSearchInput = document.getElementById('fieldSearchInput');
 const addFieldBtn = document.getElementById('addFieldBtn');
 const fieldsList = document.getElementById('fieldsList');
 const editFieldModal = document.getElementById('editFieldModal');
-const viewFieldModal = document.getElementById('viewFieldModal');
 
 // Current selected date for calendar
 let currentModalDate = new Date();
 let selectedDate = new Date();
 
-// Notification Popup Toggle
-if (notificationBtn && notificationPopup) {
-    notificationBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPopup.classList.toggle('active');
-        if (profilePopup) {
-            profilePopup.classList.remove('active');
-        }
-    });
-}
+// Notification bell: scripts/player/notifications.js (API). No duplicate toggle here.
 
 // Profile Popup Toggle
 if (profileBtn && profilePopup) {
@@ -37,12 +281,8 @@ if (profileBtn && profilePopup) {
     });
 }
 
-// Close popups when clicking outside
 document.addEventListener('click', (e) => {
-    if (notificationPopup && !notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-        notificationPopup.classList.remove('active');
-    }
-    if (profilePopup && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+    if (profilePopup && profileBtn && !profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
         profilePopup.classList.remove('active');
     }
 });
@@ -71,8 +311,11 @@ const addFieldModal = document.getElementById('addFieldModal');
 let currentStep = 1;
 const totalSteps = 8;
 let fieldImages = [];
-let highlights = [];
 let unavailableDates = [];
+let addFieldMapPicker = null;
+let manageFieldMapPicker = null;
+let lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+let lastValidManageFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
 
 if (addFieldBtn) {
     addFieldBtn.addEventListener('click', () => {
@@ -96,23 +339,37 @@ function closeAddFieldModal() {
     if (addFieldModal) {
         addFieldModal.classList.remove('active');
         document.body.style.overflow = '';
+        if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+            addFieldMapPicker.destroy();
+            addFieldMapPicker = null;
+        }
     }
 }
 
 // Reset form
 function resetAddFieldForm() {
     fieldImages = [];
-    highlights = [];
     unavailableDates = [];
     document.getElementById('addFieldForm').reset();
     document.getElementById('fieldImagesGrid').innerHTML = '';
-    document.getElementById('highlightsList').innerHTML = '';
+    const hl = document.getElementById('highlightsList');
+    if (hl) hl.innerHTML = '';
     document.getElementById('unavailableDatesList').innerHTML = '';
+    document.getElementById('latitude').textContent = '-';
+    document.getElementById('longitude').textContent = '-';
+    lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
     updateStepButtons();
+    if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
+        addFieldMapPicker.destroy();
+        addFieldMapPicker = null;
+    }
     // Reinitialize day schedules after reset
     setTimeout(() => {
         initializeDaySchedules();
         updateRadioLabels();
+        initializeAddFieldMap();
+        syncFieldTypeCustomVisibility();
+        syncMutuallyExclusiveFieldFeaturesState();
     }, 100);
 }
 
@@ -142,6 +399,12 @@ function showStep(step) {
     
     currentStep = step;
     updateStepButtons();
+    if (step === 5) {
+        initializeAddFieldMap();
+        if (addFieldMapPicker && typeof addFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { addFieldMapPicker.invalidateSize(); }, 60);
+        }
+    }
 }
 
 // Update step navigation buttons
@@ -208,15 +471,32 @@ function validateCurrentStep() {
             alert('Please upload ownership or rental agreement document');
             isValid = false;
         }
+    } else if (currentStep === 2) {
+        const fieldTypeEl = document.getElementById('fieldType');
+        const customSport = document.getElementById('fieldSportCustom');
+        if (fieldTypeEl && fieldTypeEl.value === 'other') {
+            const custom = customSport ? customSport.value.trim() : '';
+            if (!custom) {
+                alert('Please enter the sport name for "Other".');
+                isValid = false;
+                if (customSport) {
+                    customSport.style.borderColor = '#DC2626';
+                    customSport.addEventListener('input', function onIn() {
+                        this.style.borderColor = '#D1D5DB';
+                        this.removeEventListener('input', onIn);
+                    });
+                }
+            }
+        }
     } else if (currentStep === 4) {
         if (fieldImages.length === 0) {
             alert('Please upload at least one field image');
             isValid = false;
         }
     } else if (currentStep === 5) {
-        // Map validation would go here
-        const latitude = document.getElementById('latitude').textContent;
-        if (latitude === '-') {
+        const latitude = parseFloat(document.getElementById('latitude').textContent);
+        const longitude = parseFloat(document.getElementById('longitude').textContent);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
             alert('Please select location on the map');
             isValid = false;
         }
@@ -244,35 +524,6 @@ function validateCurrentStep() {
     }
     
     return isValid;
-}
-
-// Add highlight
-function addHighlight() {
-    const input = document.getElementById('highlightInput');
-    const value = input.value.trim();
-    
-    if (value && !highlights.includes(value)) {
-        highlights.push(value);
-        renderHighlights();
-        input.value = '';
-    }
-}
-
-// Remove highlight
-function removeHighlight(index) {
-    highlights.splice(index, 1);
-    renderHighlights();
-}
-
-// Render highlights
-function renderHighlights() {
-    const container = document.getElementById('highlightsList');
-    container.innerHTML = highlights.map((highlight, index) => `
-        <div class="highlight-tag">
-            <span>${highlight}</span>
-            <button type="button" onclick="removeHighlight(${index})">&times;</button>
-        </div>
-    `).join('');
 }
 
 // Handle field images upload
@@ -312,6 +563,129 @@ function renderFieldImages() {
 function removeFieldImage(index) {
     fieldImages.splice(index, 1);
     renderFieldImages();
+}
+
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) {
+            resolve('');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e && e.target && e.target.result) || '');
+        reader.onerror = () => reject(new Error('Failed to read file.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function applyCoordinatesToDom(lat, lng, mode) {
+    const latId = mode === 'manage' ? 'manageLatitude' : 'latitude';
+    const lngId = mode === 'manage' ? 'manageLongitude' : 'longitude';
+    const latEl = document.getElementById(latId);
+    const lngEl = document.getElementById(lngId);
+    if (latEl) latEl.textContent = Number(lat).toFixed(6);
+    if (lngEl) lngEl.textContent = Number(lng).toFixed(6);
+}
+
+function getAddressFieldIds(mode) {
+    if (mode === 'manage') {
+        return { addressId: 'manageFieldAddress', cityId: 'manageFieldCity', districtId: 'manageFieldDistrict' };
+    }
+    return { addressId: 'fieldAddress', cityId: 'fieldCity', districtId: 'fieldDistrict' };
+}
+
+async function applyReverseGeocodedMetadata(lat, lng, mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.reverseGeocode) return true;
+    try {
+        const meta = await GeocodingService.reverseGeocode(lat, lng);
+        if (!meta) return true;
+        if (meta.isUnbuildableWater) {
+            const reason = meta.invalidPinReason;
+            const msg =
+                reason === 'drift'
+                    ? 'This pin is not on land (for example open sea). Move it onto land until the address matches the pin — try near a street, district, or venue.'
+                    : 'That location is on open water. Place the pin on land (e.g. a street or sports ground).';
+            const title = reason === 'drift' ? 'Pin not on land' : 'Open water';
+            if (typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.alert) {
+                await MatchFieldDialog.alert(msg, { title: title, type: 'warning', okText: 'OK' });
+            } else {
+                alert(msg);
+            }
+            return false;
+        }
+        const ids = getAddressFieldIds(mode);
+        const addressInput = document.getElementById(ids.addressId);
+        const cityInput = document.getElementById(ids.cityId);
+        const districtInput = document.getElementById(ids.districtId);
+        if (addressInput && meta.address) addressInput.value = meta.address;
+        if (cityInput && meta.city) cityInput.value = meta.city;
+        if (districtInput && meta.district) districtInput.value = meta.district;
+        return true;
+    } catch (e) {
+        console.warn('reverse geocoding failed', e);
+        return true;
+    }
+}
+
+async function geocodeAddressAndSetMarker(mode) {
+    if (typeof GeocodingService === 'undefined' || !GeocodingService.geocodeAddress) return;
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || !addressInput.value.trim()) return;
+    try {
+        const result = await GeocodingService.geocodeAddress(addressInput.value.trim());
+        if (!result) return;
+        const picker = mode === 'manage' ? manageFieldMapPicker : addFieldMapPicker;
+        if (!picker) return;
+        picker.setPosition(result.lat, result.lng, 'search');
+        const cityInput = document.getElementById(ids.cityId);
+        const districtInput = document.getElementById(ids.districtId);
+        if (cityInput && result.metadata && result.metadata.city) cityInput.value = result.metadata.city;
+        if (districtInput && result.metadata && result.metadata.district) districtInput.value = result.metadata.district;
+    } catch (e) {
+        console.warn('address geocoding failed', e);
+    }
+}
+
+function bindAddressSearch(mode) {
+    const ids = getAddressFieldIds(mode);
+    const addressInput = document.getElementById(ids.addressId);
+    if (!addressInput || addressInput.dataset.geocodeBound === '1') return;
+    addressInput.dataset.geocodeBound = '1';
+    addressInput.addEventListener('change', function () {
+        geocodeAddressAndSetMarker(mode);
+    });
+    addressInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            geocodeAddressAndSetMarker(mode);
+        }
+    });
+}
+
+function initializeAddFieldMap() {
+    if (addFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    addFieldMapPicker = MapPickerService.create({
+        containerId: 'locationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'add');
+            if (!ok) {
+                const prev = lastValidAddFieldMapPosition;
+                if (addFieldMapPicker && prev) {
+                    addFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'add');
+                }
+                return;
+            }
+            lastValidAddFieldMapPosition = { lat: position.lat, lng: position.lng };
+            applyCoordinatesToDom(position.lat, position.lng, 'add');
+        }
+    });
+    bindAddressSearch('add');
 }
 
 
@@ -394,7 +768,7 @@ function toggleFieldVisibility() {
 }
 
 // Submit field form
-function submitFieldForm() {
+async function submitFieldForm() {
     if (!validateCurrentStep()) {
         return;
     }
@@ -408,7 +782,6 @@ function submitFieldForm() {
         // Basic info
         fieldName: document.getElementById('fieldName').value,
         description: document.getElementById('fieldDescription').value,
-        highlights: highlights,
         fieldType: document.getElementById('fieldType').value,
         capacity: parseInt(document.getElementById('capacity').value),
         
@@ -472,18 +845,105 @@ function submitFieldForm() {
         
         // Settings
         bookingType: document.querySelector('input[name="bookingType"]:checked').value,
-        advanceBooking: document.getElementById('advanceBooking').value,
-        cancellationPolicy: document.getElementById('cancellationPolicy').value,
         visibility: document.getElementById('fieldVisibilityToggle').classList.contains('active')
     };
     
-    console.log('Submitting field form:', formData);
-    
-    // Here you would typically send the data to your backend API
-    // For now, we'll show a success message
-    alert('Field submitted successfully! It will be reviewed and approved by the admin.');
-    
-    closeAddFieldModal();
+    if (typeof API === 'undefined' || !API.fields || !API.fields.create) {
+        alert('Unable to submit: API not loaded.');
+        return;
+    }
+
+    const sport = resolveAddFieldSportForPayload();
+    if (!sport) {
+        alert('Please enter the sport name for "Other".');
+        return;
+    }
+    const indoorCb = document.querySelector('input[name="features"][value="indoor"]');
+    const outdoorCb = document.querySelector('input[name="features"][value="outdoor"]');
+    const isIndoor = indoorCb && indoorCb.checked && !(outdoorCb && outdoorCb.checked);
+    const cityEl = document.getElementById('fieldCity');
+    const distEl = document.getElementById('fieldDistrict');
+    const addrEl = document.getElementById('fieldAddress');
+    const locationLine = [cityEl && cityEl.value, distEl && distEl.value].filter(Boolean).join(', ') || (addrEl && addrEl.value) || '—';
+    const latEl = document.getElementById('latitude');
+    const lngEl = document.getElementById('longitude');
+    const latStr = latEl ? latEl.textContent.trim() : '';
+    const lngStr = lngEl ? lngEl.textContent.trim() : '';
+    const latNum = latStr && latStr !== '-' ? parseFloat(latStr) : NaN;
+    const lngNum = lngStr && lngStr !== '-' ? parseFloat(lngStr) : NaN;
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+        alert('Please select a valid map location before saving.');
+        return;
+    }
+    const amenities = Array.from(document.querySelectorAll('input[name="amenities"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
+    const feat = Array.from(document.querySelectorAll('input[name="features"]:checked')).map(function(cb) { return cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : cb.value; }).filter(Boolean);
+
+    const payload = {
+        name: (document.getElementById('fieldName') && document.getElementById('fieldName').value.trim()) || 'Field',
+        sport: sport,
+        description: (document.getElementById('fieldDescription') && document.getElementById('fieldDescription').value) || '',
+        capacity: parseInt(document.getElementById('capacity') && document.getElementById('capacity').value, 10) || null,
+        type: isIndoor ? 'INDOOR' : 'OUTDOOR',
+        location: locationLine,
+        address: (addrEl && addrEl.value) || undefined,
+        city: (cityEl && cityEl.value) || undefined,
+        district: (distEl && distEl.value) || undefined,
+        pricePerHour: Math.round(parseFloat(document.getElementById('pricePerHour') && document.getElementById('pricePerHour').value) || 0),
+        amenities: amenities,
+        features: feat,
+        highlights: [],
+        images: [],
+        schedule: formData.schedule,
+        bookingType: formData.bookingType,
+        visibilityRequested: !!formData.visibility,
+        latitude: latNum,
+        longitude: lngNum,
+        isActive: document.getElementById('fieldVisibilityToggle') ? document.getElementById('fieldVisibilityToggle').classList.contains('active') : true
+    };
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+    }
+
+    try {
+        const ownershipDataUrl = await fileToDataUrl(formData.ownershipDoc);
+        const licenseDataUrl = await fileToDataUrl(formData.licensesDoc);
+        const imageDataUrls = await Promise.all(
+            (fieldImages || [])
+                .map((img) => (img && img.file ? img.file : null))
+                .filter(Boolean)
+                .map((file) => fileToDataUrl(file))
+        );
+
+        if (ownershipDataUrl) payload.ownershipDocumentUrl = ownershipDataUrl;
+        if (licenseDataUrl) payload.licensesDocumentUrl = licenseDataUrl;
+        payload.images = imageDataUrls.filter(Boolean);
+
+        const res = await API.fields.create(payload);
+        const field = res && res.field;
+        const fieldId = field && field.id;
+        if (fieldId && unavailableDates && unavailableDates.length && API.fields.addUnavailableDate) {
+            for (let i = 0; i < unavailableDates.length; i++) {
+                try {
+                    await API.fields.addUnavailableDate(fieldId, unavailableDates[i]);
+                } catch (err) {
+                    console.warn('unavailable date', err);
+                }
+            }
+        }
+        alert('Field created successfully.');
+        closeAddFieldModal();
+        loadOwnerFieldsFromApi();
+    } catch (err) {
+        alert((err && err.message) || 'Could not create field. Owner verification may be required.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit for Approval';
+        }
+    }
 }
 
 // Close modal when clicking outside
@@ -532,28 +992,212 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Map click handler (placeholder)
-    const mapPicker = document.getElementById('locationMap');
-    if (mapPicker) {
-        mapPicker.addEventListener('click', (e) => {
-            // Placeholder for map integration
-            // In a real implementation, this would use a map library like Leaflet or Google Maps
-            const rect = mapPicker.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            document.getElementById('mapPin').style.left = x + 'px';
-            document.getElementById('mapPin').style.top = y + 'px';
-            
-            // Placeholder coordinates
-            document.getElementById('latitude').textContent = (41.0082 + (Math.random() - 0.5) * 0.01).toFixed(6);
-            document.getElementById('longitude').textContent = (28.9784 + (Math.random() - 0.5) * 0.01).toFixed(6);
-        });
-    }
 });
 
 // Modal Functions
 let currentManageSection = null;
+/** Set when opening Manage for a field — used for PUT /fields/:id */
+let ownerManagingFieldId = null;
+
+function collectManageFeatureStrings() {
+    const out = [];
+    document.querySelectorAll('input[name="manageAmenities"]:checked').forEach(function(cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('input[name="manageFeatures"]:checked').forEach(function(cb) {
+        const label = cb.nextElementSibling;
+        if (label && label.textContent) out.push(label.textContent.trim());
+    });
+    document.querySelectorAll('#manageHighlightsList .highlight-item span').forEach(function(span) {
+        const t = span.textContent.trim();
+        if (t) out.push(t);
+    });
+    return out;
+}
+
+function applyManageFeaturesFromField(features) {
+    const arr = Array.isArray(features) ? features : [];
+    const lower = arr.map(function(s) {
+        return String(s).trim().toLowerCase();
+    });
+    document.querySelectorAll('input[name="manageAmenities"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        const l = label.trim().toLowerCase();
+        cb.checked = lower.indexOf(l) !== -1;
+    });
+    document.querySelectorAll('input[name="manageFeatures"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        const l = label.trim().toLowerCase();
+        cb.checked = lower.indexOf(l) !== -1;
+    });
+    const known = new Set();
+    document.querySelectorAll('input[name="manageAmenities"], input[name="manageFeatures"]').forEach(function(cb) {
+        const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+        if (label.trim()) known.add(label.trim().toLowerCase());
+    });
+    const hl = document.getElementById('manageHighlightsList');
+    if (hl) {
+        hl.innerHTML = '';
+        arr.forEach(function(f) {
+            const ft = String(f).trim();
+            if (!ft) return;
+            if (known.has(ft.toLowerCase())) return;
+            const highlightItem = document.createElement('div');
+            highlightItem.className = 'highlight-item';
+            highlightItem.innerHTML =
+                '<span>' +
+                ownerFieldEsc(ft) +
+                '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
+            hl.appendChild(highlightItem);
+        });
+    }
+    syncMutuallyExclusiveManageFeaturesState();
+}
+
+function selectManageSportByName(sportName) {
+    const sel = document.getElementById('manageSportCategory');
+    const custom = document.getElementById('manageSportCustom');
+    if (!sel) return;
+    const raw = String(sportName || '').trim();
+    if (!raw) {
+        sel.value = 'football';
+        if (custom) custom.value = '';
+        syncManageSportCustomVisibility();
+        return;
+    }
+    const norm = raw.toLowerCase().replace(/[_-]+/g, ' ');
+    const aliases = {
+        football: ['football', 'soccer', 'futbol', 'futsal football', 'mini football', 'hali saha'],
+        basketball: ['basketball', 'basket ball'],
+        tennis: ['tennis'],
+        padel: ['padel', 'paddle', 'padel tennis'],
+        futsal: ['futsal'],
+        volleyball: ['volleyball', 'voleybol'],
+        badminton: ['badminton']
+    };
+    let canonical = '';
+    Object.keys(aliases).some(function (key) {
+        const words = aliases[key];
+        const matched = words.some(function (w) {
+            return norm === w || norm.indexOf(w + ' ') === 0 || norm.indexOf(' ' + w) >= 0;
+        });
+        if (matched) canonical = key;
+        return matched;
+    });
+    const want = canonical || norm;
+    for (let i = 0; i < sel.options.length; i++) {
+        const opt = sel.options[i];
+        if (opt.value === 'other') continue;
+        const optionText = String(opt.text || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[_-]+/g, ' ');
+        const optionValue = String(opt.value || '').trim().toLowerCase();
+        if (optionText === want || optionValue === want) {
+            sel.selectedIndex = i;
+            if (custom) custom.value = '';
+            syncManageSportCustomVisibility();
+            return;
+        }
+    }
+    const otherOpt = Array.from(sel.options).find(function (o) {
+        return o.value === 'other';
+    });
+    if (otherOpt) {
+        sel.value = 'other';
+        if (custom) custom.value = raw;
+    }
+    syncManageSportCustomVisibility();
+}
+
+function resetManageImagesContainer() {
+    const container = document.querySelector('#edit-info-section .images-container');
+    if (!container) return;
+    container.querySelectorAll('.image-preview').forEach(function(node) {
+        node.remove();
+    });
+}
+
+function appendManageImagePreview(src) {
+    const container = document.querySelector('#edit-info-section .images-container');
+    if (!container || !src) return;
+    const addBtn = container.querySelector('.add-image-btn');
+    const imagePreview = document.createElement('div');
+    imagePreview.className = 'image-preview';
+    imagePreview.innerHTML =
+        '<img src="' +
+        ownerFieldEsc(src) +
+        '" alt="Field"><button class="remove-image" onclick="removeImage(this)">&times;</button>';
+    if (addBtn) {
+        container.insertBefore(imagePreview, addBtn);
+    } else {
+        container.appendChild(imagePreview);
+    }
+}
+
+function collectManageImagesFromDom() {
+    return Array.from(document.querySelectorAll('#edit-info-section .images-container .image-preview img'))
+        .map(function(img) {
+            return (img && img.getAttribute('src')) || '';
+        })
+        .filter(Boolean);
+}
+
+function unavailableYmdFromApi(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return (
+        x.getUTCFullYear() +
+        '-' +
+        String(x.getUTCMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(x.getUTCDate()).padStart(2, '0')
+    );
+}
+
+function inferFileNameFromUrl(url, fallback) {
+    const value = String(url || '').trim();
+    if (!value) return fallback;
+    if (value.startsWith('data:')) {
+        if (value.includes('pdf')) return fallback.replace(/\.[^.]*$/, '.pdf');
+        if (value.includes('png')) return fallback.replace(/\.[^.]*$/, '.png');
+        if (value.includes('jpeg') || value.includes('jpg')) return fallback.replace(/\.[^.]*$/, '.jpg');
+        return fallback;
+    }
+    try {
+        const clean = value.split('?')[0].split('#')[0];
+        const seg = clean.split('/').pop();
+        return seg || fallback;
+    } catch (_err) {
+        return fallback;
+    }
+}
+
+function setManageDocumentPreview(type, documentUrl) {
+    const previewId = type === 'ownership' ? 'manageOwnershipPreview' : 'manageLicensePreview';
+    const previewEl = document.getElementById(previewId);
+    if (!previewEl) return;
+    if (!documentUrl) {
+        previewEl.classList.remove('active');
+        previewEl.innerHTML = '';
+        return;
+    }
+    const fileName = inferFileNameFromUrl(
+        documentUrl,
+        type === 'ownership' ? 'ownership_document.pdf' : 'license_document.pdf'
+    );
+    previewEl.classList.add('active');
+    previewEl.innerHTML =
+        '<div class="file-preview-item">' +
+        '<i class="fi fi-rr-file" style="margin-right: 8px;"></i>' +
+        '<span>' + ownerFieldEsc(fileName) + '</span>' +
+        '<div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">' +
+        '<span style="font-size: 11px; color: #10B981; font-weight: 500;">Uploaded</span>' +
+        '<button type="button" onclick="removeManageFile(\'' + type + '\')" title="Remove file">&times;</button>' +
+        '</div>' +
+        '</div>';
+}
 
 function openModal(fieldId) {
     if (editFieldModal) {
@@ -563,9 +1207,11 @@ function openModal(fieldId) {
         // Show menu, hide sections
         showManageMenu();
         
-        // If fieldId is provided, load field data
         if (fieldId) {
+            ownerManagingFieldId = String(fieldId);
             loadFieldData(fieldId);
+        } else {
+            ownerManagingFieldId = null;
         }
     }
 }
@@ -574,8 +1220,12 @@ function closeModal() {
     if (editFieldModal) {
         editFieldModal.classList.remove('active');
         document.body.style.overflow = '';
-        // Reset to menu view
         showManageMenu();
+        ownerManagingFieldId = null;
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.destroy === 'function') {
+            manageFieldMapPicker.destroy();
+            manageFieldMapPicker = null;
+        }
     }
 }
 
@@ -646,10 +1296,21 @@ function openManageSection(sectionName) {
     }
     
     // Initialize section-specific features
-    if (sectionName === 'schedule') {
-        initializeManageDaySchedules();
-    } else if (sectionName === 'location') {
+    if (sectionName === 'location') {
         initializeManageMap();
+        if (manageFieldMapPicker && typeof manageFieldMapPicker.invalidateSize === 'function') {
+            setTimeout(function () { manageFieldMapPicker.invalidateSize(); }, 60);
+        }
+    } else if (sectionName === 'edit-info') {
+        syncManageSportCustomVisibility();
+        syncMutuallyExclusiveManageFeaturesState();
+    }
+
+    const submitBtn = document.getElementById('manageSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = (sectionName === 'documents' || sectionName === 'location')
+            ? 'Submit Update for Approval'
+            : 'Save Changes';
     }
 }
 
@@ -681,245 +1342,158 @@ function switchTab(tabName) {
     }
 }
 
-// Load field data into modal (placeholder)
-function loadFieldData(fieldId) {
-    // This would typically fetch data from an API
-    // For now, it's just a placeholder
-    console.log(`Loading data for field ${fieldId}`);
-}
-
-// View Field Details
-function viewFieldDetails(button) {
+async function loadFieldData(fieldId) {
+    if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.getById) {
+        return;
+    }
+    setFieldStatusBadgeLoading();
     try {
-        const fieldCard = button.closest('.field-list-card');
-        if (!fieldCard) return;
-        
-        const fieldImage = fieldCard.querySelector('.field-list-image img')?.src;
-        const fieldName = fieldCard.querySelector('.field-list-name')?.textContent;
-        const fieldLocation = fieldCard.querySelector('.field-list-location')?.textContent.trim();
-        const fieldPrice = fieldCard.querySelector('.field-list-price')?.textContent;
-        const fieldTags = Array.from(fieldCard.querySelectorAll('.field-tag')).map(tag => tag.textContent);
-        
-        if (!fieldImage || !fieldName) return;
-        
-        // Populate view modal
-        if (viewFieldModal) {
-            // Set main image
-            const imageEl = document.getElementById('viewFieldImage');
-            if (imageEl) imageEl.src = fieldImage;
-        
-            // Set title
-            const titleEl = document.getElementById('viewFieldName');
-            if (titleEl) titleEl.textContent = fieldName;
-            
-            // Set meta line with rating and reviews
-            const metaLine = document.getElementById('viewFieldMeta');
-            const headerRating = '4.8';
-            const headerReviewsCount = '98';
-            if (metaLine) {
-                metaLine.innerHTML = `
-                    <i class="fi fi-rr-marker field-meta-icon"></i>
-                    <span id="viewFieldLocation">${fieldLocation}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldCategory">${fieldTags[1] || 'Sport'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span id="viewFieldType">${fieldTags[0] || 'Type'}</span>
-                    <span class="field-meta-separator">•</span>
-                    <span class="field-star-yellow">★</span>
-                    <span id="viewFieldHeaderRating">${headerRating}</span>
-                    <span> (<span id="viewFieldHeaderReviewsCount">${headerReviewsCount}</span>)</span>
-                `;
+        const res = await API.fields.getById(fieldId);
+        const f = res && res.field;
+        if (!f) {
+            const badge = document.getElementById('fieldStatusBadge');
+            if (badge) {
+                badge.className = 'field-status-badge pending';
+                badge.innerHTML =
+                    '<span class="status-dot pending"></span><span class="status-text">Field not found</span>';
             }
-            
-            // Set price
-            const priceElement = document.getElementById('viewFieldPrice');
-            if (priceElement) {
-                priceElement.innerHTML = fieldPrice.replace('/h', '<span class="view-field-price-unit">/h</span>');
-            }
-            
-            // Set feature tags
-            const tagsContainer = document.getElementById('viewFieldTags');
-            if (tagsContainer && fieldTags.length > 0) {
-                tagsContainer.innerHTML = fieldTags.map(tag => 
-                    `<span class="view-field-feature-tag">${tag}</span>`
-                ).join('');
-            }
-            
-            // Set field details
-            const locationFullEl = document.getElementById('viewFieldLocationFull');
-            const categoryFullEl = document.getElementById('viewFieldCategoryFull');
-            const typeFullEl = document.getElementById('viewFieldTypeFull');
-            const capacityEl = document.getElementById('viewFieldCapacity');
-            const descriptionEl = document.getElementById('viewFieldDescription');
-            
-            if (locationFullEl) locationFullEl.textContent = fieldLocation;
-            if (categoryFullEl) categoryFullEl.textContent = fieldTags[1] || '-';
-            if (typeFullEl) typeFullEl.textContent = fieldTags[0] || '-';
-            if (capacityEl) capacityEl.textContent = '22 players';
-            
-            // Set description
-            if (descriptionEl) {
-                descriptionEl.textContent = 'Professional sports field with high-quality facilities. Perfect for both casual matches and professional training sessions. The field features high-quality artificial turf, excellent lighting, and modern facilities.';
-            }
-            
-            // Set highlights
-            const highlightsList = document.getElementById('viewFieldHighlights');
-            if (highlightsList) {
-                highlightsList.innerHTML = `
-                    <li>Easy access by car and public transport</li>
-                    <li>High-quality lighting for night games</li>
-                    <li>Clean changing rooms and showers</li>
-                    <li>Snacks and drinks available on site</li>
-                `;
-            }
-            
-            // Set amenities
-            const amenitiesGrid = document.getElementById('viewFieldAmenities');
-            if (amenitiesGrid) {
-                const amenities = ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi'];
-                amenitiesGrid.innerHTML = amenities.map(amenity => `
-                    <div class="view-amenity-item">
-                        <i class="fi fi-rr-check view-amenity-icon"></i>
-                        <span>${amenity}</span>
-                    </div>
-                `).join('');
-            }
-            
-            // Set reviews summary (also update header if needed)
-            const reviewsRating = '4.8';
-            const reviewsCount = '98';
-            const ratingElement = document.getElementById('viewFieldRating');
-            const reviewsCountElement = document.getElementById('viewFieldReviewsCount');
-            if (ratingElement) ratingElement.textContent = reviewsRating;
-            if (reviewsCountElement) reviewsCountElement.textContent = reviewsCount;
-            
-            // Populate reviews list
-            const reviewsList = document.getElementById('viewReviewsList');
-            if (reviewsList) {
-            const reviews = [
-                {
-                    name: 'Ahmed',
-                    initial: 'A',
-                    rating: 5,
-                    text: 'Great field quality, lights are strong and the staff were friendly. Booking was smooth and easy.',
-                    context: 'Played 5v5 last week',
-                    date: '2 days ago'
-                },
-                {
-                    name: 'Sara',
-                    initial: 'S',
-                    rating: 5,
-                    text: 'Perfect location and easy to reach. Parking area helps a lot during busy hours. Highly recommend!',
-                    context: 'Weekend booking',
-                    date: '1 week ago'
-                },
-                {
-                    name: 'Mohamed',
-                    initial: 'M',
-                    rating: 4,
-                    text: 'Good facilities overall. The field is well-maintained. Only minor issue was the changing room could be cleaner.',
-                    context: 'Regular player',
-                    date: '2 weeks ago'
-                },
-                {
-                    name: 'Layla',
-                    initial: 'L',
-                    rating: 5,
-                    text: 'Excellent experience! The booking system is user-friendly and the field exceeded our expectations. Will definitely book again.',
-                    context: 'First time booking',
-                    date: '3 weeks ago'
-                }
-            ];
-                
-                reviewsList.innerHTML = reviews.map(review => {
-                    const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
-                    return `
-                        <div class="view-review-card">
-                            <div class="view-review-header">
-                                <div class="view-reviewer-info">
-                                    <div class="view-reviewer-avatar">${review.initial}</div>
-                                    <div class="view-reviewer-details">
-                                        <div class="view-reviewer-name">${review.name}</div>
-                                        <div class="view-review-context">${review.context}</div>
-                                    </div>
-                                </div>
-                                <div class="view-review-rating-display">
-                                    <span class="view-star-filled">${stars}</span>
-                                </div>
-                            </div>
-                            <p class="view-review-text">${review.text}</p>
-                            <div class="view-review-date">${review.date}</div>
-                        </div>
-                    `;
-                }).join('');
-            }
-            
-            viewFieldModal.classList.add('active');
-            document.body.style.overflow = 'hidden';
+            return;
         }
-    } catch (error) {
-        console.error('Error opening view field modal:', error);
-    }
-}
 
-function closeViewModal() {
-    if (viewFieldModal) {
-        viewFieldModal.classList.remove('active');
-        document.body.style.overflow = '';
-        // Reset reviews list to hidden
-        const reviewsList = document.getElementById('viewReviewsList');
-        const toggleBtn = document.getElementById('viewToggleReviewsBtn');
-        if (reviewsList) reviewsList.style.display = 'none';
-        if (toggleBtn) {
-            toggleBtn.classList.remove('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'View reviews';
-        }
-    }
-}
+        setFieldStatusBadgeFromField(f);
 
-function toggleViewReviews() {
-    const reviewsList = document.getElementById('viewReviewsList');
-    const toggleBtn = document.getElementById('viewToggleReviewsBtn');
-    
-    if (reviewsList && toggleBtn) {
-        const isHidden = reviewsList.style.display === 'none' || !reviewsList.style.display;
-        
-        if (isHidden) {
-            reviewsList.style.display = 'flex';
-            toggleBtn.classList.add('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'Hide reviews';
-        } else {
-            reviewsList.style.display = 'none';
-            toggleBtn.classList.remove('expanded');
-            const toggleText = toggleBtn.querySelector('.view-toggle-text');
-            if (toggleText) toggleText.textContent = 'View reviews';
-        }
-    }
-}
+        const nameEl = document.getElementById('manageFieldName');
+        if (nameEl) nameEl.value = f.name || '';
 
-// Close view modal when clicking outside
-if (viewFieldModal) {
-    viewFieldModal.addEventListener('click', (e) => {
-        if (e.target === viewFieldModal) {
-            closeViewModal();
+        selectManageSportByName(f.sport || 'Football');
+
+        const typeSel = document.getElementById('manageFieldType');
+        if (typeSel) {
+            const indoor = String(f.type || '').toUpperCase() === 'INDOOR';
+            typeSel.value = indoor ? 'Indoor' : 'Outdoor';
         }
-    });
+
+        const pphEl = document.getElementById('managePricePerHour');
+        if (pphEl) pphEl.value = f.pricePerHour != null ? String(f.pricePerHour) : '';
+
+        const addrEl = document.getElementById('manageFieldAddress');
+        if (addrEl) addrEl.value = f.address || f.location || '';
+        const cityEl = document.getElementById('manageFieldCity');
+        if (cityEl) cityEl.value = f.city || '';
+        const districtEl = document.getElementById('manageFieldDistrict');
+        if (districtEl) districtEl.value = f.district || '';
+        const capEl = document.getElementById('manageCapacity');
+        if (capEl) capEl.value = f.capacity != null ? String(f.capacity) : '';
+
+        const descEl = document.getElementById('manageDescription');
+        if (descEl) descEl.value = f.description || '';
+        const venueRespEl = document.getElementById('manageVenueResponse');
+        if (venueRespEl) venueRespEl.value = f.venueResponse || '';
+
+        applyManageFeaturesFromField(f.features);
+        applyManageScheduleFromField(f.schedule);
+        resetManageImagesContainer();
+        (Array.isArray(f.images) ? f.images : []).forEach(function(src) {
+            appendManageImagePreview(src);
+        });
+        setManageDocumentPreview('ownership', f.ownershipDocumentUrl || '');
+        setManageDocumentPreview('license', f.licensesDocumentUrl || f.licenseDocumentUrl || '');
+        const ownPrev = document.getElementById('manageOwnershipPreview');
+        const licPrev = document.getElementById('manageLicensePreview');
+        if (ownPrev) ownPrev.dataset.removed = '0';
+        if (licPrev) licPrev.dataset.removed = '0';
+        const ownUpload = document.getElementById('manageOwnershipDocPreview');
+        const licUpload = document.getElementById('manageLicensesDocPreview');
+        if (ownUpload) {
+            ownUpload.innerHTML = '';
+            ownUpload.classList.remove('active');
+        }
+        if (licUpload) {
+            licUpload.innerHTML = '';
+            licUpload.classList.remove('active');
+        }
+        const ownInput = document.getElementById('manageOwnershipDoc');
+        const licInput = document.getElementById('manageLicensesDoc');
+        if (ownInput) ownInput.value = '';
+        if (licInput) licInput.value = '';
+
+        const latEl = document.getElementById('manageLatitude');
+        const lngEl = document.getElementById('manageLongitude');
+        if (latEl && f.latitude != null) latEl.textContent = String(f.latitude);
+        if (lngEl && f.longitude != null) lngEl.textContent = String(f.longitude);
+        initializeManageMap();
+        if (manageFieldMapPicker && Number.isFinite(Number(f.latitude)) && Number.isFinite(Number(f.longitude))) {
+            const latN = Number(f.latitude);
+            const lngN = Number(f.longitude);
+            lastValidManageFieldMapPosition = { lat: latN, lng: lngN };
+            manageFieldMapPicker.setPosition(latN, lngN, 'init', { silent: true });
+        }
+
+        const visToggle = document.getElementById('manageVisibilityToggle');
+        if (visToggle) {
+            visToggle.classList.toggle('active', f.isActive !== false);
+        }
+        const maintToggle = document.getElementById('manageMaintenanceToggle');
+        if (maintToggle) {
+            maintToggle.classList.toggle('active', f.isActive === false);
+        }
+        const bookingTypeValue = String(f.bookingType || 'instant').toLowerCase();
+        const bookingInput = document.querySelector(
+            `input[name="manageBookingType"][value="${bookingTypeValue === 'request' ? 'request' : 'instant'}"]`
+        );
+        if (bookingInput) bookingInput.checked = true;
+        const datesList = document.getElementById('manageUnavailableDatesList');
+        if (datesList && API.fields.listUnavailableDates) {
+            datesList.innerHTML = '';
+            try {
+                const ud = await API.fields.listUnavailableDates(fieldId);
+                const rows = (ud && ud.unavailableDates) || [];
+                rows.forEach(function(row) {
+                    const ymd = unavailableYmdFromApi(row.date);
+                    if (!ymd) return;
+                    const dateItem = document.createElement('div');
+                    dateItem.className = 'date-item';
+                    dateItem.dataset.ymd = ymd;
+                    dateItem.dataset.fromServer = '1';
+                    dateItem.innerHTML =
+                        '<span>' +
+                        ownerFieldEsc(new Date(ymd + 'T12:00:00').toLocaleDateString()) +
+                        '</span><button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>';
+                    datesList.appendChild(dateItem);
+                });
+            } catch (e) {
+                console.warn('listUnavailableDates', e);
+            }
+        }
+    } catch (e) {
+        console.error('loadFieldData', e);
+        const badge = document.getElementById('fieldStatusBadge');
+        if (badge) {
+            badge.className = 'field-status-badge pending';
+            badge.innerHTML =
+                '<span class="status-dot pending"></span><span class="status-text">Could not load status</span>';
+        }
+        alert((e && e.message) || 'Could not load field for editing.');
+    }
 }
 
 // Delete Field
-function deleteField(button) {
-    if (confirm('Are you sure you want to delete this field? This action cannot be undone.')) {
-        const fieldCard = button.closest('.field-list-card');
-        fieldCard.style.transition = 'opacity 0.3s, transform 0.3s';
-        fieldCard.style.opacity = '0';
-        fieldCard.style.transform = 'translateX(-20px)';
-        
-        setTimeout(() => {
-            fieldCard.remove();
-        }, 300);
+async function deleteField(button) {
+    if (!(await MatchFieldDialog.confirm('Are you sure you want to delete this field? This action cannot be undone.', {
+        type: 'danger',
+        okText: 'Delete'
+    }))) return;
+    const fieldCard = button.closest('.field-list-card');
+    const fieldId = fieldCard && fieldCard.getAttribute('data-field-id');
+    if (!fieldId || typeof API === 'undefined' || !API.fields || !API.fields.delete) {
+        if (fieldCard) fieldCard.remove();
+        return;
     }
+    API.fields.delete(fieldId).then(function() {
+        loadOwnerFieldsFromApi();
+    }).catch(function(err) {
+        alert(err.message || 'Could not delete field');
+    });
 }
 
 // Calendar Functions
@@ -1131,10 +1705,14 @@ function toggleManageDaySchedule(day, enabled) {
     
     if (openingInput && closingInput && row) {
         if (enabled) {
+            openingInput.disabled = false;
+            closingInput.disabled = false;
             openingInput.required = true;
             closingInput.required = true;
             row.classList.remove('disabled');
         } else {
+            openingInput.disabled = true;
+            closingInput.disabled = true;
             openingInput.required = false;
             closingInput.required = false;
             row.classList.add('disabled');
@@ -1150,6 +1728,36 @@ function initializeManageDaySchedules() {
             toggleManageDaySchedule(day, checkbox.checked);
         }
     });
+}
+
+function applyManageScheduleFromField(schedule) {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const src = schedule && typeof schedule === 'object' ? schedule : {};
+    days.forEach(function(day) {
+        const dayCfg = src[day] && typeof src[day] === 'object' ? src[day] : {};
+        const checkbox = document.querySelector(`input[name="manageWorkingDays"][value="${day}"]`);
+        const openingInput = document.getElementById(`manage-${day}-opening`);
+        const closingInput = document.getElementById(`manage-${day}-closing`);
+        const enabled = dayCfg.enabled !== false;
+        if (checkbox) checkbox.checked = enabled;
+        if (openingInput && dayCfg.opening) openingInput.value = dayCfg.opening;
+        if (closingInput && dayCfg.closing) closingInput.value = dayCfg.closing;
+        toggleManageDaySchedule(day, enabled);
+    });
+}
+
+function collectManageSchedule() {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const schedule = {};
+    days.forEach(function(day) {
+        const checked = !!document.querySelector(`input[name="manageWorkingDays"][value="${day}"]`)?.checked;
+        schedule[day] = {
+            enabled: checked,
+            opening: document.getElementById(`manage-${day}-opening`)?.value || null,
+            closing: document.getElementById(`manage-${day}-closing`)?.value || null
+        };
+    });
+    return schedule;
 }
 
 function addManageHighlight() {
@@ -1185,8 +1793,9 @@ function addManageUnavailableDate() {
     if (date) {
         const dateItem = document.createElement('div');
         dateItem.className = 'date-item';
+        dateItem.dataset.ymd = date;
         dateItem.innerHTML = `
-            <span>${new Date(date).toLocaleDateString()}</span>
+            <span>${new Date(date + 'T12:00:00').toLocaleDateString()}</span>
             <button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>
         `;
         datesList.appendChild(dateItem);
@@ -1194,54 +1803,63 @@ function addManageUnavailableDate() {
     }
 }
 
-function removeManageUnavailableDate(button) {
-    button.parentElement.remove();
+async function removeManageUnavailableDate(button) {
+    const row = button.closest('.date-item');
+    if (!row) return;
+
+    const ymd = row.getAttribute('data-ymd');
+    const fromServer = row.getAttribute('data-from-server') === '1';
+
+    if (fromServer && ymd && ownerManagingFieldId && typeof API !== 'undefined' && API.fields && API.fields.removeUnavailableDate) {
+        try {
+            await API.fields.removeUnavailableDate(ownerManagingFieldId, ymd);
+        } catch (e) {
+            alert((e && e.message) || 'Could not remove blocked date on server.');
+            return;
+        }
+    }
+
+    row.remove();
 }
 
 function handleManageImageUpload(event) {
     const files = Array.from(event.target.files);
-    const container = document.querySelector('#edit-info-section .images-container');
     
     files.forEach(file => {
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                const imagePreview = document.createElement('div');
-                imagePreview.className = 'image-preview';
-                imagePreview.innerHTML = `
-                    <img src="${e.target.result}" alt="Field">
-                    <button class="remove-image" onclick="removeImage(this)">&times;</button>
-                `;
-                container.insertBefore(imagePreview, container.querySelector('.add-image-btn'));
+                appendManageImagePreview((e && e.target && e.target.result) || '');
             };
             reader.readAsDataURL(file);
         }
     });
+    event.target.value = '';
 }
 
 function initializeManageMap() {
-    const mapPicker = document.getElementById('manageLocationMap');
-    if (mapPicker) {
-        mapPicker.addEventListener('click', function(e) {
-            updateManageMapLocation(e);
-        });
-    }
-}
-
-function updateManageMapLocation(event) {
-    const pin = document.getElementById('manageMapPin');
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    if (pin) {
-        pin.style.left = `${x}px`;
-        pin.style.top = `${y}px`;
-        pin.style.display = 'block';
-    }
-    
-    document.getElementById('manageLatitude').textContent = '41.0082';
-    document.getElementById('manageLongitude').textContent = '28.9784';
+    if (manageFieldMapPicker || typeof MapPickerService === 'undefined') return;
+    manageFieldMapPicker = MapPickerService.create({
+        containerId: 'manageLocationMap',
+        initialCenter: [41.0082, 28.9784],
+        initialZoom: 12,
+        draggable: true,
+        onPositionChange: async function(position, source) {
+            if (source === 'revert') return;
+            const ok = await applyReverseGeocodedMetadata(position.lat, position.lng, 'manage');
+            if (!ok) {
+                const prev = lastValidManageFieldMapPosition;
+                if (manageFieldMapPicker && prev) {
+                    manageFieldMapPicker.setPosition(prev.lat, prev.lng, 'revert', { silent: true });
+                    applyCoordinatesToDom(prev.lat, prev.lng, 'manage');
+                }
+                return;
+            }
+            lastValidManageFieldMapPosition = { lat: position.lat, lng: position.lng };
+            applyCoordinatesToDom(position.lat, position.lng, 'manage');
+        }
+    });
+    bindAddressSearch('manage');
 }
 
 function toggleManageSetting(setting) {
@@ -1264,6 +1882,12 @@ function removeManageFile(type) {
         if (fileItem) {
             fileItem.remove();
         }
+        filePreview.dataset.removed = '1';
+    }
+    const inputId = type === 'ownership' ? 'manageOwnershipDoc' : 'manageLicensesDoc';
+    const input = document.getElementById(inputId);
+    if (input) {
+        input.value = '';
     }
 }
 
@@ -1321,31 +1945,130 @@ function removeManageDocumentPreview(previewId) {
     }
 }
 
-function submitManageChanges() {
-    const data = {};
-    
-    console.log('Submitting changes for approval:', data);
-    alert('Changes submitted for approval!');
-    closeModal();
+async function submitManageChanges() {
+    if (!ownerManagingFieldId) {
+        alert('No field selected. Open Manage from a field card.');
+        return;
+    }
+    if (typeof API === 'undefined' || !API.fields || !API.fields.update) {
+        alert('API not available.');
+        return;
+    }
+
+    const payload = {};
+
+    if (currentManageSection === 'edit-info') {
+        const typeSel = document.getElementById('manageFieldType');
+        const typeLabel = (typeSel && typeSel.value) || 'Outdoor';
+        const typeEnum = String(typeLabel).toLowerCase().indexOf('indoor') >= 0 ? 'INDOOR' : 'OUTDOOR';
+        const sport = resolveManageSportForPayload();
+        if (!sport) {
+            alert('Please enter the sport name for "Other".');
+            return;
+        }
+
+        payload.name = (document.getElementById('manageFieldName')?.value || '').trim() || 'Field';
+        payload.sport = sport;
+        payload.description = document.getElementById('manageDescription')?.value || '';
+        payload.venueResponse = document.getElementById('manageVenueResponse')?.value?.trim() || '';
+        payload.capacity = parseInt(document.getElementById('manageCapacity')?.value, 10) || null;
+        payload.type = typeEnum;
+        payload.features = collectManageFeatureStrings();
+        payload.images = collectManageImagesFromDom();
+    } else if (currentManageSection === 'schedule') {
+        payload.schedule = collectManageSchedule();
+    } else if (currentManageSection === 'location') {
+        const city = document.getElementById('manageFieldCity')?.value?.trim() || '';
+        const dist = document.getElementById('manageFieldDistrict')?.value?.trim() || '';
+        const addr = document.getElementById('manageFieldAddress')?.value?.trim() || '';
+        const locationLine = [city, dist].filter(Boolean).join(', ') || addr || '—';
+        const latTxt = document.getElementById('manageLatitude')?.textContent?.trim();
+        const lngTxt = document.getElementById('manageLongitude')?.textContent?.trim();
+        const latNum = parseFloat(latTxt);
+        const lngNum = parseFloat(lngTxt);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+            alert('Please set a valid location on the map before saving.');
+            return;
+        }
+        payload.location = locationLine;
+        payload.address = addr || undefined;
+        payload.city = city || undefined;
+        payload.district = dist || undefined;
+        payload.latitude = latNum;
+        payload.longitude = lngNum;
+    } else if (currentManageSection === 'pricing') {
+        payload.pricePerHour = Math.round(parseFloat(document.getElementById('managePricePerHour')?.value) || 0);
+    } else if (currentManageSection === 'documents') {
+        // Documents are handled as an approval request by backend moderation rules.
+    } else if (currentManageSection === 'settings') {
+        const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
+        payload.bookingType = document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant';
+        payload.isActive = !maintOn;
+    } else {
+        alert('Please choose a section first.');
+        return;
+    }
+    const ownRemoved = document.getElementById('manageOwnershipPreview')?.dataset.removed === '1';
+    const licRemoved = document.getElementById('manageLicensePreview')?.dataset.removed === '1';
+    const ownDocFile = document.getElementById('manageOwnershipDoc')?.files?.[0];
+    const licDocFile = document.getElementById('manageLicensesDoc')?.files?.[0];
+    if (ownRemoved) payload.ownershipDocumentUrl = null;
+    if (licRemoved) payload.licensesDocumentUrl = null;
+
+    const btn = document.getElementById('manageSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+    }
+
+    try {
+        if (ownDocFile) payload.ownershipDocumentUrl = await fileToDataUrl(ownDocFile);
+        if (licDocFile) payload.licensesDocumentUrl = await fileToDataUrl(licDocFile);
+        await API.fields.update(ownerManagingFieldId, payload);
+
+        if (API.fields.addUnavailableDate && API.fields.listUnavailableDates) {
+            try {
+                const existing = await API.fields.listUnavailableDates(ownerManagingFieldId);
+                const have = new Set(
+                    ((existing && existing.unavailableDates) || []).map(function(r) {
+                        return unavailableYmdFromApi(r.date);
+                    })
+                );
+                const domDates = Array.from(
+                    document.querySelectorAll('#manageUnavailableDatesList .date-item[data-ymd]')
+                )
+                    .map(function(el) {
+                        return el.getAttribute('data-ymd');
+                    })
+                    .filter(Boolean);
+                for (let i = 0; i < domDates.length; i++) {
+                    const ymd = domDates[i];
+                    if (!have.has(ymd)) {
+                        try {
+                            await API.fields.addUnavailableDate(ownerManagingFieldId, ymd);
+                        } catch (err) {
+                            console.warn('addUnavailableDate', ymd, err);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('sync unavailable', e);
+            }
+        }
+
+        alert((currentManageSection === 'documents' || currentManageSection === 'location')
+            ? 'Changes submitted for admin approval.'
+            : 'Field updated successfully.');
+        closeModal();
+        loadOwnerFieldsFromApi();
+    } catch (e) {
+        alert((e && e.message) || 'Could not update field.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function saveChanges() {
-    // Collect form data
-    const fieldData = {
-        name: document.getElementById('fieldName')?.value || document.getElementById('manageFieldName')?.value,
-        price: document.getElementById('pricePerHour')?.value || document.getElementById('managePricePerHour')?.value,
-        location: document.getElementById('location')?.value || document.getElementById('manageFieldAddress')?.value,
-        description: document.getElementById('description')?.value || document.getElementById('manageDescription')?.value,
-        category: document.getElementById('sportCategory')?.value || document.getElementById('manageSportCategory')?.value,
-        type: document.getElementById('fieldType')?.value || document.getElementById('manageFieldType')?.value,
-        capacity: document.getElementById('capacity')?.value || document.getElementById('manageCapacity')?.value
-    };
-    
-    console.log('Saving field data:', fieldData);
-    
-    // Here you would typically send data to an API
-    alert('Field details saved successfully!');
-    closeModal();
+    submitManageChanges();
 }
 
 // Update radio label styling on change
@@ -1380,11 +2103,27 @@ function updateRadioLabels() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Set initial selected date
+    loadOwnerFieldsFromApi();
     selectedDate = new Date();
-    // Initialize day schedules
     initializeDaySchedules();
-    // Update radio labels styling
     updateRadioLabels();
+    initAddFieldFormEnhancements();
+    initManageFieldFormEnhancements();
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const manageId = params.get('manage');
+        const viewId = params.get('view');
+        if (manageId && /^[a-fA-F0-9]{24}$/.test(String(manageId).trim())) {
+            openModal(String(manageId).trim());
+        } else if (viewId && /^[a-fA-F0-9]{24}$/.test(String(viewId).trim())) {
+            openViewFieldModalForFieldId(String(viewId).trim()).catch(function (err) {
+                console.error('open view from URL', err);
+                alert((err && err.message) || 'Could not load field details.');
+                closeViewModal();
+            });
+        }
+    } catch (e) {
+        /* ignore */
+    }
 });
 

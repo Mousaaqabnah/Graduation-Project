@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MatchField - Sign up</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -122,13 +123,18 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="password">Password</label>
-                                <input 
-                                    type="password" 
-                                    id="password" 
-                                    name="password" 
-                                    placeholder="Enter your password"
-                                    required
-                                >
+                                <div class="password-input-wrapper">
+                                    <input 
+                                        type="password" 
+                                        id="password" 
+                                        name="password" 
+                                        placeholder="Enter your password"
+                                        required
+                                    >
+                                    <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password">
+                                        <i class="fi fi-rr-eye"></i>
+                                    </button>
+                                </div>
                                 <div class="password-strength" id="passwordStrength">
                                     <span class="strength-label">Password strength: </span>
                                     <span class="strength-value" id="strengthValue">Weak</span>
@@ -137,20 +143,25 @@
                             
                             <div class="form-group">
                                 <label for="confirmPassword">Confirm password</label>
-                                <input 
-                                    type="password" 
-                                    id="confirmPassword" 
-                                    name="confirmPassword" 
-                                    placeholder="Re-enter password"
-                                    required
-                                >
+                                <div class="password-input-wrapper">
+                                    <input 
+                                        type="password" 
+                                        id="confirmPassword" 
+                                        name="confirmPassword" 
+                                        placeholder="Re-enter password"
+                                        required
+                                    >
+                                    <button type="button" class="password-toggle-btn" data-target="confirmPassword" aria-label="Show password">
+                                        <i class="fi fi-rr-eye"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
                         <div class="form-group checkbox-group">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="terms" name="terms" required>
-                                <span>I agree to the <a href="#" class="link">Terms</a> and <a href="#" class="link">Privacy Policy</a>.</span>
+                                <span>I agree to the <a href="terms.html" class="link"  rel="noopener noreferrer">Terms of Service</a> and <a href="privacy.html" class="link"  rel="noopener noreferrer">Privacy Policy</a>.</span>
                             </label>
                         </div>
                     </div>
@@ -165,6 +176,7 @@
         </div>
     </div>
     
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/auth/signup.js"></script>
 </body>

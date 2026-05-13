@@ -192,6 +192,39 @@ body {
     box-sizing: border-box;
 }
 
+.password-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.password-input-wrapper input {
+    padding-right: 46px;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #6B7280;
+    cursor: pointer;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.password-toggle-btn i {
+    font-size: 17px;
+}
+
+.password-toggle-btn:hover {
+    color: #374151;
+}
+
 .form-group input:focus {
     border-color: #3B82F6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -206,6 +239,10 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-top: -8px;
+}
+
+.form-options--end {
+    justify-content: flex-end;
 }
 
 .checkbox-label {
@@ -271,44 +308,6 @@ body {
     background: #2563EB;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.btn-google {
-    background: white;
-    color: #212529;
-    border: 1.5px solid #E5E7EB;
-    width: 100%;
-}
-
-.btn-google:hover {
-    background: #F9FAFB;
-    border-color: #D1D5DB;
-}
-
-.google-icon {
-    width: 20px;
-    height: 20px;
-    
-}
-
-.divider {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    margin: 24px 0;
-    color: #9CA3AF;
-    font-size: 14px;
-}
-
-.divider::before,
-.divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid #E5E7EB;
-}
-
-.divider span {
-    padding: 0 16px;
 }
 
 .signup-text {

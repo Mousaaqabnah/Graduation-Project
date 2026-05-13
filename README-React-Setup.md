@@ -98,6 +98,7 @@ function App() {
 - ✅ Clean, modern UI
 - ✅ Accessible (proper button semantics)
 - ✅ Customizable via props
+-
 
 
 

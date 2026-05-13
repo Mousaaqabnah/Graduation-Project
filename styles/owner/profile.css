@@ -315,6 +315,65 @@
     font-weight: 500;
 }
 
+.verification-upload-card {
+    border: 1px solid #F59E0B;
+    border-radius: 16px;
+    background: #FFFBEB;
+    padding: 20px;
+}
+
+.verification-upload-status {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    color: #92400E;
+    font-weight: 500;
+}
+
+.verification-upload-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.verification-upload-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.verification-upload-item label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #92400E;
+}
+
+.verification-upload-item input[type="file"] {
+    padding: 10px 12px;
+    border: 1.5px solid #FCD34D;
+    border-radius: 10px;
+    background: #FFFFFF;
+}
+
+.verification-upload-item input[type="file"]:focus {
+    outline: none;
+    border-color: #F59E0B;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.verification-file-name {
+    margin: 0;
+    font-size: 12px;
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.verification-submit-btn {
+    min-width: 220px;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
     .stats-grid {
@@ -372,6 +431,14 @@
     
     .profile-section {
         margin-bottom: 32px;
+    }
+
+    .verification-upload-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .verification-submit-btn {
+        width: 100%;
     }
 }
 
@@ -596,5 +663,12 @@
     .form-group-full {
         grid-column: 1;
     }
+}
+
+.input-readonly,
+.input-readonly:disabled {
+    background: #F3F4F6;
+    color: #6B7280;
+    cursor: not-allowed;
 }
 

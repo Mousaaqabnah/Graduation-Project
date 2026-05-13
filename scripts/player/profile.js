@@ -4,38 +4,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Get popup elements
     const profileBtn = document.getElementById('profileBtn');
     const profilePopup = document.getElementById('profilePopup');
-    const notificationBtn = document.getElementById('notificationBtn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    // Notification popup toggle
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            // Close profile popup if open
-            if (profilePopup) {
-                profilePopup.classList.remove('active');
-            }
-        });
-    }
+    // Notification popup is handled by shared notifications.js
     
     // Profile popup toggle
     if (profileBtn && profilePopup) {
         profileBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             profilePopup.classList.toggle('active');
-            // Close notification popup if open
+            // Close notification popup if open (notifications.js handles it)
+            var notificationPopup = document.getElementById('notificationPopup');
             if (notificationPopup) {
                 notificationPopup.classList.remove('active');
             }
         });
     }
     
-    // Close popups when clicking outside
+    // Close profile popup when clicking outside (notification popup handled by notifications.js)
     document.addEventListener('click', function(e) {
-        if (notificationPopup && !notificationPopup.contains(e.target) && notificationBtn && !notificationBtn.contains(e.target)) {
-            notificationPopup.classList.remove('active');
-        }
         if (profilePopup && !profilePopup.contains(e.target) && profileBtn && !profileBtn.contains(e.target)) {
             profilePopup.classList.remove('active');
         }
@@ -128,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Save profile changes
     if (saveProfileBtn) {
-        saveProfileBtn.addEventListener('click', function() {
+        saveProfileBtn.addEventListener('click', async function() {
             const form = document.getElementById('editProfileForm');
             if (form && form.checkValidity()) {
                 const dateOfBirthInput = document.getElementById('editDateOfBirth');
@@ -151,17 +136,65 @@ document.addEventListener('DOMContentLoaded', function() {
                     country: document.getElementById('editCountry').value
                 };
                 
-                // Update profile display
-                updateProfileFromForm(formData);
-                
-                // TODO: Here you would typically send the data to your API
-                console.log('Profile updated:', formData);
-                
-                // Close modal
-                closeEditModal();
-                
-                // Show success message (optional)
-                alert('Profile updated successfully!');
+                const activeUser = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
+                const userId = activeUser && activeUser.id ? activeUser.id : null;
+                if (!userId) {
+                    alert('Unable to identify your account. Please log in again.');
+                    return;
+                }
+
+                const locationParts = [
+                    formData.streetAddress,
+                    formData.city,
+                    formData.state,
+                    formData.postalCode,
+                    formData.country
+                ].filter(function(part) {
+                    return part && String(part).trim();
+                });
+                const combinedLocation = locationParts.join(', ');
+
+                const payload = {
+                    fullName: formData.fullName,
+                    phone: formData.phone,
+                    dateOfBirth: dateOfBirthInput && dateOfBirthInput.value ? dateOfBirthInput.value : null,
+                    gender: formData.gender,
+                    location: combinedLocation
+                };
+
+                try {
+                    saveProfileBtn.disabled = true;
+                    saveProfileBtn.textContent = 'Saving...';
+
+                    // Persist supported profile fields to backend.
+                    const res = await API.users.update(userId, payload);
+                    if (res && res.user && API.setCurrentUser) {
+                        API.setCurrentUser(res.user);
+                    }
+
+                    // Persist detailed address fields locally per user to avoid losing UI fields not modeled in DB.
+                    saveAddressPartsForUser(userId, {
+                        streetAddress: formData.streetAddress,
+                        city: formData.city,
+                        state: formData.state,
+                        postalCode: formData.postalCode,
+                        country: formData.country
+                    });
+
+                    // Keep email display in sync with authenticated account (email update is not supported on this endpoint).
+                    if (res && res.user && res.user.email) {
+                        formData.email = res.user.email;
+                    }
+
+                    updateProfileFromForm(formData);
+                    closeEditModal();
+                    alert('Profile updated successfully!');
+                } catch (error) {
+                    alert(error && error.message ? error.message : 'Failed to update profile.');
+                } finally {
+                    saveProfileBtn.disabled = false;
+                    saveProfileBtn.textContent = 'Save Changes';
+                }
             } else {
                 form.reportValidity();
             }
@@ -217,17 +250,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Avatar edit button
+    // Avatar edit button - opens file picker to choose profile picture
     const avatarEditBtn = document.getElementById('avatarEditBtn');
-    if (avatarEditBtn) {
-        avatarEditBtn.addEventListener('click', function() {
-            // TODO: Open image upload dialog
-            console.log('Avatar edit clicked');
-            alert('Avatar upload functionality will be implemented soon!');
+    const avatarFileInput = document.getElementById('avatarFileInput');
+    if (avatarEditBtn && avatarFileInput) {
+        avatarEditBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            avatarFileInput.click();
+        });
+        avatarFileInput.addEventListener('change', function() {
+            var file = this.files && this.files[0];
+            if (!file || !file.type.startsWith('image/')) {
+                alert('Please select an image file (JPEG, PNG, GIF, etc.).');
+                this.value = '';
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                alert('Image must be less than 5MB. Please choose a smaller image.');
+                this.value = '';
+                return;
+            }
+            handleAvatarSelected(file);
+            this.value = '';
         });
     }
     
-    // Load profile data (this would typically come from an API)
+    // Load profile data from API / current auth user
     loadProfileData();
     
     // Copy Player ID functionality
@@ -266,6 +314,80 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Handle selected avatar image: resize, convert to base64, save via API or localStorage, update UI
+function handleAvatarSelected(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var dataUrl = e.target.result;
+        var img = new Image();
+        img.onload = function() {
+            var maxSize = 256;
+            var w = img.width;
+            var h = img.height;
+            if (w > maxSize || h > maxSize) {
+                var scale = Math.min(maxSize / w, maxSize / h);
+                w = Math.round(w * scale);
+                h = Math.round(h * scale);
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            var resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            saveAndShowAvatar(resizedDataUrl);
+        };
+        img.onerror = function() {
+            saveAndShowAvatar(dataUrl);
+        };
+        img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+}
+
+function saveAndShowAvatar(avatarUrl) {
+    var user = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
+    var userId = user ? user.id : null;
+
+    if (
+        typeof API !== 'undefined' &&
+        API.getAuthToken &&
+        API.getAuthToken() &&
+        userId &&
+        API.users &&
+        (API.users.updateAvatar || API.users.update)
+    ) {
+        var savePromise = API.users.updateAvatar
+            ? API.users.updateAvatar(userId, avatarUrl)
+            : API.users.update(userId, { avatar: avatarUrl });
+        savePromise
+            .then(function(res) {
+                if (res && res.user && API.setCurrentUser) {
+                    API.setCurrentUser(res.user);
+                }
+                if (userId) localStorage.setItem('userAvatar_' + userId, avatarUrl);
+                applyAvatarToAllDisplays(avatarUrl);
+                alert('Profile picture updated successfully!');
+            })
+            .catch(function(err) {
+                alert(err.message || 'Failed to update profile picture.');
+            });
+    } else {
+        if (userId) localStorage.setItem('userAvatar_' + userId, avatarUrl);
+        applyAvatarToAllDisplays(avatarUrl);
+        alert('Profile picture updated! (Logged-in users: it will sync when you sign in.)');
+    }
+}
+
+function applyAvatarToAllDisplays(avatarUrl) {
+    var profileAvatar = document.getElementById('profileAvatar');
+    var popupAvatar = document.querySelector('#profilePopup .profile-avatar-large img');
+    var headerAvatar = document.querySelector('#profileBtn img');
+    if (profileAvatar) { profileAvatar.src = avatarUrl; }
+    if (popupAvatar) { popupAvatar.src = avatarUrl; }
+    if (headerAvatar) { headerAvatar.src = avatarUrl; }
+}
+
 // Fallback function to copy text to clipboard (for older browsers)
 function fallbackCopyTextToClipboard(text, button) {
     const textArea = document.createElement('textarea');
@@ -303,7 +425,10 @@ function generatePlayerId() {
     // Generate a unique ID format: PLR-XXXXXXXX (8 alphanumeric characters)
     // In a real app, this would come from the server/database
     // For demo purposes, we'll generate one based on a stored value or create a new one
-    let playerId = localStorage.getItem('playerId');
+    var user = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
+    var userKey = user && user.id ? String(user.id) : 'anonymous';
+    var storageKey = 'playerId_' + userKey;
+    let playerId = localStorage.getItem(storageKey);
     if (!playerId) {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let id = 'PLR-';
@@ -311,69 +436,257 @@ function generatePlayerId() {
             id += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         playerId = id;
-        localStorage.setItem('playerId', playerId);
+        localStorage.setItem(storageKey, playerId);
     }
     return playerId;
 }
 
-// Function to load profile data
-function loadProfileData() {
-    // TODO: Replace with actual API call
-    // For now, using placeholder data
-    const profileData = {
-        fullName: 'John Doe',
-        email: 'john.doe@example.com',
+function getAddressPartsForUser(userId) {
+    if (!userId) return null;
+    try {
+        var raw = localStorage.getItem('profileAddress_' + String(userId));
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        return {
+            streetAddress: parsed.streetAddress || '',
+            city: parsed.city || '',
+            state: parsed.state || '',
+            postalCode: parsed.postalCode || '',
+            country: parsed.country || ''
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function saveAddressPartsForUser(userId, addressData) {
+    if (!userId || !addressData) return;
+    localStorage.setItem('profileAddress_' + String(userId), JSON.stringify({
+        streetAddress: addressData.streetAddress || '',
+        city: addressData.city || '',
+        state: addressData.state || '',
+        postalCode: addressData.postalCode || '',
+        country: addressData.country || ''
+    }));
+}
+
+// Function to format full date (e.g., January 15, 1995)
+function formatFullDate(isoDate) {
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+}
+
+// Function to format month/year (e.g., March 2023)
+function formatMonthYear(isoDate) {
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long'
+    });
+}
+
+// Function to calculate membership months
+function calculateMemberMonths(isoDate) {
+    if (!isoDate) return 0;
+    const start = new Date(isoDate);
+    const now = new Date();
+    if (isNaN(start.getTime())) return 0;
+    const years = now.getFullYear() - start.getFullYear();
+    const months = now.getMonth() - start.getMonth();
+    return years * 12 + months + (now.getDate() >= start.getDate() ? 0 : -1);
+}
+
+// Map backend user + optional booking/review stats → profile view model
+function buildProfileDataFromUser(user, stats) {
+    if (!user) return null;
+    var avatarUrl = user.avatar || (user.id && localStorage.getItem('userAvatar_' + user.id)) || null;
+    const savedAddress = user.id ? getAddressPartsForUser(user.id) : null;
+    const s = stats || {};
+    return {
+        fullName: user.fullName || 'Player',
+        email: user.email || '',
+        avatar: avatarUrl,
         playerId: generatePlayerId(),
-        phone: '+90 555 123 4567',
-        dateOfBirth: 'January 15, 1995',
-        gender: 'Male',
-        memberSince: 'March 2023',
-        streetAddress: '123 Main Street, Apt 4B',
-        city: 'Istanbul',
-        state: 'Istanbul Province',
-        postalCode: '34000',
-        country: 'Turkey',
-        totalBookings: 24,
-        upcomingBookings: 5,
-        averageRating: 4.8,
-        memberMonths: 21
+        phone: user.phone || 'Not provided',
+        dateOfBirth: formatFullDate(user.dateOfBirth),
+        gender: user.gender || 'Not specified',
+        memberSince: formatMonthYear(user.createdAt),
+        streetAddress: (savedAddress && savedAddress.streetAddress) || user.location || 'Not set',
+        city: (savedAddress && savedAddress.city) || '',
+        state: (savedAddress && savedAddress.state) || '',
+        postalCode: (savedAddress && savedAddress.postalCode) || '',
+        country: (savedAddress && savedAddress.country) || '',
+        totalBookings: s.totalBookings != null ? s.totalBookings : 0,
+        upcomingBookings: s.upcomingBookings != null ? s.upcomingBookings : 0,
+        averageRating: s.averageRating != null ? s.averageRating : 0,
+        memberMonths: calculateMemberMonths(user.createdAt)
     };
-    
-    // Update profile information
-    updateProfileDisplay(profileData);
+}
+
+// Function to load profile data (from backend auth/me + localStorage)
+async function loadProfileData() {
+    if (typeof API === 'undefined') {
+        console.warn('Profile: API helper not loaded. Showing placeholder data.');
+        return;
+    }
+
+    let user = API.getCurrentUser && API.getCurrentUser();
+    if (user) {
+        const cachedView = buildProfileDataFromUser(user, {});
+        if (cachedView) updateProfileDisplay(cachedView);
+    }
+
+    try {
+        if (API.auth && API.auth.getCurrentUser) {
+            const res = await API.auth.getCurrentUser();
+            if (res && res.user) {
+                user = res.user;
+                if (API.setCurrentUser) {
+                    API.setCurrentUser(user);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Profile: failed to load user from /auth/me, using cached user if available.', e);
+    }
+
+    if (!user) {
+        window.location.href = '/pages/auth/login.html';
+        return;
+    }
+
+    const afterAuthView = buildProfileDataFromUser(user, {});
+    if (afterAuthView) updateProfileDisplay(afterAuthView);
+
+    const stats = { totalBookings: 0, upcomingBookings: 0, averageRating: 0 };
+
+    try {
+        if (API.bookings && API.bookings.getAll) {
+            const bookingsRes = await API.bookings.getAll({ limit: 500 });
+            const bookings = bookingsRes.bookings || [];
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            stats.totalBookings = bookings.filter(function(b) {
+                return b.status !== 'CANCELLED';
+            }).length;
+            stats.upcomingBookings = bookings.filter(function(b) {
+                if (b.status === 'CANCELLED') return false;
+                var d = new Date(b.date);
+                d.setHours(0, 0, 0, 0);
+                return d >= now && (b.status === 'UPCOMING' || b.status === 'CONFIRMED' || b.status === 'PENDING');
+            }).length;
+        }
+        if (API.reviews && API.reviews.getMyReviews) {
+            const reviewsRes = await API.reviews.getMyReviews();
+            stats.averageRating = (reviewsRes.averageRating != null)
+                ? reviewsRes.averageRating
+                : 0;
+        }
+    } catch (e) {
+        console.warn('Profile: failed to load booking/review stats', e);
+    }
+
+    const profileData = buildProfileDataFromUser(user, stats);
+    if (profileData) updateProfileDisplay(profileData);
+}
+
+// Build avatar URL from full name (e.g. "Mousa Aqabnah" → initials "MA")
+function getAvatarUrl(fullName, size) {
+    const name = (fullName || 'User').trim() || 'User';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=007BFF&color=fff&size=${size || 128}`;
 }
 
 // Function to update profile display
 function updateProfileDisplay(data) {
+    const fullName = data.fullName || 'Player';
+    const email = data.email || '';
+    var avatarUrl = data.avatar || null;
+    var fallbackUrl = getAvatarUrl(fullName, 256);
+
     // Update main profile info
     const profileNameMain = document.getElementById('profileNameMain');
     const profileEmailMain = document.getElementById('profileEmailMain');
-    
-    if (profileNameMain) profileNameMain.textContent = data.fullName;
-    if (profileEmailMain) profileEmailMain.textContent = data.email;
-    
-    // Update personal information
-    document.getElementById('fullName').textContent = data.fullName;
-    document.getElementById('emailAddress').textContent = data.email;
-    if (data.playerId) {
-        document.getElementById('playerId').textContent = data.playerId;
+
+    if (profileNameMain) profileNameMain.textContent = fullName;
+    if (profileEmailMain) profileEmailMain.textContent = email;
+
+    // Main profile avatar (custom pic or initials)
+    const profileAvatar = document.getElementById('profileAvatar');
+    if (profileAvatar) {
+        profileAvatar.src = avatarUrl || fallbackUrl;
+        profileAvatar.alt = fullName;
     }
-    document.getElementById('phoneNumber').textContent = data.phone;
-    document.getElementById('dateOfBirth').textContent = data.dateOfBirth;
-    document.getElementById('gender').textContent = data.gender;
-    document.getElementById('memberSince').textContent = data.memberSince;
-    
+
+    // My Account popup: name, email, and avatar
+    const popupName = document.querySelector('#profilePopup .profile-name');
+    const popupEmail = document.querySelector('#profilePopup .profile-email');
+    const popupAvatar = document.querySelector('#profilePopup .profile-avatar-large img');
+    if (popupName) popupName.textContent = fullName;
+    if (popupEmail) popupEmail.textContent = email;
+    if (popupAvatar) {
+        popupAvatar.src = avatarUrl || getAvatarUrl(fullName, 128);
+        popupAvatar.alt = fullName;
+    }
+
+    // Header profile picture (top-right)
+    const headerAvatar = document.querySelector('#profileBtn img');
+    if (headerAvatar) {
+        headerAvatar.src = avatarUrl || getAvatarUrl(fullName, 128);
+        headerAvatar.alt = fullName;
+    }
+
+    // Update personal information
+    const fullNameEl = document.getElementById('fullName');
+    const emailAddressEl = document.getElementById('emailAddress');
+    if (fullNameEl) fullNameEl.textContent = fullName;
+    if (emailAddressEl) emailAddressEl.textContent = email;
+    const playerIdEl = document.getElementById('playerId');
+    if (playerIdEl && data.playerId) playerIdEl.textContent = data.playerId;
+
+    const phoneNumberEl = document.getElementById('phoneNumber');
+    const dateOfBirthEl = document.getElementById('dateOfBirth');
+    const genderEl = document.getElementById('gender');
+    const memberSinceEl = document.getElementById('memberSince');
+    if (phoneNumberEl) phoneNumberEl.textContent = data.phone;
+    if (dateOfBirthEl) dateOfBirthEl.textContent = data.dateOfBirth;
+    if (genderEl) genderEl.textContent = data.gender;
+    if (memberSinceEl) memberSinceEl.textContent = data.memberSince;
+
     // Update address information
-    document.getElementById('streetAddress').textContent = data.streetAddress;
-    document.getElementById('city').textContent = data.city;
-    document.getElementById('state').textContent = data.state;
-    document.getElementById('postalCode').textContent = data.postalCode;
-    document.getElementById('country').textContent = data.country;
-    
+    const streetAddressEl = document.getElementById('streetAddress');
+    const cityEl = document.getElementById('city');
+    const stateEl = document.getElementById('state');
+    const postalCodeEl = document.getElementById('postalCode');
+    const countryEl = document.getElementById('country');
+    if (streetAddressEl) streetAddressEl.textContent = data.streetAddress;
+    if (cityEl) cityEl.textContent = data.city;
+    if (stateEl) stateEl.textContent = data.state;
+    if (postalCodeEl) postalCodeEl.textContent = data.postalCode;
+    if (countryEl) countryEl.textContent = data.country;
+
     // Update statistics
-    document.getElementById('totalBookings').textContent = data.totalBookings;
-    document.getElementById('upcomingBookings').textContent = data.upcomingBookings;
-    document.getElementById('averageRating').textContent = data.averageRating;
-    document.getElementById('memberMonths').textContent = data.memberMonths;
+    const totalBookingsEl = document.getElementById('totalBookings');
+    const upcomingBookingsEl = document.getElementById('upcomingBookings');
+    const averageRatingEl = document.getElementById('averageRating');
+    const memberMonthsEl = document.getElementById('memberMonths');
+    if (totalBookingsEl) totalBookingsEl.textContent = data.totalBookings;
+    if (upcomingBookingsEl) upcomingBookingsEl.textContent = data.upcomingBookings;
+    if (averageRatingEl) averageRatingEl.textContent = data.averageRating;
+    if (memberMonthsEl) memberMonthsEl.textContent = data.memberMonths;
+}
+
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
 }
 

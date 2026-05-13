@@ -337,3 +337,158 @@
     }
 }
 
+/* Change Password Modal (same pattern as player settings) */
+.change-password-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    padding: 20px;
+}
+
+.change-password-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.change-password-modal {
+    background: white;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.change-password-modal-header {
+    padding: 24px;
+    border-bottom: 1px solid #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.change-password-modal-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+}
+
+.change-password-modal-close {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #F3F4F6;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #6B7280;
+    transition: all 0.2s;
+}
+
+.change-password-modal-close:hover {
+    background: #E5E7EB;
+    color: #212529;
+}
+
+.change-password-modal-body {
+    padding: 24px;
+}
+
+.change-password-modal-body .form-group {
+    margin-bottom: 20px;
+}
+
+.change-password-modal-body .form-group:last-of-type {
+    margin-bottom: 16px;
+}
+
+.change-password-modal-body label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.password-input-wrapper {
+    position: relative;
+}
+
+.change-password-modal-body input[type="password"],
+.change-password-modal-body input[type="text"] {
+    width: 100%;
+    padding: 12px 44px 12px 16px;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: 'Poppins', sans-serif;
+    box-sizing: border-box;
+}
+
+.change-password-modal-body input[type="password"]:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.change-password-modal-body input[type="text"]:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.password-toggle-btn {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #6B7280;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.password-toggle-btn:hover {
+    background: #F3F4F6;
+    color: #374151;
+}
+
+.password-toggle-btn:focus-visible {
+    outline: 2px solid #007BFF;
+    outline-offset: 2px;
+}
+
+.change-password-error {
+    color: #DC2626;
+    font-size: 14px;
+    margin: 0 0 16px 0;
+    min-height: 20px;
+}
+
+.change-password-modal-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding-top: 8px;
+}
+

@@ -23,7 +23,8 @@ const authenticate = async (req, res, next) => {
         fullName: true,
         role: true,
         status: true,
-        avatar: true
+        avatar: true,
+        verificationStatus: true
       }
     });
 
@@ -48,17 +49,48 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// Same as authenticate but allows suspended users (used for session read such as GET /auth/me).
+const authenticateAllowSuspended = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, email: true, fullName: true, role: true, status: true, avatar: true }
+    });
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    return res.status(500).json({ error: 'Authentication error' });
+  }
+};
+
 // Middleware to check if user has specific role
 const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    
-    if (!roles.includes(req.user.role)) {
+
+    const userRole = String(req.user.role || '').toUpperCase();
+    const allowedRoles = roles.map((r) => String(r || '').toUpperCase());
+
+    if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    
+
     next();
   };
 };
@@ -82,9 +114,27 @@ const requireOwnerOrAdmin = async (req, res, next) => {
   }
 };
 
+// If current user is OWNER, require approved verification to access protected actions.
+const requireVerifiedOwner = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const role = String(req.user.role || '').toUpperCase();
+  if (role !== 'OWNER') return next();
+  const verificationStatus = String(req.user.verificationStatus || '').toUpperCase();
+  if (verificationStatus !== 'APPROVED') {
+    return res.status(403).json({
+      error: 'Owner account verification is required before using owner features'
+    });
+  }
+  return next();
+};
+
 module.exports = {
   authenticate,
+  authenticateAllowSuspended,
   requireRole,
-  requireOwnerOrAdmin
+  requireOwnerOrAdmin,
+  requireVerifiedOwner
 };
 

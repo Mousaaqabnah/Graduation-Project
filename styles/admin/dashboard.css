@@ -1364,6 +1364,154 @@ body {
     min-height: 0;
 }
 
+/* Invite Admin Modal */
+.invite-admin-modal {
+    max-width: 520px;
+}
+
+.invite-admin-modal-content {
+    padding: 0 24px 24px 24px;
+}
+
+.invite-admin-inline-error {
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid #FEE2E2;
+    background: #FFF5F5;
+    color: #B91C1C;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-bottom: 14px;
+}
+
+.invite-admin-form .form-group {
+    margin-bottom: 16px;
+}
+
+.invite-admin-form .form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.invite-admin-form .form-group input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #212529;
+    background: white;
+    transition: all 0.2s;
+}
+
+.invite-admin-form .form-group input:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.invite-admin-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 18px;
+}
+
+.invite-admin-cancel {
+    background: white;
+    color: #374151;
+    border: 1px solid #D1D5DB;
+}
+
+.invite-admin-cancel:hover {
+    background: #F9FAFB;
+    border-color: #9CA3AF;
+}
+
+.invite-admin-result {
+    border-top: 1px solid #E5E7EB;
+    margin-top: 18px;
+    padding-top: 18px;
+}
+
+.invite-admin-result-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 12px;
+}
+
+.invite-admin-result-row {
+    margin-bottom: 14px;
+}
+
+.invite-admin-result-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #6B7280;
+    margin-bottom: 6px;
+}
+
+.invite-admin-result-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.invite-admin-password-wrap {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.invite-admin-password {
+    flex: 1;
+    padding: 12px 16px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    background: white;
+    color: #212529;
+    transition: all 0.2s;
+}
+
+.invite-admin-password:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.invite-admin-copy {
+    background: #F3F4F6;
+    color: #374151;
+    border: 1px solid #E5E7EB;
+}
+
+.invite-admin-toggle {
+    min-width: 64px;
+    justify-content: center;
+}
+
+.invite-admin-copy:hover {
+    background: #E5E7EB;
+    border-color: #D1D5DB;
+}
+
+.invite-admin-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #6B7280;
+    line-height: 1.5;
+}
+
 .notifications-modal-content .notifications-list {
     display: flex;
     flex-direction: column;
@@ -1450,5 +1598,39 @@ body {
 .no-results p {
     font-size: 16px;
     margin: 0;
+}
+
+/* Success toast */
+.success-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+    font-size: 15px;
+    font-weight: 500;
+    z-index: 10000;
+    animation: toastSlideIn 0.3s ease-out;
+}
+
+.success-toast i {
+    font-size: 22px;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 

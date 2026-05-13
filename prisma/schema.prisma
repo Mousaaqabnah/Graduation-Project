@@ -35,6 +35,12 @@ enum FieldType {
   OUTDOOR
 }
 
+enum FieldModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum BookingStatus {
   PENDING
   UPCOMING
@@ -59,7 +65,7 @@ enum PaymentStatus {
 model User {
   id             String    @id @default(auto()) @map("_id") @db.ObjectId
   email          String    @unique
-  passwordHash   String    @map("password_hash")
+  passwordHash   String?   @map("password_hash")
   fullName       String    @map("full_name")
   phone          String?
   dateOfBirth    DateTime? @map("date_of_birth")
@@ -77,6 +83,13 @@ model User {
   idBackUrl          String?            @map("id_back_url")
   verifiedAt         DateTime?          @map("verified_at")
 
+  /// UI settings keyed by role: { "owner": { ... }, "player": { ... } }
+  preferences Json? @map("preferences")
+
+  /// SHA-256 hex of raw reset token; cleared after successful reset
+  passwordResetTokenHash String?   @map("password_reset_token_hash")
+  passwordResetExpires   DateTime? @map("password_reset_expires")
+
   // Relations
   ownedFields         Field[]             @relation("FieldOwner")
   reviews             Review[]
@@ -86,6 +99,7 @@ model User {
   sentMessages        Message[]            @relation("SentMessages")
   conversationsAsUser1 Conversation[]     @relation("ConversationUser1")
   conversationsAsUser2 Conversation[]     @relation("ConversationUser2")
+  userNotifications   UserNotification[]
 
   @@map("users")
 }
@@ -95,18 +109,39 @@ model Field {
   name        String
   sport       String    // Football, Tennis, Basketball, Padel, Volleyball, Ice Hockey, etc.
   description String?
+  capacity    Int?
   type        FieldType @default(OUTDOOR) // INDOOR | OUTDOOR
   location    String
   address     String?
+  city        String?
+  district    String?
+  latitude    Float?
+  longitude   Float?
   phone       String?
   pricePerHour Int      @map("price_per_hour") // in smallest currency unit (e.g. kuruş for TRY)
+  amenities   String[]  @default([])
   features    String[]  @default([]) // e.g. ["Parking", "Changing Rooms", "Water Station"]
+  highlights  String[]  @default([])
   images      String[]  @default([]) // URLs of images
+  schedule    Json?
+  bookingType String?   @map("booking_type")
+  advanceBooking String? @map("advance_booking")
+  cancellationPolicy String? @map("cancellation_policy")
+  visibilityRequested Boolean? @map("visibility_requested")
+  /// Optional URLs for owner-submitted verification files (shown in admin review).
+  ownershipDocumentUrl String? @map("ownership_document_url")
+  licensesDocumentUrl  String? @map("licenses_document_url")
   rating      Float?    @default(0) // computed from reviews
   reviewCount Int       @default(0) @map("review_count")
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Admin moderation / approval workflow (optional for backward-compat with existing data)
+  moderationStatus FieldModerationStatus? @default(PENDING) @map("moderation_status")
+  moderationReason String?                @map("moderation_reason")
+  moderatedAt      DateTime?              @map("moderated_at")
+  moderatedById    String?                @map("moderated_by_id") @db.ObjectId
 
   ownerId     String    @map("owner_id") @db.ObjectId
   owner       User      @relation("FieldOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -152,6 +187,7 @@ model Booking {
   date                   DateTime
   timeSlotStart          String         @map("time_slot_start") // e.g. "18:00"
   timeSlotEnd            String         @map("time_slot_end")   // e.g. "20:00"
+  timeSlotRanges         Json?          @map("time_slot_ranges") // [{start,end},...] for non-contiguous slots
   totalCost              Int            @map("total_cost")      // in smallest currency unit
   paymentMethod          PaymentMethod @map("payment_method")
   status                 BookingStatus  @default(PENDING)
@@ -203,6 +239,9 @@ model Conversation {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  blockedAt DateTime? @map("blocked_at")
+  starredAt DateTime? @map("starred_at")
+  isSupportThread Boolean? @default(false) @map("is_support_thread")
 
   user1Id String @map("user1_id") @db.ObjectId
   user1   User   @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
@@ -217,7 +256,8 @@ model Conversation {
 
 model Message {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  content   String
+  content   String   @default("")
+  attachments Json?  @map("attachments") // [{ url, mimeType, originalName, size }]
   createdAt DateTime @default(now()) @map("created_at")
   readAt    DateTime? @map("read_at")
 
@@ -227,4 +267,32 @@ model Message {
   sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@map("messages")
+}
+
+model Notification {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  message      String
+  audience     String   @default("all")   // all, players, owners, admins, private
+  channels     String[] @default(["in-app"])  // in-app, email
+  targetUserId String?  @map("target_user_id") @db.ObjectId
+  sentById     String?  @map("sent_by_id") @db.ObjectId
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  userNotifications UserNotification[]
+
+  @@map("notifications")
+}
+
+model UserNotification {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  readAt         DateTime?   @map("read_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  userId         String      @map("user_id") @db.ObjectId
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationId String      @map("notification_id") @db.ObjectId
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@map("user_notifications")
 }

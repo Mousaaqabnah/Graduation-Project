@@ -4,13 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Map - Field Owner Admin | MatchField</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <link rel="stylesheet" href="../../styles/owner/dashboard.css">
+    <link rel="stylesheet" href="../../styles/owner/fields.css">
     <link rel="stylesheet" href="../../styles/owner/map.css">
 </head>
 <body>
@@ -178,12 +181,12 @@
                     <!-- Search Bar -->
                     <div class="search-container">
                         <i class="fi fi-rr-search search-icon"></i>
-                        <input type="text" class="search-input" placeholder="Search field name..." id="fieldSearchInput">
+                        <input type="text" class="search-input" placeholder="Search field name or area..." id="fieldSearchInput">
                     </div>
 
                     <!-- Field Count -->
                     <div class="field-count-header">
-                        <span class="field-count-text" id="fieldCount">3 fields</span>
+                        <span class="field-count-text" id="fieldCount">0 fields</span>
                     </div>
 
                     <!-- Field List -->
@@ -195,31 +198,121 @@
                 <!-- Right Panel - Map View -->
                 <div class="map-panel">
                     <div class="map-header-panel">
-                        <h2 class="map-title">Map view (preview)</h2>
-                        <p class="map-subtitle">Your fields are marked on the map below</p>
+                        <h2 class="map-title">Map view</h2>
+                        <p class="map-subtitle">Your fields appear as pins (OpenStreetMap + Leaflet)</p>
                     </div>
-                    <div class="map-container" id="mapContainer">
-                        <!-- Map markers will be positioned here -->
-                        <div class="map-marker" style="top: 25%; left: 30%;" data-field="fozl">
-                            <div class="marker-price">₺1600 / h</div>
-                        </div>
-                        <div class="map-marker" style="top: 50%; left: 60%;" data-field="indoor">
-                            <div class="marker-price">₺1100 / h</div>
-                        </div>
-                        <div class="map-marker" style="top: 70%; left: 40%;" data-field="futsal">
-                            <div class="marker-price">₺900 / h</div>
-                        </div>
-                        <p class="map-disclaimer">This is a static preview. In your real app, this area will be a live map.</p>
-                    </div>
+                    <div class="map-container" id="mapContainer"></div>
                     <div class="map-actions">
-                        <button class="btn-recenter">Re-center</button>
-                        <button class="btn-manage-location">Manage Location</button>
+                        <button type="button" class="btn-recenter">Re-center</button>
+                        <button type="button" class="btn-manage-location">Edit on My Fields</button>
                     </div>
                 </div>
             </div>
         </main>
+
+        <!-- View Field Details Modal (same as My Fields — stays on map when View is clicked) -->
+        <div id="viewFieldModal" class="modal-overlay">
+            <div class="modal-box view-field-modal">
+                <button type="button" class="modal-close" onclick="closeViewModal()">&times;</button>
+                <div class="view-field-content-wrapper">
+                    <div class="view-field-header-top">
+                        <h1 class="view-field-title" id="viewFieldName">Field Name</h1>
+                        <div class="view-field-meta-line" id="viewFieldMeta">
+                            <i class="fi fi-rr-marker field-meta-icon"></i>
+                            <span id="viewFieldLocation">Location</span>
+                            <span class="field-meta-separator">•</span>
+                            <span id="viewFieldCategory">Sport</span>
+                            <span class="field-meta-separator">•</span>
+                            <span id="viewFieldType">Type</span>
+                            <span class="field-meta-separator">•</span>
+                            <span class="field-star-yellow">★</span>
+                            <span id="viewFieldHeaderRating">4.8</span>
+                            <span> (<span id="viewFieldHeaderReviewsCount">98</span>)</span>
+                        </div>
+                    </div>
+                    <div class="view-field-main-row">
+                        <div class="view-field-gallery-wrapper">
+                            <div class="view-field-gallery">
+                                <img id="viewFieldImage" src="" alt="Field" class="view-field-main-image">
+                            </div>
+                            <div class="view-field-feature-tags" id="viewFieldTags"></div>
+                        </div>
+                        <div class="view-field-info-card">
+                            <div class="view-field-price-section">
+                                <div class="view-field-price" id="viewFieldPrice">₺0<span class="view-field-price-unit">/h</span></div>
+                                <div class="view-field-price-note">Per hour • Taxes included</div>
+                            </div>
+                            <div class="view-field-details-section">
+                                <div class="view-field-detail-item">
+                                    <span class="view-field-detail-label">Location</span>
+                                    <span class="view-field-detail-value" id="viewFieldLocationFull">-</span>
+                                </div>
+                                <div class="view-field-detail-item">
+                                    <span class="view-field-detail-label">Capacity</span>
+                                    <span class="view-field-detail-value" id="viewFieldCapacity">-</span>
+                                </div>
+                                <div class="view-field-detail-item">
+                                    <span class="view-field-detail-label">Sport Category</span>
+                                    <span class="view-field-detail-value" id="viewFieldCategoryFull">-</span>
+                                </div>
+                                <div class="view-field-detail-item">
+                                    <span class="view-field-detail-label">Type</span>
+                                    <span class="view-field-detail-value" id="viewFieldTypeFull">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="view-field-content-grid">
+                        <div class="view-field-description-section">
+                            <h2 class="view-section-title">About this field</h2>
+                            <p class="view-field-description" id="viewFieldDescription">-</p>
+                        </div>
+                        <div class="view-field-highlights-section" id="viewFieldHighlightsSection">
+                            <h3 class="view-section-title">Highlights</h3>
+                            <ul class="view-highlights-list" id="viewFieldHighlights"></ul>
+                        </div>
+                        <div class="view-field-amenities-section" id="viewFieldAmenitiesSection">
+                            <h3 class="view-section-title">Amenities</h3>
+                            <div class="view-amenities-grid" id="viewFieldAmenities"></div>
+                        </div>
+                        <div class="view-field-reviews-section">
+                            <div class="view-reviews-header-section">
+                                <h3 class="view-section-title">Reviews &amp; Feedback</h3>
+                                <div class="view-reviews-summary-toggle">
+                                    <div class="view-reviews-summary">
+                                        <span class="field-star-yellow">★</span>
+                                        <span id="viewFieldRating">4.8</span>
+                                        <span> • </span>
+                                        <span id="viewFieldReviewsCount">98</span>
+                                        <span> total reviews</span>
+                                    </div>
+                                    <button type="button" class="view-toggle-reviews-btn" id="viewToggleReviewsBtn" onclick="toggleViewReviews()">
+                                        <span class="view-toggle-text">View reviews</span>
+                                        <i class="fi fi-rr-angle-down view-toggle-icon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="view-reviews-list" id="viewReviewsList" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="view-field-modal-footer">
+                    <button type="button" class="view-field-close-btn" onclick="closeViewModal()">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/auth-guard.js"></script>
+    <script src="../../scripts/utils/owner-guard.js"></script>
+    <script src="../../scripts/utils/fieldMapData.js"></script>
+    <script src="../../scripts/utils/mapService.js"></script>
+    <script src="../../scripts/player/header-user.js"></script>
+    <script src="../../scripts/player/notifications.js"></script>
+    <script src="../../scripts/owner/view-field-modal.js"></script>
     <script src="../../scripts/owner/map.js"></script>
 </body>
 </html>

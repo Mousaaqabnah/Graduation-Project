@@ -1,10 +1,76 @@
 // Fields loaded from API
 var allFields = [];
+const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
-function mapFieldToVenue(field, favoriteIds) {
+// Same as home / field-info: list GET does not include distanceKm; compute from coords when needed.
+var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
+var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function readPlayerSavedLocation() {
+  try {
+    var raw = localStorage.getItem(PLAYER_LOCATION_STORAGE_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng))
+      return { lat: parsed.lat, lng: parsed.lng };
+  } catch (_) {}
+  return null;
+}
+
+function getPlayerCoordsForDistance() {
+  var saved = readPlayerSavedLocation();
+  if (saved) return Promise.resolve(saved);
+  return new Promise(function(resolve) {
+    if (!navigator.geolocation) {
+      resolve(DEFAULT_PLAYER_LOCATION);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      function() {
+        resolve(DEFAULT_PLAYER_LOCATION);
+      },
+      { timeout: 6000, enableHighAccuracy: true }
+    );
+  });
+}
+
+function formatDistanceFromKm(km) {
+  if (!Number.isFinite(km)) return 'N/A';
+  return km.toFixed(1) + ' km';
+}
+
+function computeFieldDistance(field, refCoords) {
+  var apiKm = field.distanceKm != null ? Number(field.distanceKm) : NaN;
+  if (Number.isFinite(apiKm)) return formatDistanceFromKm(apiKm);
+  if (!refCoords || !Number.isFinite(refCoords.lat) || !Number.isFinite(refCoords.lng)) return 'N/A';
+  var flat = field.latitude != null ? Number(field.latitude) : null;
+  var flng = field.longitude != null ? Number(field.longitude) : null;
+  if (!Number.isFinite(flat) || !Number.isFinite(flng)) return 'N/A';
+  return formatDistanceFromKm(haversineKm(refCoords.lat, refCoords.lng, flat, flng));
+}
+
+function mapFieldToVenue(field, favoriteIdSet, refCoords) {
   var id = field.id;
+  var idStr = String(id);
   var images = field.images && field.images.length ? field.images : [];
   var img = images[0] || 'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=400&h=300&fit=crop&auto=format';
+  var favSet = favoriteIdSet instanceof Set ? favoriteIdSet : new Set((favoriteIdSet || []).map(String));
   return {
     id: id,
     name: field.name,
@@ -13,11 +79,29 @@ function mapFieldToVenue(field, favoriteIds) {
     rating: field.rating != null ? field.rating : 0,
     reviews: field.reviewCount != null ? field.reviewCount : 0,
     location: field.location || '',
-    distance: 'N/A',
+    distance: computeFieldDistance(field, refCoords),
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
-    isFavorite: favoriteIds.indexOf(id) !== -1
+    isFavorite: favSet.has(idStr)
   };
+}
+
+function dedupeVenues(venueList) {
+  const seenIds = new Set();
+  const seenFields = new Set();
+  return (venueList || []).filter(function(venue) {
+    const id = String(venue && venue.id || '').trim();
+    const fieldKey = [
+      String(venue && venue.name || '').trim().toLowerCase(),
+      String(venue && venue.location || '').trim().toLowerCase(),
+      String(venue && venue.sport || '').trim().toLowerCase(),
+      String(venue && venue.price || '')
+    ].join('|');
+    if ((id && seenIds.has(id)) || seenFields.has(fieldKey)) return false;
+    if (id) seenIds.add(id);
+    seenFields.add(fieldKey);
+    return true;
+  });
 }
 
 function loadAllFieldsFromAPI() {
@@ -28,9 +112,29 @@ function loadAllFieldsFromAPI() {
     var fieldsRes = results[0];
     var favRes = results[1];
     var fields = (fieldsRes && fieldsRes.fields) ? fieldsRes.fields : [];
-    var favoriteIds = (favRes && favRes.favorites) ? favRes.favorites.map(function(f) { return f.fieldId || (f.field && f.field.id); }).filter(Boolean) : [];
-    allFields = fields.map(function(f) { return mapFieldToVenue(f, favoriteIds); });
-    return allFields;
+    var favoriteIds = (favRes && favRes.favorites)
+      ? favRes.favorites.map(function(f) { return String(f.fieldId || (f.field && f.field.id) || ''); }).filter(Boolean)
+      : [];
+    if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
+      try {
+        localStorage.setItem('favoriteVenues', JSON.stringify(favoriteIds));
+        window.dispatchEvent(new CustomEvent('matchfield:favorites-updated', { detail: { favorites: favoriteIds } }));
+      } catch (_) {}
+    }
+    var favoriteIdSet = new Set(favoriteIds);
+    if (!(typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken())) {
+      try {
+        var raw = localStorage.getItem('favoriteVenues');
+        var parsed = raw ? JSON.parse(raw) : [];
+        (Array.isArray(parsed) ? parsed : []).forEach(function(fid) {
+          if (fid) favoriteIdSet.add(String(fid));
+        });
+      } catch (_) {}
+    }
+    return getPlayerCoordsForDistance().then(function(refCoords) {
+      allFields = dedupeVenues(fields.map(function(f) { return mapFieldToVenue(f, favoriteIdSet, refCoords); }));
+      return allFields;
+    });
   });
 }
 
@@ -62,6 +166,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 });
 
+window.addEventListener('pageshow', function() {
+    const ids = consumeDirtyReviewFields();
+    ids.forEach(function(id) { refreshFieldReviewStats(id); });
+});
+
+window.addEventListener('matchfield:reviews-updated', function(e) {
+    const fieldId = e && e.detail && e.detail.fieldId ? String(e.detail.fieldId) : '';
+    if (!fieldId) return;
+    refreshFieldReviewStats(fieldId);
+});
+
 // Initialize filter options - set "All" as active by default
 function initializeFilterOptions() {
     const allOptions = document.querySelectorAll('.filter-option[data-value="all"]');
@@ -83,8 +198,11 @@ function handleInviteLink() {
         const venue = allFields.find(v => v.id.toString() === inviteFieldId);
         
         if (venue) {
-            setTimeout(() => {
-                if (confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`)) {
+            setTimeout(async () => {
+                if (await MatchFieldDialog.confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`, {
+                    type: 'info',
+                    okText: 'View Booking'
+                })) {
                     openBookingModal(venue);
                 }
             }, 500);
@@ -278,20 +396,61 @@ function createVenueCard(venue) {
     return card;
 }
 
+function updateReviewRowForCard(card, venue) {
+    const reviewSpan = card.querySelector('.venue-rating span:last-child');
+    if (!reviewSpan) return;
+    reviewSpan.textContent = `${venue.rating} (${venue.reviews}) . ${venue.location} . ${venue.distance}`;
+}
+
+async function refreshFieldReviewStats(fieldId) {
+    if (typeof API === 'undefined' || !API.fields || !API.fields.getById) return;
+    const idStr = String(fieldId);
+    try {
+        const res = await API.fields.getById(idStr);
+        const field = res && res.field ? res.field : null;
+        if (!field) return;
+        const rating = field.rating != null ? field.rating : 0;
+        const reviews = field.reviewCount != null ? field.reviewCount : 0;
+        allFields.forEach(function(v) {
+            if (String(v.id) === idStr) {
+                v.rating = rating;
+                v.reviews = reviews;
+            }
+        });
+        document.querySelectorAll('.venue-card[data-venue-id="' + idStr + '"]').forEach(function(card) {
+            var venue = allFields.find(function(v) { return String(v.id) === idStr; });
+            if (venue) updateReviewRowForCard(card, venue);
+        });
+    } catch (_) {}
+}
+
+function consumeDirtyReviewFields() {
+    try {
+        const raw = localStorage.getItem(REVIEW_DIRTY_STORAGE_KEY);
+        const ids = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(ids) || !ids.length) return [];
+        localStorage.removeItem(REVIEW_DIRTY_STORAGE_KEY);
+        return ids.map(String);
+    } catch (_) {
+        return [];
+    }
+}
+
 // Toggle favorite status (API + local)
 function toggleFavorite(venueId) {
     if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
         alert('Please log in to add favorites.');
         return;
     }
-    var field = allFields.find(function(v) { return v.id === venueId; });
+    var venueIdStr = String(venueId);
+    var field = allFields.find(function(v) { return String(v.id) === venueIdStr; });
     if (!field) return;
     var isCurrentlyFavorite = field.isFavorite;
     var promise = isCurrentlyFavorite ? API.favorites.remove(venueId) : API.favorites.add(venueId);
     promise.then(function() {
         field.isFavorite = !field.isFavorite;
-        var favoriteBtn = document.querySelector('.favorite-btn[data-venue-id="' + venueId + '"]');
-        if (favoriteBtn) favoriteBtn.classList.toggle('active');
+        var favoriteBtns = document.querySelectorAll('.favorite-btn[data-venue-id="' + venueId + '"]');
+        favoriteBtns.forEach(function(btn) { btn.classList.toggle('active'); });
         saveFavoritesToStorage();
     }).catch(function(err) {
         alert(err.message || 'Failed to update favorite.');
@@ -455,6 +614,26 @@ function setupEventListeners() {
             renderAllFields();
         });
     }
+
+    // Profile popup (must live here — not inside updateFilterButtonText, or it never binds on first load)
+    const profileBtn = document.getElementById('profileBtn');
+    const profilePopup = document.getElementById('profilePopup');
+    if (profileBtn && profilePopup && profileBtn.getAttribute('data-mf-profile-init') !== '1') {
+        profileBtn.setAttribute('data-mf-profile-init', '1');
+        profileBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            profilePopup.classList.toggle('active');
+            var notificationPopup = document.getElementById('notificationPopup');
+            if (notificationPopup) notificationPopup.classList.remove('active');
+        });
+        document.addEventListener('click', function(e) {
+            if (profilePopup && profilePopup.classList.contains('active')) {
+                if (!profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
+                    profilePopup.classList.remove('active');
+                }
+            }
+        });
+    }
 }
 
 // Update filter button text based on active filters
@@ -477,51 +656,6 @@ function updateFilterButtonText() {
             filterSpan.textContent = 'Filter';
         }
     }
-    
-    // Notification popup
-    const notificationBtn = document.querySelector('.notification-btn');
-    const notificationPopup = document.getElementById('notificationPopup');
-    
-    if (notificationBtn && notificationPopup) {
-        notificationBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            notificationPopup.classList.toggle('active');
-            const profilePopup = document.getElementById('profilePopup');
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                profilePopup.classList.remove('active');
-            }
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                if (!notificationPopup.contains(e.target) && !notificationBtn.contains(e.target)) {
-                    notificationPopup.classList.remove('active');
-                }
-            }
-        });
-    }
-    
-    // Profile popup
-    const profileBtn = document.getElementById('profileBtn');
-    const profilePopup = document.getElementById('profilePopup');
-    
-    if (profileBtn && profilePopup) {
-        profileBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            profilePopup.classList.toggle('active');
-            if (notificationPopup && notificationPopup.classList.contains('active')) {
-                notificationPopup.classList.remove('active');
-            }
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (profilePopup && profilePopup.classList.contains('active')) {
-                if (!profilePopup.contains(e.target) && !profileBtn.contains(e.target)) {
-                    profilePopup.classList.remove('active');
-                }
-            }
-        });
-    }
 }
 
 // Save favorites to localStorage
@@ -538,7 +672,7 @@ function loadFavoritesFromStorage() {
     if (saved) {
         const favorites = JSON.parse(saved);
         allFields.forEach(v => {
-            v.isFavorite = favorites.includes(v.id);
+            v.isFavorite = favorites.includes(String(v.id));
         });
     }
 }
@@ -605,7 +739,6 @@ function openBookingModal(venue) {
             dateInput.min = today;
         }
         
-        generateInviteLink();
         updateStepDisplay();
         updateStepButtons();
     }
@@ -644,15 +777,6 @@ function populateFieldDetails(venue) {
             </div>
         </div>
     `;
-}
-
-// Generate invite link
-function generateInviteLink() {
-    const inviteLink = document.getElementById('inviteLink');
-    if (inviteLink && bookingState.field) {
-        const link = `${window.location.origin}${window.location.pathname}?invite=${bookingState.field.id}&organizer=${bookingState.organizer.id}`;
-        inviteLink.value = link;
-    }
 }
 
 // Update step display
@@ -795,18 +919,76 @@ function closeBookingModal() {
 }
 
 // Simplified implementations for booking modal steps
-function loadTimeSlots() {
+async function loadTimeSlots() {
     const container = document.getElementById('timeSlotsGrid');
     if (!container) return;
-    
+
     const slots = [];
-    for (let hour = 9; hour < 22; hour++) {
-        const startTime = `${hour.toString().padStart(2, '0')}:00`;
-        const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
+    let bookedSlots = [];
+    let workingSlots = [];
+
+    if (bookingState.selectedDate && bookingState.field && typeof API !== 'undefined') {
+        try {
+            container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+            const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
+
+            if (!availability.available && availability.lockedByOwner) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+                        <p>${availability.message || 'This field is not available on the selected date.'}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (!availability.available && availability.closedBySchedule) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #dc3545;">
+                        <i class="fi fi-rr-calendar" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
+                        <p>${availability.message || 'This field is closed on the selected day.'}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            bookedSlots = availability.bookedSlots || [];
+            workingSlots = Array.isArray(availability.workingSlots) ? availability.workingSlots : [];
+        } catch (error) {
+            console.error('Failed to fetch availability:', error);
+        }
+    }
+
+    const baseStarts = workingSlots.length
+        ? workingSlots
+        : (function () {
+            const out = [];
+            for (let hour = 9; hour < 22; hour++) {
+                out.push(`${hour.toString().padStart(2, '0')}:00`);
+            }
+            return out;
+        })();
+
+    baseStarts.forEach(function (startTime) {
+        const hour = parseInt(startTime.split(':')[0], 10);
         slots.push({
             start: startTime,
-            end: endTime,
-            available: Math.random() > 0.3
+            end: `${(hour + 1).toString().padStart(2, '0')}:00`,
+            available: true
+        });
+    });
+
+    slots.forEach((slot) => {
+        if (bookedSlots.includes(slot.start)) slot.available = false;
+    });
+
+    const nowForSlots = new Date();
+    const todayYmdLocal = `${nowForSlots.getFullYear()}-${String(nowForSlots.getMonth() + 1).padStart(2, '0')}-${String(nowForSlots.getDate()).padStart(2, '0')}`;
+    if (bookingState.selectedDate === todayYmdLocal) {
+        const minHour = nowForSlots.getHours();
+        slots.forEach((slot) => {
+            const h = parseInt(String(slot.start).split(':')[0], 10);
+            if (!Number.isNaN(h) && h < minHour) slot.available = false;
         });
     }
     
@@ -846,7 +1028,7 @@ function updatePlayersList() {
     if (!container) return;
     
     if (bookingState.players.length === 0) {
-        container.innerHTML = '<p class="no-players">No players added yet. Add players by username or share the invite link.</p>';
+        container.innerHTML = '<p class="no-players">No players added yet. Add players by username.</p>';
         return;
     }
     
