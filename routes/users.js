@@ -69,16 +69,22 @@ router.get('/search/users', authenticate, async (req, res) => {
     const { q, playersOnly } = req.query;
     const restrictToPlayers = playersOnly === '1' || String(playersOnly || '').toLowerCase() === 'true';
 
-    if (!q || q.length < 2) {
+    const qTrim = typeof q === 'string' ? q.trim() : '';
+    if (!qTrim || qTrim.length < 2) {
       return res.json({ users: [] });
+    }
+
+    const orFilters = [
+      { fullName: { contains: qTrim, mode: 'insensitive' } },
+      { email: { contains: qTrim, mode: 'insensitive' } }
+    ];
+    if (/^[a-fA-F0-9]{24}$/.test(qTrim)) {
+      orFilters.push({ id: qTrim });
     }
 
     const users = await prisma.user.findMany({
       where: {
-        OR: [
-          { fullName: { contains: q } },
-          { email: { contains: q } }
-        ],
+        OR: orFilters,
         ...(restrictToPlayers ? { role: 'PLAYER' } : {})
       },
       take: 10,

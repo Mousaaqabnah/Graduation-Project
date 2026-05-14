@@ -263,6 +263,9 @@ function selectManageSportByName(sportName) {
     syncManageSportCustomVisibility();
 }
 
+/** Strings not represented by amenity/feature checkboxes (incl. API highlights); reapplied on save without owner UI. */
+let ownerManagePreservedExtraStrings = [];
+
 function collectManageFeatureStrings() {
     const out = [];
     document.querySelectorAll('input[name="manageAmenities"]:checked').forEach(function (cb) {
@@ -273,9 +276,17 @@ function collectManageFeatureStrings() {
         const label = cb.nextElementSibling;
         if (label && label.textContent) out.push(label.textContent.trim());
     });
-    document.querySelectorAll('#manageHighlightsList .highlight-item span').forEach(function (span) {
-        const t = span.textContent.trim();
-        if (t) out.push(t);
+    const seen = {};
+    out.forEach(function (s) {
+        seen[String(s || '').trim().toLowerCase()] = true;
+    });
+    (ownerManagePreservedExtraStrings || []).forEach(function (s) {
+        const t = String(s || '').trim();
+        if (!t) return;
+        const k = t.toLowerCase();
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push(t);
     });
     return out;
 }
@@ -292,20 +303,13 @@ function applyManageFeaturesFromField(features) {
         cb.checked = key ? normalized.indexOf(key) !== -1 : false;
     });
 
-    const highlightsList = document.getElementById('manageHighlightsList');
-    if (!highlightsList) {
-        syncMutuallyExclusiveManageFeaturesState();
-        return;
-    }
-    highlightsList.innerHTML = '';
+    const preserved = [];
     arr.forEach(function(item) {
         const text = String(item || '').trim();
         if (!text || known.has(text.toLowerCase())) return;
-        const node = document.createElement('div');
-        node.className = 'highlight-item';
-        node.innerHTML = '<span>' + text + '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
-        highlightsList.appendChild(node);
+        preserved.push(text);
     });
+    ownerManagePreservedExtraStrings = preserved;
     syncMutuallyExclusiveManageFeaturesState();
 }
 
@@ -633,6 +637,7 @@ function closeModal() {
         editFieldModal.classList.remove('active');
         document.body.style.overflow = '';
         editFieldModal.dataset.fieldId = '';
+        ownerManagePreservedExtraStrings = [];
         // Reset to menu view
         showManageMenu();
         if (manageFieldMapPicker && typeof manageFieldMapPicker.destroy === 'function') {
@@ -783,8 +788,17 @@ async function loadFieldData(fieldId) {
         manageFieldMapPicker.setPosition(latN, lngN, 'init', { silent: true });
     }
 
-    const visibilityToggle = document.getElementById('manageVisibilityToggle');
-    if (visibilityToggle) visibilityToggle.classList.toggle('active', f.isActive !== false);
+    const maintToggle = document.getElementById('manageMaintenanceToggle');
+    if (maintToggle) maintToggle.classList.toggle('active', f.isActive === false);
+
+    const bookingTypeValue = String(f.bookingType || 'instant').toLowerCase();
+    const bookingInput = document.querySelector(
+        `input[name="manageBookingType"][value="${bookingTypeValue === 'request' ? 'request' : 'instant'}"]`
+    );
+    if (bookingInput) {
+        bookingInput.checked = true;
+        bookingInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
     applyManageInfoArraysFromField(f);
     applyManageScheduleFromField(f.schedule || f.workingSchedule || {});
@@ -1572,29 +1586,6 @@ function initializeManageDaySchedules() {
     });
 }
 
-function addManageHighlight() {
-    const input = document.getElementById('manageHighlightInput');
-    const highlightsList = document.getElementById('manageHighlightsList');
-    
-    if (!input || !highlightsList) return;
-    
-    const highlight = input.value.trim();
-    if (highlight) {
-        const highlightItem = document.createElement('div');
-        highlightItem.className = 'highlight-item';
-        highlightItem.innerHTML = `
-            <span>${highlight}</span>
-            <button type="button" onclick="removeManageHighlight(this)">&times;</button>
-        `;
-        highlightsList.appendChild(highlightItem);
-        input.value = '';
-    }
-}
-
-function removeManageHighlight(button) {
-    button.parentElement.remove();
-}
-
 function addManageUnavailableDate() {
     const input = document.getElementById('manageUnavailableDateInput');
     const datesList = document.getElementById('manageUnavailableDatesList');
@@ -1676,10 +1667,6 @@ function toggleManageSetting(setting) {
     if (toggle) {
         toggle.classList.toggle('active');
     }
-}
-
-function toggleManageFieldVisibility() {
-    toggleManageSetting('Visibility');
 }
 
 function removeManageFile(type) {
@@ -1783,6 +1770,11 @@ function submitManageChanges() {
     }
     payload.latitude = latNum;
     payload.longitude = lngNum;
+
+    payload.bookingType =
+        document.querySelector('input[name="manageBookingType"]:checked')?.value || 'instant';
+    const maintOn = document.getElementById('manageMaintenanceToggle')?.classList.contains('active');
+    payload.isActive = !maintOn;
 
     API.fields.update(activeCard, payload)
         .then(function() {
@@ -2053,13 +2045,10 @@ window.removeImage = removeImage;
 window.openManageSection = openManageSection;
 window.backToManageMenu = backToManageMenu;
 window.toggleManageDaySchedule = toggleManageDaySchedule;
-window.addManageHighlight = addManageHighlight;
-window.removeManageHighlight = removeManageHighlight;
 window.addManageUnavailableDate = addManageUnavailableDate;
 window.removeManageUnavailableDate = removeManageUnavailableDate;
 window.handleManageImageUpload = handleManageImageUpload;
 window.toggleManageSetting = toggleManageSetting;
-window.toggleManageFieldVisibility = toggleManageFieldVisibility;
 window.removeManageFile = removeManageFile;
 window.handleManageDocumentUpload = handleManageDocumentUpload;
 window.removeManageDocumentPreview = removeManageDocumentPreview;

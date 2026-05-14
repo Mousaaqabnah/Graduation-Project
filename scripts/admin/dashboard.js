@@ -155,36 +155,44 @@ async function loadNotificationsAudienceChart() {
     }
 }
 
-function pickRegionFromBooking(booking) {
-    const field = booking && booking.field ? booking.field : {};
-    const city = (field.city || '').trim();
-    if (city) return city;
-    const location = (field.location || booking.location || '').trim();
-    if (!location) return 'Other';
-    const firstPart = location.split(',')[0].trim();
-    return firstPart || 'Other';
+function bookingRegionRowsFromBookingsList(bookings) {
+    const S = typeof window !== 'undefined' ? window.MatchFieldBookingRegionStats : null;
+    if (!S || typeof S.buildBookingRegionStats !== 'function') return [];
+    const fieldById = new Map();
+    (bookings || []).forEach((b) => {
+        if (b.field && b.field.id) fieldById.set(b.field.id, b.field);
+    });
+    const slim = (bookings || []).map((b) => ({ fieldId: b.fieldId }));
+    const { rows } = S.buildBookingRegionStats(slim, fieldById);
+    return (rows || []).map((r) => ({
+        label: r.label,
+        percent: Math.max(0, Math.min(100, Number(r.percent) || 0))
+    }));
 }
 
 async function loadBookingsRegionsChart() {
-    if (!bookingsRegionsChart || !API?.bookings?.getAll) return;
+    if (!bookingsRegionsChart) return;
+    try {
+        if (API?.admin?.getBookingsRegionStats) {
+            const res = await API.admin.getBookingsRegionStats();
+            const rows = (res.rows || []).map((r) => ({
+                label: r.label,
+                percent: Math.max(0, Math.min(100, Number(r.percent) || 0))
+            }));
+            renderSimpleBarChart(bookingsRegionsChart, rows);
+            return;
+        }
+    } catch (err) {
+        console.warn('Bookings region stats (admin) failed:', err);
+    }
+    if (!API?.bookings?.getAll) {
+        renderSimpleBarChart(bookingsRegionsChart, []);
+        return;
+    }
     try {
         const res = await API.bookings.getAll({ limit: 500 });
         const bookings = res.bookings || [];
-        const counts = {};
-        bookings.forEach((b) => {
-            const region = pickRegionFromBooking(b);
-            counts[region] = (counts[region] || 0) + 1;
-        });
-        const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-        const total = entries.reduce((sum, [, c]) => sum + c, 0);
-        let rows = [];
-        if (total > 0) {
-            const top = entries.slice(0, 2);
-            const topTotal = top.reduce((sum, [, c]) => sum + c, 0);
-            const other = total - topTotal;
-            rows = top.map(([label, c]) => ({ label, percent: Math.round((c / total) * 100) }));
-            if (other > 0) rows.push({ label: 'Other', percent: Math.round((other / total) * 100) });
-        }
+        const rows = bookingRegionRowsFromBookingsList(bookings);
         renderSimpleBarChart(bookingsRegionsChart, rows);
     } catch (err) {
         console.warn('Bookings regions chart failed:', err);
@@ -289,9 +297,10 @@ let searchTimeout;
 async function performUserSearch(searchTerm) {
     if (!userDropdown) return;
     
-    const term = searchTerm.trim().toLowerCase();
+    const raw = typeof searchTerm === 'string' ? searchTerm.trim() : '';
+    const termLc = raw.toLowerCase();
     
-    if (term.length < 2) {
+    if (raw.length < 2) {
         userDropdown.innerHTML = '';
         userDropdown.classList.remove('active');
         return;
@@ -303,7 +312,7 @@ async function performUserSearch(searchTerm) {
     let filteredUsers = [];
     if (typeof API !== 'undefined' && API.users && API.users.search) {
         try {
-            const res = await API.users.search(term);
+            const res = await API.users.search(raw);
             const users = res.users || [];
             filteredUsers = users.map((u) => ({
                 id: u.id,
@@ -315,14 +324,14 @@ async function performUserSearch(searchTerm) {
         } catch (e) {
             console.warn('User search failed, using local:', e);
             filteredUsers = allUsers.filter((user) =>
-                (user.name || '').toLowerCase().includes(term) ||
-                (user.email || '').toLowerCase().includes(term)
+                (user.name || '').toLowerCase().includes(termLc) ||
+                (user.email || '').toLowerCase().includes(termLc)
             );
         }
     } else {
         filteredUsers = allUsers.filter((user) =>
-            (user.name || '').toLowerCase().includes(term) ||
-            (user.email || '').toLowerCase().includes(term)
+            (user.name || '').toLowerCase().includes(termLc) ||
+            (user.email || '').toLowerCase().includes(termLc)
         );
     }
     

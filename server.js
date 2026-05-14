@@ -54,6 +54,7 @@ app.use('/pages', express.static('pages'));
 app.use('/styles', express.static('styles'));
 app.use('/scripts', express.static('scripts'));
 app.use('/assets', express.static('assets'));
+app.use('/lib', express.static(path.join(__dirname, 'lib')));
 app.use('/logo', express.static('logo'));
 
 // Root: redirect to login page (under /pages so CSS/JS paths work)

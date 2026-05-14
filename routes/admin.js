@@ -8,6 +8,7 @@ const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserW
 const { mongoFieldUpdateAndFetch, mongoFieldGetByIdPublicDetail } = require('../lib/mongoFieldWrite');
 const { mongoCreateMessageAndTouchConversation, mongoMarkMessageRead } = require('../lib/mongoMessageWrite');
 const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
+const { buildBookingRegionStats } = require('../lib/bookingRegionStats');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -94,6 +95,30 @@ router.get('/stats', async (req, res) => {
   } catch (error) {
     console.error('Get stats error:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// Bar chart data: all bookings grouped by field region (admin dashboard)
+router.get('/bookings/region-stats', async (req, res) => {
+  try {
+    // Load field ids only — some DB rows may reference deleted fields; including `field`
+    // would make Prisma throw "got null instead" for required relation reads.
+    const bookings = await prisma.booking.findMany({
+      select: { fieldId: true }
+    });
+    const fieldIds = [...new Set(bookings.map((b) => b.fieldId).filter(Boolean))];
+    const fields = fieldIds.length
+      ? await prisma.field.findMany({
+          where: { id: { in: fieldIds } },
+          select: { id: true, city: true, district: true, location: true }
+        })
+      : [];
+    const fieldById = new Map(fields.map((f) => [f.id, f]));
+    const { total, rows } = buildBookingRegionStats(bookings, fieldById);
+    res.json({ total, rows });
+  } catch (error) {
+    console.error('Booking region stats error:', error);
+    res.status(500).json({ error: 'Failed to load region stats' });
   }
 });
 

@@ -384,14 +384,6 @@
                                 <textarea id="manageDescription" rows="4">Professional outdoor football court with high-quality turf and lighting.</textarea>
                             </div>
                             
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Highlights</label>
-                                <div class="highlights-container">
-                                    <input type="text" id="manageHighlightInput" placeholder="Add a highlight">
-                                    <button type="button" class="btn-add-highlight" onclick="addManageHighlight()">Add</button>
-                                </div>
-                                <div id="manageHighlightsList" class="highlights-list"></div>
-                            </div>
                         </div>
                         
                         <div class="form-step-section">
@@ -775,18 +767,6 @@
                         <div class="form-step-section">
                             <div class="setting-item" style="margin-bottom: 0;">
                                 <div class="setting-info">
-                                    <h4>Show in Search Results</h4>
-                                    <p>Make your field visible to players when they search for fields</p>
-                                </div>
-                                <div class="toggle-switch active" id="manageVisibilityToggle" onclick="toggleManageFieldVisibility()">
-                                    <div class="toggle-slider"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-step-section">
-                            <div class="setting-item" style="margin-bottom: 0;">
-                                <div class="setting-info">
                                     <h4>Maintenance Mode</h4>
                                     <p>Temporarily disable bookings</p>
                                 </div>
@@ -879,14 +859,6 @@
                     <div class="view-field-description-section">
                         <h2 class="view-section-title">About this field</h2>
                         <p class="view-field-description" id="viewFieldDescription">-</p>
-                    </div>
-
-                    <!-- Highlights Section -->
-                    <div class="view-field-highlights-section" id="viewFieldHighlightsSection">
-                        <h3 class="view-section-title">Highlights</h3>
-                        <ul class="view-highlights-list" id="viewFieldHighlights">
-                            <!-- Highlights will be populated by JavaScript -->
-                        </ul>
                     </div>
 
                     <!-- Amenities Section -->

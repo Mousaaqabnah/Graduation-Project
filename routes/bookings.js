@@ -187,11 +187,15 @@ router.get('/', async (req, res) => {
               name: true,
               sport: true,
               location: true,
+              city: true,
+              district: true,
               latitude: true,
               longitude: true,
               images: true,
               pricePerHour: true,
-              bookingType: true
+              bookingType: true,
+              rating: true,
+              reviewCount: true
             }
           },
           organizer: {
@@ -451,8 +455,14 @@ router.put('/:id/status', [
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Approve pending → confirmed: owner/admin always; organizer or participant for instant-booking fields
+    // Approve pending → confirmed: owner/admin for request-based fields; organizer or participant for instant fields
     if (prev === 'PENDING' && (status === 'CONFIRMED' || status === 'UPCOMING')) {
+      if (isFieldOwner && !isAdmin && instantField) {
+        return res.status(403).json({
+          error:
+            'This field uses instant booking. Reservations are not approved here — they confirm when players complete payment (or you may cancel a pending booking if needed).'
+        });
+      }
       const ownerOrAdmin = isFieldOwner || isAdmin;
       const organizerInstant = isOrganizer && instantField;
       const participantInstant = isParticipant && !isOrganizer && instantField;

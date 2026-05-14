@@ -352,8 +352,6 @@ function resetAddFieldForm() {
     unavailableDates = [];
     document.getElementById('addFieldForm').reset();
     document.getElementById('fieldImagesGrid').innerHTML = '';
-    const hl = document.getElementById('highlightsList');
-    if (hl) hl.innerHTML = '';
     document.getElementById('unavailableDatesList').innerHTML = '';
     document.getElementById('latitude').textContent = '-';
     document.getElementById('longitude').textContent = '-';
@@ -998,6 +996,15 @@ document.addEventListener('DOMContentLoaded', () => {
 let currentManageSection = null;
 /** Set when opening Manage for a field — used for PUT /fields/:id */
 let ownerManagingFieldId = null;
+/** Strings not represented by amenity/feature checkboxes (incl. API highlights); reapplied on save without owner UI. */
+let ownerManagePreservedExtraStrings = [];
+
+function ownerMergedAmenitiesFeaturesHighlights(field) {
+    const a = Array.isArray(field && field.amenities) ? field.amenities : [];
+    const feat = Array.isArray(field && field.features) ? field.features : [];
+    const hl = Array.isArray(field && field.highlights) ? field.highlights : [];
+    return a.concat(feat, hl);
+}
 
 function collectManageFeatureStrings() {
     const out = [];
@@ -1009,9 +1016,17 @@ function collectManageFeatureStrings() {
         const label = cb.nextElementSibling;
         if (label && label.textContent) out.push(label.textContent.trim());
     });
-    document.querySelectorAll('#manageHighlightsList .highlight-item span').forEach(function(span) {
-        const t = span.textContent.trim();
-        if (t) out.push(t);
+    const seen = {};
+    out.forEach(function (s) {
+        seen[String(s || '').trim().toLowerCase()] = true;
+    });
+    (ownerManagePreservedExtraStrings || []).forEach(function (s) {
+        const t = String(s || '').trim();
+        if (!t) return;
+        const k = t.toLowerCase();
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push(t);
     });
     return out;
 }
@@ -1036,22 +1051,14 @@ function applyManageFeaturesFromField(features) {
         const label = (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
         if (label.trim()) known.add(label.trim().toLowerCase());
     });
-    const hl = document.getElementById('manageHighlightsList');
-    if (hl) {
-        hl.innerHTML = '';
-        arr.forEach(function(f) {
-            const ft = String(f).trim();
-            if (!ft) return;
-            if (known.has(ft.toLowerCase())) return;
-            const highlightItem = document.createElement('div');
-            highlightItem.className = 'highlight-item';
-            highlightItem.innerHTML =
-                '<span>' +
-                ownerFieldEsc(ft) +
-                '</span><button type="button" onclick="removeManageHighlight(this)">&times;</button>';
-            hl.appendChild(highlightItem);
-        });
-    }
+    const preserved = [];
+    arr.forEach(function(f) {
+        const ft = String(f).trim();
+        if (!ft) return;
+        if (known.has(ft.toLowerCase())) return;
+        preserved.push(ft);
+    });
+    ownerManagePreservedExtraStrings = preserved;
     syncMutuallyExclusiveManageFeaturesState();
 }
 
@@ -1222,6 +1229,7 @@ function closeModal() {
         document.body.style.overflow = '';
         showManageMenu();
         ownerManagingFieldId = null;
+        ownerManagePreservedExtraStrings = [];
         if (manageFieldMapPicker && typeof manageFieldMapPicker.destroy === 'function') {
             manageFieldMapPicker.destroy();
             manageFieldMapPicker = null;
@@ -1390,7 +1398,7 @@ async function loadFieldData(fieldId) {
         const venueRespEl = document.getElementById('manageVenueResponse');
         if (venueRespEl) venueRespEl.value = f.venueResponse || '';
 
-        applyManageFeaturesFromField(f.features);
+        applyManageFeaturesFromField(ownerMergedAmenitiesFeaturesHighlights(f));
         applyManageScheduleFromField(f.schedule);
         resetManageImagesContainer();
         (Array.isArray(f.images) ? f.images : []).forEach(function(src) {
@@ -1758,29 +1766,6 @@ function collectManageSchedule() {
         };
     });
     return schedule;
-}
-
-function addManageHighlight() {
-    const input = document.getElementById('manageHighlightInput');
-    const highlightsList = document.getElementById('manageHighlightsList');
-    
-    if (!input || !highlightsList) return;
-    
-    const highlight = input.value.trim();
-    if (highlight) {
-        const highlightItem = document.createElement('div');
-        highlightItem.className = 'highlight-item';
-        highlightItem.innerHTML = `
-            <span>${highlight}</span>
-            <button type="button" onclick="removeManageHighlight(this)">&times;</button>
-        `;
-        highlightsList.appendChild(highlightItem);
-        input.value = '';
-    }
-}
-
-function removeManageHighlight(button) {
-    button.parentElement.remove();
 }
 
 function addManageUnavailableDate() {

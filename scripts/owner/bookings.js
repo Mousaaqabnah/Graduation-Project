@@ -129,8 +129,18 @@ function setOwnerDecision(bookingId, decision) {
     localStorage.setItem(ownerDecisionStorageKey(), JSON.stringify(map));
 }
 
+/** Matches routes/bookings.js — instant fields skip owner approve/decline in the UI. */
+function ownerFieldUsesInstantBooking(field) {
+    var t = String((field && field.bookingType) || 'instant').toLowerCase();
+    return t !== 'request';
+}
+
 function ownerStatusDisplayLabel(booking) {
     var statusRaw = String((booking && booking.status) || '').toUpperCase();
+    var field = booking && booking.field;
+    if (statusRaw === 'PENDING' && ownerFieldUsesInstantBooking(field)) {
+        return 'Instant';
+    }
     var bookingId = String(booking && (booking.id != null ? booking.id : booking._id || '') || '');
     var decisionMap = getOwnerDecisionMap();
     var decision = bookingId ? String(decisionMap[bookingId] || '').toLowerCase() : '';
@@ -152,6 +162,9 @@ function ownerStatusBadgeClassForBooking(b) {
     }
     if (statusLabel === 'Pending') {
         return 'badge-pending';
+    }
+    if (statusLabel === 'Instant') {
+        return 'badge-confirmed';
     }
     return 'badge-confirmed';
 }
@@ -177,6 +190,7 @@ function renderOwnerBookingsTable() {
         var durationStr = formatBookingDurationLabel(b);
         var st = (b.status || '').toUpperCase();
         var statusLabel = ownerStatusDisplayLabel(b);
+        var statusFilterLabel = statusLabel === 'Instant' ? 'Pending' : statusLabel;
         var statusClass = (statusLabel === 'Rejected' || statusLabel === 'Cancelled')
             ? 'badge-cancelled'
             : (statusLabel === 'Pending' ? 'badge-pending' : 'badge-confirmed');
@@ -185,12 +199,16 @@ function renderOwnerBookingsTable() {
         var actions = '<div class="action-buttons">' +
             '<button type="button" class="action-icon-btn" data-action="view" title="View"><i class="fi fi-rr-eye"></i></button>';
         if (st === 'PENDING') {
-            actions += '<button type="button" class="action-icon-btn approve" data-action="approve" title="Approve"><i class="fi fi-rr-check"></i></button>' +
-                '<button type="button" class="action-icon-btn decline" data-action="decline" title="Decline"><i class="fi fi-rr-cross"></i></button>';
+            if (ownerFieldUsesInstantBooking(field)) {
+                actions += '<button type="button" class="action-icon-btn decline" data-action="decline" title="Cancel booking"><i class="fi fi-rr-cross"></i></button>';
+            } else {
+                actions += '<button type="button" class="action-icon-btn approve" data-action="approve" title="Approve"><i class="fi fi-rr-check"></i></button>' +
+                    '<button type="button" class="action-icon-btn decline" data-action="decline" title="Decline"><i class="fi fi-rr-cross"></i></button>';
+            }
         }
         actions += '</div>';
 
-        return '<tr data-booking-id="' + escHtml(id) + '" data-booking-date="' + escHtml(bookingDateKeyLocal(b.date)) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(statusLabel) + '">' +
+        return '<tr data-booking-id="' + escHtml(id) + '" data-booking-date="' + escHtml(bookingDateKeyLocal(b.date)) + '" data-field-sport="' + escHtml(field.sport || '') + '" data-status-label="' + escHtml(statusFilterLabel) + '">' +
             '<td><div class="customer-cell"><img src="' + escHtml(avatar) + '" alt="" class="customer-avatar"><span>' + escHtml(name) + '</span></div></td>' +
             '<td>' + escHtml(field.name || '') + '</td>' +
             '<td><div class="date-time-cell"><span class="date-text">' + escHtml(dateStr) + '</span><span class="time-text">' + escHtml(timeStr) + '</span></div></td>' +
@@ -259,12 +277,31 @@ function closeBookingDetailModal() {
 function syncBookingDetailFooter(booking) {
     var foot = document.getElementById('bookingDetailFooter');
     if (!foot) return;
-    var bid = '';
-    if (booking && String(booking.status || '').toUpperCase() === 'PENDING') {
-        bid = String(booking.id != null ? booking.id : booking._id || '');
+    var approveBtn = foot.querySelector('[data-booking-detail-action="approve"]');
+    var declineBtn = foot.querySelector('[data-booking-detail-action="decline"]');
+    var hint = foot.querySelector('.booking-detail-footer-hint');
+    if (!booking || String(booking.status || '').toUpperCase() !== 'PENDING') {
+        if (approveBtn) approveBtn.style.display = '';
+        if (hint) hint.textContent = 'This request is waiting for your approval.';
+        foot.dataset.bookingId = '';
+        foot.hidden = true;
+        foot.querySelectorAll('button').forEach(function(b) {
+            b.disabled = false;
+        });
+        return;
+    }
+    var fld = booking.field || {};
+    var inst = ownerFieldUsesInstantBooking(fld);
+    var bid = String(booking.id != null ? booking.id : booking._id || '');
+    if (approveBtn) approveBtn.style.display = inst ? 'none' : '';
+    if (declineBtn) declineBtn.style.display = '';
+    if (hint) {
+        hint.textContent = inst
+            ? 'Instant booking — no approval from you. You can cancel below if you cannot host this slot.'
+            : 'This request is waiting for your approval.';
     }
     foot.dataset.bookingId = bid;
-    foot.hidden = !bid;
+    foot.hidden = false;
     foot.querySelectorAll('button').forEach(function(b) {
         b.disabled = false;
     });
@@ -776,6 +813,11 @@ async function viewBookingDetail(bookingId) {
 async function approveBookingById(bookingId, row) {
     if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.updateStatus) {
         alert('Sign in again or refresh the page.');
+        return;
+    }
+    var cached = findCachedOwnerBooking(bookingId);
+    if (cached && ownerFieldUsesInstantBooking(cached.field) && String(cached.status || '').toUpperCase() === 'PENDING') {
+        alert('This field uses instant booking. You do not approve reservations here — they confirm when players finish payment.');
         return;
     }
     var labels = ownerBookingConfirmLabels(bookingId);

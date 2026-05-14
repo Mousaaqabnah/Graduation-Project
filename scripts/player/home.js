@@ -1411,9 +1411,34 @@ function validateCurrentStep() {
   }
 }
 
+/** Payment UI exists in the booking wizard, the overlay modal, or standalone player pages — avoid duplicate-id bugs by scoping to the active context. */
+function getActivePaymentFormRoot() {
+  const payModal = document.getElementById('paymentModal');
+  if (payModal && payModal.classList.contains('active')) {
+    return payModal;
+  }
+  const bookingModal = document.getElementById('bookingModal');
+  if (bookingModal && bookingState.currentStep === 5) {
+    return bookingModal;
+  }
+  if (payModal) {
+    return payModal;
+  }
+  if (bookingModal) {
+    return bookingModal;
+  }
+  return document.body;
+}
+
+function getScopedPaymentInput(id) {
+  const root = getActivePaymentFormRoot();
+  return root.querySelector('#' + id) || document.getElementById(id);
+}
+
 // Validate payment form
 function validatePaymentForm() {
-  const form = document.getElementById('paymentForm');
+  const root = getActivePaymentFormRoot();
+  const form = root.querySelector('form.payment-form') || root.querySelector('form');
   if (!form) return true; // If form doesn't exist, skip validation
   
   if (!form.checkValidity()) {
@@ -1422,8 +1447,10 @@ function validatePaymentForm() {
   }
   
   // Get form data
-  const cardNumber = document.getElementById('cardNumber').value.replace(/\s/g, '');
-  const expiryDate = document.getElementById('expiryDate').value;
+  const cardEl = getScopedPaymentInput('cardNumber');
+  const expEl = getScopedPaymentInput('expiryDate');
+  const cardNumber = (cardEl && cardEl.value ? cardEl.value : '').replace(/\s/g, '');
+  const expiryDate = expEl && expEl.value ? expEl.value : '';
   
   // Validate card number
   if (!validateCardNumber(cardNumber)) {
@@ -1787,11 +1814,11 @@ function saveBookingAndSendInvitations(booking) {
           var existingIdx = allBookings.findIndex(function(b) { return String(b.id) === String(createdBooking.id); });
           var mergedLocal = Object.assign({}, createdBooking, { organizerPaymentStatus: 'paid' });
           if (existingIdx !== -1) {
-            allBookings[existingIdx] = mergedLocal;
+            applyPaymentStateOntoStoredBooking(allBookings[existingIdx], mergedLocal);
           } else {
-            allBookings.push(mergedLocal);
+            allBookings.push(compactBookingForStorage(mergedLocal));
           }
-          localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+          persistPlayerBookings(allBookings);
         }
       } catch (e) {
         console.warn('Failed to persist initial organizer payment state', e);
@@ -1924,6 +1951,142 @@ function participantPaidFromLocalStorage(bookingId, userId) {
 function participantRecordUserId(p) {
   if (!p) return '';
   return String(p.userId || p.id || (p.user && (p.user.id || p.user._id)) || '');
+}
+
+/** Cap local cache size — full API bookings (field images, etc.) can exceed ~5MB localStorage. */
+var PLAYER_BOOKINGS_STORAGE_MAX = 40;
+
+function compactFieldSnapshotForStorage(field) {
+  if (!field || typeof field !== 'object') return field;
+  var imgs = Array.isArray(field.images) ? field.images.filter(Boolean).slice(0, 1) : [];
+  return {
+    id: field.id,
+    name: field.name,
+    sport: field.sport,
+    location: field.location,
+    bookingType: field.bookingType,
+    images: imgs
+  };
+}
+
+function compactBookingForStorage(b) {
+  if (!b || typeof b !== 'object') return b;
+  var parts = b.participants || b.players || [];
+  var slimParts = parts.map(function (p) {
+    var u = (p && p.user) || {};
+    var o = {
+      userId: p.userId || p.id,
+      id: p.id,
+      paymentStatus: p.paymentStatus,
+      paymentAmount: p.paymentAmount
+    };
+    if (u.fullName != null || u.avatar != null) {
+      o.user = {};
+      if (u.fullName != null) o.user.fullName = u.fullName;
+      if (u.avatar != null) o.user.avatar = u.avatar;
+    }
+    return o;
+  });
+  return {
+    id: b.id,
+    _id: b._id,
+    date: b.date,
+    status: b.status,
+    confirmedAt: b.confirmedAt,
+    organizerId: b.organizerId,
+    organizerName: b.organizerName,
+    organizerPaymentStatus: b.organizerPaymentStatus,
+    paymentMethod: b.paymentMethod,
+    totalCost: b.totalCost,
+    fieldId: b.fieldId,
+    fieldName: b.fieldName,
+    timeSlotStart: b.timeSlotStart,
+    timeSlotEnd: b.timeSlotEnd,
+    timeSlotRanges: b.timeSlotRanges,
+    timeSlots: b.timeSlots,
+    participants: slimParts,
+    players: slimParts,
+    mixedPaymentDistribution: b.mixedPaymentDistribution,
+    field: b.field ? compactFieldSnapshotForStorage(b.field) : undefined
+  };
+}
+
+function applyPaymentStateOntoStoredBooking(stored, incoming) {
+  if (!stored || !incoming) return;
+  if (incoming.organizerPaymentStatus != null) stored.organizerPaymentStatus = incoming.organizerPaymentStatus;
+  if (incoming.status != null) stored.status = incoming.status;
+  if (incoming.confirmedAt != null) stored.confirmedAt = incoming.confirmedAt;
+  var incParts = incoming.participants || incoming.players || [];
+  var outParts = stored.participants || stored.players;
+  if (!Array.isArray(outParts) || outParts.length === 0) {
+    var slim = compactBookingForStorage(incoming).participants || [];
+    stored.participants = slim;
+    stored.players = slim;
+    return;
+  }
+  incParts.forEach(function (ip) {
+    var pid = participantRecordUserId(ip);
+    if (!pid) return;
+    var op = outParts.find(function (p) {
+      return participantRecordUserId(p) === pid;
+    });
+    if (op && ip && ip.paymentStatus != null) op.paymentStatus = ip.paymentStatus;
+  });
+}
+
+/**
+ * Writes playerBookings; compacts and trims if quota is exceeded.
+ * @returns {boolean} whether a row was stored (false is OK — playerPaidBookings / API still apply).
+ */
+function persistPlayerBookings(bookings) {
+  if (!Array.isArray(bookings) || bookings.length === 0) {
+    try {
+      localStorage.removeItem('playerBookings');
+    } catch (e) {
+      /* ignore */
+    }
+    return true;
+  }
+  function tryWrite(arr) {
+    localStorage.setItem('playerBookings', JSON.stringify(arr));
+  }
+  var attempts = [
+    function () {
+      return bookings;
+    },
+    function () {
+      var tail =
+        bookings.length > PLAYER_BOOKINGS_STORAGE_MAX
+          ? bookings.slice(-PLAYER_BOOKINGS_STORAGE_MAX)
+          : bookings;
+      return tail.map(function (b) {
+        return compactBookingForStorage(b);
+      });
+    },
+    function () {
+      return bookings.slice(-15).map(function (b) {
+        return compactBookingForStorage(b);
+      });
+    },
+    function () {
+      return bookings.slice(-5).map(function (b) {
+        return compactBookingForStorage(b);
+      });
+    }
+  ];
+  for (var i = 0; i < attempts.length; i++) {
+    try {
+      tryWrite(attempts[i]());
+      return true;
+    } catch (err) {
+      if (!err || err.name !== 'QuotaExceededError') {
+        console.warn('persistPlayerBookings', err);
+        return false;
+      }
+    }
+  }
+  console.warn('persistPlayerBookings: storage quota exceeded; skipped playerBookings cache.');
+  return false;
 }
 
 function checkFullPayment(booking) {
@@ -2120,6 +2283,8 @@ function notifyFieldOwner(booking) {
   
   // Get field owner ID (in real app, this would come from the field data)
   const fieldOwnerId = `owner_${booking.fieldId}`;
+  const roster = booking.players || booking.participants || [];
+  const playerCount = roster.length > 0 ? roster.length + 1 : 1;
   
   const ownerNotification = {
     id: 'owner_notif_' + Date.now(),
@@ -2133,7 +2298,7 @@ function notifyFieldOwner(booking) {
     timeSlots: booking.timeSlots,
     totalCost: booking.totalCost,
     status: booking.status,
-    playerCount: booking.players.length + 1,
+    playerCount: playerCount,
     message: `${booking.organizerName} has ${booking.status === 'confirmed' ? 'confirmed' : 'created'} a booking at ${booking.fieldName}`,
     createdAt: new Date().toISOString(),
     read: false
@@ -2224,10 +2389,10 @@ function openPaymentModal(options) {
     `;
   }
 
-  // Reset form
-  const form = document.getElementById('paymentForm');
-  if (form) {
-    form.reset();
+  // Reset the overlay payment form (avoid duplicate #paymentForm picking the booking wizard)
+  const formInModal = modal.querySelector('form');
+  if (formInModal) {
+    formInModal.reset();
   }
 
   // Show modal
@@ -2251,48 +2416,52 @@ function closePaymentModal() {
 
 // Initialize payment modal
 function initializePaymentModal() {
+  if (initializePaymentModal._initialized) {
+    return;
+  }
+  initializePaymentModal._initialized = true;
+
   // Close button
   const closeBtn = document.getElementById('closePaymentModal');
   const cancelBtn = document.getElementById('cancelPaymentBtn');
-  const overlay = document.querySelector('.payment-modal-overlay');
+  const payModalEl = document.getElementById('paymentModal');
+  const overlay = payModalEl && payModalEl.querySelector('.payment-modal-overlay');
 
   if (closeBtn) closeBtn.addEventListener('click', closePaymentModal);
   if (cancelBtn) cancelBtn.addEventListener('click', closePaymentModal);
   if (overlay) overlay.addEventListener('click', closePaymentModal);
 
-  // Form submission
-  const submitBtn = document.getElementById('submitPaymentBtn');
-  const form = document.getElementById('paymentForm');
+  // Submit: duplicate #submitPaymentBtn on home.html — delegate so the visible modal button works
+  document.addEventListener('click', function matchfieldPaymentSubmitClick(e) {
+    const btn = e.target && e.target.closest && e.target.closest('#submitPaymentBtn');
+    if (!btn) return;
+    if (!btn.closest('#paymentModal') && !btn.closest('#bookingModal')) return;
+    e.preventDefault();
+    handlePaymentSubmission();
+  });
 
-  if (submitBtn && form) {
-    submitBtn.addEventListener('click', handlePaymentSubmission);
-  }
-
-  // Card number formatting
-  const cardNumberInput = document.getElementById('cardNumber');
-  if (cardNumberInput) {
+  // Card number formatting (every visible card field — duplicate ids on home)
+  document.querySelectorAll('#cardNumber').forEach(function (cardNumberInput) {
     cardNumberInput.addEventListener('input', formatCardNumber);
     cardNumberInput.addEventListener('keypress', (e) => {
       if (!/[0-9\s]/.test(e.key) && !['Backspace', 'Delete', 'Tab'].includes(e.key)) {
         e.preventDefault();
       }
     });
-  }
+  });
 
   // Expiry date formatting
-  const expiryInput = document.getElementById('expiryDate');
-  if (expiryInput) {
+  document.querySelectorAll('#expiryDate').forEach(function (expiryInput) {
     expiryInput.addEventListener('input', formatExpiryDate);
     expiryInput.addEventListener('keypress', (e) => {
       if (!/[0-9\/]/.test(e.key) && !['Backspace', 'Delete', 'Tab'].includes(e.key)) {
         e.preventDefault();
       }
     });
-  }
+  });
 
   // CVV validation
-  const cvvInput = document.getElementById('cvv');
-  if (cvvInput) {
+  document.querySelectorAll('#cvv').forEach(function (cvvInput) {
     cvvInput.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/\D/g, '');
     });
@@ -2301,7 +2470,7 @@ function initializePaymentModal() {
         e.preventDefault();
       }
     });
-  }
+  });
 }
 
 // Format card number with spaces
@@ -2353,7 +2522,8 @@ function formatExpiryDate(e) {
 
 // Handle payment submission (booking modal step 5 OR Pay Your Share for existing booking)
 function handlePaymentSubmission() {
-  const form = document.getElementById('paymentForm');
+  const root = getActivePaymentFormRoot();
+  const form = root.querySelector('form.payment-form') || root.querySelector('form');
   if (!form) return;
 
   // If account is suspended, block payment and show message
@@ -2375,30 +2545,41 @@ function handlePaymentSubmission() {
   }
 
   const formData = {
-    cardholderName: document.getElementById('cardholderName').value,
-    cardNumber: document.getElementById('cardNumber').value.replace(/\s/g, ''),
-    expiryDate: document.getElementById('expiryDate').value,
-    cvv: document.getElementById('cvv').value,
-    billingAddress: document.getElementById('billingAddress').value,
-    billingCity: document.getElementById('billingCity').value,
-    billingPostalCode: document.getElementById('billingPostalCode').value,
-    billingCountry: document.getElementById('billingCountry').value,
+    cardholderName: (getScopedPaymentInput('cardholderName') || {}).value || '',
+    cardNumber: ((getScopedPaymentInput('cardNumber') || {}).value || '').replace(/\s/g, ''),
+    expiryDate: (getScopedPaymentInput('expiryDate') || {}).value || '',
+    cvv: (getScopedPaymentInput('cvv') || {}).value || '',
+    billingAddress: (getScopedPaymentInput('billingAddress') || {}).value || '',
+    billingCity: (getScopedPaymentInput('billingCity') || {}).value || '',
+    billingPostalCode: (getScopedPaymentInput('billingPostalCode') || {}).value || '',
+    billingCountry: (getScopedPaymentInput('billingCountry') || {}).value || '',
     amount: paymentState.bookingId ? paymentState.amount : (bookingState.paymentAmount || bookingState.totalCost)
   };
 
-  const submitBtn = document.getElementById('submitPaymentBtn');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Processing...';
+  const submitBtns = document.querySelectorAll('#submitPaymentBtn');
+  const payBtnLabel = 'Pay & Confirm Booking';
+  submitBtns.forEach(function (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fi fi-rr-spinner"></i> Processing...';
+  });
+
+  function resetPaySubmitButtons() {
+    submitBtns.forEach(function (btn) {
+      btn.disabled = false;
+      btn.innerHTML = payBtnLabel;
+    });
   }
 
   // Paying for EXISTING booking (Pay Your Share from bookings page)
   if (paymentState.bookingId) {
     setTimeout(function() {
-      processPayment(formData);
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = 'Pay & Confirm Booking';
+      try {
+        processPayment(formData);
+      } catch (err) {
+        console.error('Payment failed:', err);
+        alert('Payment could not be completed. Please try again. If this keeps happening, refresh the page.');
+      } finally {
+        resetPaySubmitButtons();
       }
     }, 1500);
     return;
@@ -2409,10 +2590,7 @@ function handlePaymentSubmission() {
   setTimeout(() => {
     bookingState.currentStep = 6;
     updateStepDisplay();
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = 'Pay & Confirm Booking';
-    }
+    resetPaySubmitButtons();
     const summary = document.getElementById('paymentInfoSummary');
     if (summary) {
       const paymentSummary = summary.querySelector('.payment-summary');
@@ -2482,12 +2660,14 @@ function markOrganizerCoveredLeftSharePayment(bookingId, coverLeftShare) {
 
 function processPayment(paymentData) {
   // In a real app, this would send payment data to a secure payment gateway
+  const num = (paymentData && paymentData.cardNumber) ? String(paymentData.cardNumber).replace(/\D/g, '') : '';
+  const cardLast4 = num.length >= 4 ? num.slice(-4) : '----';
   console.log('Processing payment:', {
     amount: paymentState.amount,
     bookingId: paymentState.bookingId,
     // Never log actual card details in production
-    cardLast4: paymentData.cardNumber.slice(-4),
-    cardholderName: paymentData.cardholderName
+    cardLast4: cardLast4,
+    cardholderName: paymentData && paymentData.cardholderName
   });
 
   let updatedBooking = null;
@@ -2529,11 +2709,11 @@ function processPayment(paymentData) {
     const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
     const idx = allBookings.findIndex(b => String(b.id) === String(paymentState.bookingId));
     if (idx !== -1) {
-      allBookings[idx] = paymentState.booking;
+      applyPaymentStateOntoStoredBooking(allBookings[idx], paymentState.booking);
     } else {
-      allBookings.push(paymentState.booking);
+      allBookings.push(compactBookingForStorage(paymentState.booking));
     }
-    localStorage.setItem('playerBookings', JSON.stringify(allBookings));
+    persistPlayerBookings(allBookings);
     // Do NOT call saveBookingAndSendInvitations - that creates a NEW booking and causes duplicates
     bookingForConfirm = paymentState.booking;
     bookingsArrayForSave = allBookings;
@@ -2574,7 +2754,7 @@ function processPayment(paymentData) {
         localStorage.setItem(paidKey, JSON.stringify(paid));
       }
 
-      localStorage.setItem('playerBookings', JSON.stringify(bookings));
+      persistPlayerBookings(bookings);
       bookingForConfirm = booking;
       bookingsArrayForSave = bookings;
       updatedBooking = booking;
@@ -2606,7 +2786,7 @@ function processPayment(paymentData) {
             bookingForConfirm.status = 'CONFIRMED';
             bookingForConfirm.confirmedAt = new Date().toISOString();
             if (bookingsArrayForSave) {
-              localStorage.setItem('playerBookings', JSON.stringify(bookingsArrayForSave));
+              persistPlayerBookings(bookingsArrayForSave);
             }
             showBookingConfirmation(bookingForConfirm, true);
           }

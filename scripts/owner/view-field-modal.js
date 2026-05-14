@@ -108,7 +108,6 @@
     }
 
     const features = mergedAmenitiesAndFeatures(f);
-    const highlightsOnly = Array.isArray(f.highlights) ? f.highlights.map(function (x) { return String(x || '').trim(); }).filter(Boolean) : [];
     const tagsContainer = document.getElementById('viewFieldTags');
     if (tagsContainer) {
       tagsContainer.innerHTML = features
@@ -131,20 +130,6 @@
 
     if (descriptionEl) {
       descriptionEl.textContent = f.description || 'No description yet.';
-    }
-
-    const highlightsList = document.getElementById('viewFieldHighlights');
-    if (highlightsList) {
-      if (highlightsOnly.length) {
-        highlightsList.innerHTML = highlightsOnly
-          .slice(0, 8)
-          .map(function (h) {
-            return '<li>' + ownerFieldEsc(h) + '</li>';
-          })
-          .join('');
-      } else {
-        highlightsList.innerHTML = '<li>No highlights listed.</li>';
-      }
     }
 
     const amenitiesGrid = document.getElementById('viewFieldAmenities');

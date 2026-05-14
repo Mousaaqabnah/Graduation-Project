@@ -229,7 +229,6 @@
                                 <label>Channel</label>
                                 <div class="tag-selector" id="notificationChannelSelector" role="group" aria-label="Notification channel">
                                     <button type="button" class="tag-btn active" data-channel="inapp">In-app</button>
-                                    <button type="button" class="tag-btn" data-channel="email">Email</button>
                                 </div>
                             </div>
 
@@ -307,7 +306,7 @@
                         <div class="section-header">
                             <div>
                                 <h2 class="section-title">Top regions (bookings)</h2>
-                                <p class="section-subtitle">Bookings distribution by region</p>
+                                <p class="section-subtitle">Each region's share among bookings with a listed place (totals 100%)</p>
                             </div>
                         </div>
                         <div class="chart-container">
@@ -427,6 +426,7 @@
     </div>
     
     <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../lib/bookingRegionStats.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>

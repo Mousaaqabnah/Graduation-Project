@@ -900,6 +900,10 @@ const adminAPI = {
     return apiRequest('/admin/stats');
   },
 
+  getBookingsRegionStats: async () => {
+    return apiRequest('/admin/bookings/region-stats');
+  },
+
   getNotifications: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiRequest(`/admin/notifications${queryString ? '?' + queryString : ''}`);

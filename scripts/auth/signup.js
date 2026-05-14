@@ -3,6 +3,39 @@ const playerTab = document.getElementById('playerTab');
 const ownerTab = document.getElementById('ownerTab');
 const signupForm = document.getElementById('signupForm');
 
+const SIGNUP_DRAFT_KEY = 'matchfield_signup_draft';
+let suppressSignupDraftPersist = false;
+
+function saveSignupDraft() {
+    if (suppressSignupDraftPersist || !signupForm || !playerTab || !ownerTab) return;
+    const draft = {
+        v: 1,
+        userType: playerTab.classList.contains('active') ? 'player' : 'owner',
+        fullName: document.getElementById('fullName')?.value ?? '',
+        phone: document.getElementById('phone')?.value ?? '',
+        dateOfBirth: document.getElementById('dateOfBirth')?.value ?? '',
+        email: document.getElementById('email')?.value ?? '',
+        gender: document.getElementById('gender')?.value ?? '',
+        location: document.getElementById('location')?.value ?? '',
+        password: document.getElementById('password')?.value ?? '',
+        confirmPassword: document.getElementById('confirmPassword')?.value ?? '',
+        terms: document.getElementById('terms')?.checked ?? false
+    };
+    try {
+        sessionStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify(draft));
+    } catch (_) {
+        /* ignore quota / private mode */
+    }
+}
+
+function clearSignupDraft() {
+    try {
+        sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 function initPasswordToggles() {
     const toggleButtons = document.querySelectorAll('.password-toggle-btn');
 
@@ -47,6 +80,8 @@ function clearFormFields() {
     if (termsCheckbox) {
         termsCheckbox.checked = false;
     }
+
+    saveSignupDraft();
 }
 
 playerTab.addEventListener('click', function(e) {
@@ -70,6 +105,50 @@ const strengthValue = document.getElementById('strengthValue');
 
 // Password match checker
 const confirmPasswordInput = document.getElementById('confirmPassword');
+
+function restoreSignupDraft() {
+    let draft;
+    try {
+        const raw = sessionStorage.getItem(SIGNUP_DRAFT_KEY);
+        if (!raw) return;
+        draft = JSON.parse(raw);
+    } catch {
+        return;
+    }
+    if (!draft || draft.v !== 1) return;
+
+    if (draft.userType === 'owner') {
+        ownerTab.classList.add('active');
+        playerTab.classList.remove('active');
+    } else {
+        playerTab.classList.add('active');
+        ownerTab.classList.remove('active');
+    }
+
+    const fullName = document.getElementById('fullName');
+    const phone = document.getElementById('phone');
+    const dateOfBirth = document.getElementById('dateOfBirth');
+    const email = document.getElementById('email');
+    const gender = document.getElementById('gender');
+    const location = document.getElementById('location');
+    const terms = document.getElementById('terms');
+    if (fullName) fullName.value = draft.fullName || '';
+    if (phone) phone.value = draft.phone || '';
+    if (dateOfBirth) dateOfBirth.value = draft.dateOfBirth || '';
+    if (email) email.value = draft.email || '';
+    if (gender) gender.value = draft.gender || '';
+    if (location) location.value = draft.location || '';
+    if (passwordInput) passwordInput.value = draft.password || '';
+    if (confirmPasswordInput) confirmPasswordInput.value = draft.confirmPassword || '';
+    if (terms) terms.checked = !!draft.terms;
+
+    if (passwordInput) {
+        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (confirmPasswordInput) {
+        confirmPasswordInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
 
 function checkPasswordMatch() {
     const password = passwordInput.value;
@@ -174,7 +253,10 @@ document.getElementById('signupForm').addEventListener('submit', async function(
     
     try {
         const response = await API.auth.register(formData);
-        
+
+        suppressSignupDraftPersist = true;
+        clearSignupDraft();
+
         // Show success message
         alert('Account created successfully! Redirecting to login...');
         
@@ -212,5 +294,11 @@ document.querySelectorAll('input, select').forEach(element => {
         this.parentElement.classList.remove('focused');
     });
 });
+
+restoreSignupDraft();
+
+signupForm.addEventListener('input', saveSignupDraft);
+signupForm.addEventListener('change', saveSignupDraft);
+window.addEventListener('pagehide', saveSignupDraft);
 
 

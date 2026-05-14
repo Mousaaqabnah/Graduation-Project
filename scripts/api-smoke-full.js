@@ -485,6 +485,10 @@ async function main() {
     expect(r.status, [200], 'GET /api/admin/stats');
   }
   {
+    const r = await req('GET', '/api/admin/bookings/region-stats', { token: adminT });
+    expect(r.status, [200], 'GET /api/admin/bookings/region-stats');
+  }
+  {
     const r = await req('GET', '/api/admin/stats', { token: playerT });
     expect(r.status, [403], 'GET /api/admin/stats as player');
   }
