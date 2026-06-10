@@ -72,6 +72,8 @@ model User {
   gender         String?
   location       String?
   avatar         String?
+  /// Public shareable code shown as "Player ID" (e.g. PLR-AB12CD34)
+  playerCode     String?   @map("player_code")
   role           UserRole  @default(PLAYER)
   status         UserStatus @default(ACTIVE)
   createdAt      DateTime  @default(now()) @map("created_at")

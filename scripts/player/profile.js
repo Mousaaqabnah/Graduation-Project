@@ -515,7 +515,7 @@ function buildProfileDataFromUser(user, stats) {
         fullName: user.fullName || 'Player',
         email: user.email || '',
         avatar: avatarUrl,
-        playerId: generatePlayerId(),
+        playerId: user.playerCode || '',
         phone: user.phone || 'Not provided',
         dateOfBirth: formatFullDate(user.dateOfBirth),
         gender: user.gender || 'Not specified',
@@ -596,7 +596,14 @@ async function loadProfileData() {
     }
 
     const profileData = buildProfileDataFromUser(user, stats);
-    if (profileData) updateProfileDisplay(profileData);
+    if (profileData) {
+        if (user.playerCode && user.id) {
+            try {
+                localStorage.setItem('playerId_' + String(user.id), user.playerCode);
+            } catch (_) {}
+        }
+        updateProfileDisplay(profileData);
+    }
 }
 
 // Build avatar URL from full name (e.g. "Mousa Aqabnah" → initials "MA")
@@ -650,7 +657,9 @@ function updateProfileDisplay(data) {
     if (fullNameEl) fullNameEl.textContent = fullName;
     if (emailAddressEl) emailAddressEl.textContent = email;
     const playerIdEl = document.getElementById('playerId');
-    if (playerIdEl && data.playerId) playerIdEl.textContent = data.playerId;
+    if (playerIdEl) {
+        playerIdEl.textContent = data.playerId || 'Loading...';
+    }
 
     const phoneNumberEl = document.getElementById('phoneNumber');
     const dateOfBirthEl = document.getElementById('dateOfBirth');

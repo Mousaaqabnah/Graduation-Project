@@ -835,12 +835,17 @@ function updateStepButtons() {
 
 // Load content for current step
 function loadStepContent() {
+    if (bookingState.currentStep !== 3) {
+        setBookingModalOverflowForPlayerSearch(false);
+    }
+
     switch (bookingState.currentStep) {
         case 2:
             loadTimeSlots();
             break;
         case 3:
             updatePlayersList();
+            setBookingModalOverflowForPlayerSearch(true);
             break;
         case 4:
             updateCostSplit();
@@ -907,6 +912,38 @@ function initializeBookingModal() {
             }
         });
     }
+
+    const addPlayerBtn = document.getElementById('addPlayerBtn');
+    const playerSearchInput = document.getElementById('playerSearchInput');
+
+    if (addPlayerBtn) {
+        addPlayerBtn.addEventListener('click', addPlayer);
+    }
+
+    if (playerSearchInput) {
+        playerSearchInput.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' || e.isComposing) return;
+            e.preventDefault();
+
+            const resultsContainer = document.getElementById('playerSearchResults');
+            const firstResult = resultsContainer
+                ? resultsContainer.querySelector('.search-result-item')
+                : null;
+
+            if (firstResult) {
+                const userData = JSON.parse(firstResult.dataset.user);
+                addPlayerFromSearch(userData);
+                if (resultsContainer) resultsContainer.style.display = 'none';
+                playerSearchInput.value = '';
+                selectedSearchUser = null;
+                return;
+            }
+
+            addPlayer();
+        });
+    }
+
+    setupPlayerSearch();
 }
 
 // Close booking modal
@@ -1025,6 +1062,12 @@ function updateBookingCost() {
 
 function updatePlayersList() {
     const container = document.getElementById('playersList');
+    const organizerName = document.getElementById('organizerName');
+
+    if (organizerName && bookingState.organizer) {
+        organizerName.textContent = `${bookingState.organizer.name} (You)`;
+    }
+
     if (!container) return;
     
     if (bookingState.players.length === 0) {
@@ -1037,13 +1080,22 @@ function updatePlayersList() {
             <div class="player-info">
                 <i class="fi fi-rr-user"></i>
                 <span>${player.name}</span>
-                <span class="player-id">ID: ${player.id}</span>
+                <span class="player-id">ID: ${player.playerCode || player.id}</span>
             </div>
             <button class="remove-player-btn" data-index="${index}">
                 <i class="fi fi-rr-cross-small"></i>
             </button>
         </div>
     `).join('');
+
+    container.querySelectorAll('.remove-player-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const index = parseInt(this.dataset.index, 10);
+            bookingState.players.splice(index, 1);
+            updatePlayersList();
+            updateCostSplit();
+        });
+    });
 }
 
 function updateCostSplit() {
@@ -1118,6 +1170,233 @@ function validateCurrentStep() {
             return true;
         default:
             return true;
+    }
+}
+
+let searchTimeout = null;
+let selectedSearchUser = null;
+let latestSearchRequestId = 0;
+
+function setBookingModalOverflowForPlayerSearch(enableVisibleOverflow) {
+    const modalBody = document.querySelector('.booking-modal-body');
+    const step3 = document.getElementById('step3');
+    if (modalBody) {
+        modalBody.style.overflow = enableVisibleOverflow ? 'visible' : '';
+    }
+    if (step3) {
+        step3.style.overflow = enableVisibleOverflow ? 'visible' : '';
+    }
+}
+
+function normalizePlayerSearchQuery(query) {
+    const trimmed = String(query || '').trim();
+    if (/^plr-/i.test(trimmed)) return trimmed.toUpperCase();
+    return trimmed;
+}
+
+function getPlayerSearchMinLength(query) {
+    const q = normalizePlayerSearchQuery(query);
+    if (/^PLR-/i.test(q) || /^[a-fA-F0-9]+$/.test(q)) return 4;
+    return 2;
+}
+
+function getOrCreatePlayerSearchResultsContainer() {
+    const input = document.getElementById('playerSearchInput');
+    if (!input) return null;
+
+    let resultsContainer = document.getElementById('playerSearchResults');
+    if (resultsContainer) return resultsContainer;
+
+    const parent = input.parentElement;
+    if (!parent) return null;
+
+    const parentStyle = window.getComputedStyle(parent);
+    if (parentStyle.position === 'static') {
+        parent.style.position = 'relative';
+    }
+
+    resultsContainer = document.createElement('div');
+    resultsContainer.id = 'playerSearchResults';
+    resultsContainer.className = 'search-results-dropdown';
+    resultsContainer.style.display = 'none';
+    resultsContainer.style.position = 'absolute';
+    resultsContainer.style.top = '100%';
+    resultsContainer.style.left = '0';
+    resultsContainer.style.right = '0';
+    resultsContainer.style.background = 'white';
+    resultsContainer.style.border = '1px solid #e0e0e0';
+    resultsContainer.style.borderRadius = '8px';
+    resultsContainer.style.maxHeight = '200px';
+    resultsContainer.style.overflowY = 'auto';
+    resultsContainer.style.zIndex = '10050';
+    resultsContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+
+    parent.appendChild(resultsContainer);
+    return resultsContainer;
+}
+
+function setupPlayerSearch() {
+    const input = document.getElementById('playerSearchInput');
+    const resultsContainer = getOrCreatePlayerSearchResultsContainer();
+
+    if (!input || !resultsContainer) return;
+
+    input.addEventListener('input', function() {
+        const query = normalizePlayerSearchQuery(this.value);
+        selectedSearchUser = null;
+
+        if (searchTimeout) clearTimeout(searchTimeout);
+
+        if (query.length < getPlayerSearchMinLength(query)) {
+            resultsContainer.style.display = 'none';
+            return;
+        }
+
+        searchTimeout = setTimeout(() => {
+            searchUsers(query);
+        }, 300);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && !resultsContainer.contains(e.target)) {
+            resultsContainer.style.display = 'none';
+        }
+    });
+}
+
+async function searchUsers(query) {
+    const resultsContainer = getOrCreatePlayerSearchResultsContainer();
+    if (!resultsContainer) return;
+
+    const normalizedQuery = normalizePlayerSearchQuery(query);
+
+    if (typeof API === 'undefined' || !API.users || !API.users.search) {
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
+        resultsContainer.style.display = 'block';
+        return [];
+    }
+
+    const requestId = ++latestSearchRequestId;
+
+    try {
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
+        resultsContainer.style.display = 'block';
+
+        const response = await API.users.search(normalizedQuery, { playersOnly: true });
+        if (requestId !== latestSearchRequestId) return [];
+
+        const users = response.users || [];
+        const currentUser = API.getCurrentUser();
+        const filteredUsers = users.filter(user => {
+            if (user.role !== 'PLAYER') return false;
+            if (currentUser && String(user.id) === String(currentUser.id)) return false;
+            if (bookingState.players.some(p => String(p.id) === String(user.id))) return false;
+            return true;
+        });
+
+        if (filteredUsers.length === 0) {
+            const onlySelfMatch = users.some(user =>
+                currentUser && String(user.id) === String(currentUser.id)
+            );
+            resultsContainer.innerHTML = onlySelfMatch
+                ? '<div style="padding: 12px; text-align: center; color: #666;">You cannot add yourself. Search for another player\'s ID.</div>'
+                : '<div style="padding: 12px; text-align: center; color: #666;">No players found. Use the Player ID from their profile (PLR-...).</div>';
+            resultsContainer.style.display = 'block';
+            return [];
+        }
+
+        resultsContainer.innerHTML = filteredUsers.map(user => `
+            <div class="search-result-item" data-user='${JSON.stringify(user).replace(/'/g, "&#39;")}'
+                 style="display: flex; align-items: center; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;"
+                 onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 10px; overflow: hidden;">
+                    ${user.avatar
+                        ? `<img src="${user.avatar}" style="width: 100%; height: 100%; object-fit: cover;">`
+                        : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; color: #333;">${user.fullName}</div>
+                    <div style="font-size: 12px; color: #666;">${user.playerCode || user.id}</div>
+                </div>
+                <i class="fi fi-rr-plus" style="color: #007bff;"></i>
+            </div>
+        `).join('');
+
+        resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const userData = JSON.parse(this.dataset.user);
+                addPlayerFromSearch(userData);
+                resultsContainer.style.display = 'none';
+                document.getElementById('playerSearchInput').value = '';
+            });
+        });
+        return filteredUsers;
+    } catch (error) {
+        console.error('Search error:', error);
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+        resultsContainer.style.display = 'block';
+        return [];
+    }
+}
+
+function addPlayerFromSearch(user) {
+    if (!user || user.role !== 'PLAYER') {
+        alert('Only players can be added to a booking. Field owners and admins cannot be invited as players.');
+        return;
+    }
+
+    if (bookingState.players.some(p => p.id === user.id)) {
+        alert('This player is already added.');
+        return;
+    }
+
+    bookingState.players.push({
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        avatar: user.avatar,
+        playerCode: user.playerCode || null
+    });
+    updatePlayersList();
+    updateCostSplit();
+}
+
+async function addPlayer() {
+    const input = document.getElementById('playerSearchInput');
+    const resultsContainer = getOrCreatePlayerSearchResultsContainer();
+    if (!input) return;
+
+    const searchValue = normalizePlayerSearchQuery(input.value);
+    if (!searchValue) {
+        alert('Please enter a username, email, or Player ID to search.');
+        return;
+    }
+
+    if (selectedSearchUser) {
+        addPlayerFromSearch(selectedSearchUser);
+        input.value = '';
+        selectedSearchUser = null;
+        if (resultsContainer) resultsContainer.style.display = 'none';
+        return;
+    }
+
+    if (searchValue.length >= getPlayerSearchMinLength(searchValue)) {
+        const results = await searchUsers(searchValue);
+        if (!results || results.length === 0) {
+            alert('No players found. Try searching by name, email, Player ID (PLR-...), or account ID.');
+            return;
+        }
+
+        if (results.length === 1) {
+            addPlayerFromSearch(results[0]);
+            input.value = '';
+            if (resultsContainer) resultsContainer.style.display = 'none';
+            return;
+        }
+
+        alert('Multiple players found. Please select one from the list.');
+    } else {
+        alert('Please enter at least 4 characters for a Player ID or account ID, or 2 characters for a name.');
     }
 }
 

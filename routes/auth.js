@@ -7,6 +7,7 @@ const { PrismaClient } = require('@prisma/client');
 const { MongoClient, ObjectId } = require('mongodb');
 const { authenticate, authenticateAllowSuspended } = require('../middleware/auth');
 const { mongoUserSetFields, mongoUserFindByPasswordResetToken } = require('../lib/mongoUserWrite');
+const { createUniquePlayerCode, ensurePlayerCodeForUser } = require('../lib/playerCode');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -40,6 +41,7 @@ async function createUserWithNativeMongo(data) {
     const db = client.db();
     const now = new Date();
     const roleValue = data.role || 'PLAYER';
+    const playerCode = roleValue === 'PLAYER' ? await createUniquePlayerCode(prisma) : null;
     const userDoc = {
       email: data.email,
       password_hash: data.passwordHash != null && data.passwordHash !== '' ? data.passwordHash : null,
@@ -52,6 +54,7 @@ async function createUserWithNativeMongo(data) {
       role: roleValue,
       status: 'ACTIVE',
       verification_status: roleValue === 'OWNER' ? 'NOT_SUBMITTED' : null,
+      player_code: playerCode,
       created_at: now,
       updated_at: now
     };
@@ -64,6 +67,7 @@ async function createUserWithNativeMongo(data) {
       role: userDoc.role,
       status: userDoc.status,
       avatar: userDoc.avatar,
+      playerCode: userDoc.player_code,
       createdAt: userDoc.created_at
     };
   } finally {
@@ -168,18 +172,37 @@ router.post('/login', [
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    if (user.role === 'PLAYER') {
+      await ensurePlayerCodeForUser(prisma, user.id);
+    }
+
+    const freshUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        status: true,
+        avatar: true,
+        playerCode: true,
+        verificationStatus: true
+      }
+    });
+
     // Generate token
     const token = generateToken(user.id);
 
     // Return user data (without password)
     const userData = {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      status: user.status,
-      avatar: user.avatar,
-      verificationStatus: user.verificationStatus
+      id: freshUser.id,
+      email: freshUser.email,
+      fullName: freshUser.fullName,
+      role: freshUser.role,
+      status: freshUser.status,
+      avatar: freshUser.avatar,
+      playerCode: freshUser.playerCode,
+      verificationStatus: freshUser.verificationStatus
     };
 
     res.json({
@@ -292,6 +315,10 @@ router.post(
 // Get current user (allows SUSPENDED so the app can show contact-only mode)
 router.get('/me', authenticateAllowSuspended, async (req, res) => {
   try {
+    if (req.user.role === 'PLAYER') {
+      await ensurePlayerCodeForUser(prisma, req.user.id);
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
@@ -303,6 +330,7 @@ router.get('/me', authenticateAllowSuspended, async (req, res) => {
         gender: true,
         location: true,
         avatar: true,
+        playerCode: true,
         role: true,
         status: true,
         verificationStatus: true,

@@ -1365,6 +1365,16 @@ body {
     position: relative;
     flex: 1;
     min-width: 0;
+    overflow: visible;
+}
+
+.add-players-section,
+.booking-step#step3 {
+    overflow: visible;
+}
+
+.search-results-dropdown {
+    z-index: 10050;
 }
 
 .add-player-input input {

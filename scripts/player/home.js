@@ -656,13 +656,29 @@ function updateStepButtons() {
 }
 
 // Load content for current step
+function setBookingModalOverflowForPlayerSearch(enableVisibleOverflow) {
+  const modalBody = document.querySelector('.booking-modal-body');
+  const step3 = document.getElementById('step3');
+  if (modalBody) {
+    modalBody.style.overflow = enableVisibleOverflow ? 'visible' : '';
+  }
+  if (step3) {
+    step3.style.overflow = enableVisibleOverflow ? 'visible' : '';
+  }
+}
+
 function loadStepContent() {
+  if (bookingState.currentStep !== 3) {
+    setBookingModalOverflowForPlayerSearch(false);
+  }
+
   switch (bookingState.currentStep) {
     case 2:
       loadTimeSlots();
       break;
     case 3:
       updatePlayersList();
+      setBookingModalOverflowForPlayerSearch(true);
       break;
     case 4:
       updateCostSplit();
@@ -1472,6 +1488,18 @@ let searchTimeout = null;
 let selectedSearchUser = null;
 let latestSearchRequestId = 0;
 
+function normalizePlayerSearchQuery(query) {
+  const trimmed = String(query || '').trim();
+  if (/^plr-/i.test(trimmed)) return trimmed.toUpperCase();
+  return trimmed;
+}
+
+function getPlayerSearchMinLength(query) {
+  const q = normalizePlayerSearchQuery(query);
+  if (/^PLR-/i.test(q) || /^[a-fA-F0-9]+$/.test(q)) return 4;
+  return 2;
+}
+
 function getOrCreatePlayerSearchResultsContainer() {
   const input = document.getElementById('playerSearchInput');
   if (!input) return null;
@@ -1500,7 +1528,7 @@ function getOrCreatePlayerSearchResultsContainer() {
   resultsContainer.style.borderRadius = '8px';
   resultsContainer.style.maxHeight = '200px';
   resultsContainer.style.overflowY = 'auto';
-  resultsContainer.style.zIndex = '1000';
+  resultsContainer.style.zIndex = '10050';
   resultsContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
 
   parent.appendChild(resultsContainer);
@@ -1515,14 +1543,14 @@ function setupPlayerSearch() {
   if (!input || !resultsContainer) return;
   
   input.addEventListener('input', function() {
-    const query = this.value.trim();
+    const query = normalizePlayerSearchQuery(this.value);
     selectedSearchUser = null;
     
     // Clear previous timeout
     if (searchTimeout) clearTimeout(searchTimeout);
     
     // Hide results if query is too short
-    if (query.length < 2) {
+    if (query.length < getPlayerSearchMinLength(query)) {
       resultsContainer.style.display = 'none';
       return;
     }
@@ -1546,6 +1574,8 @@ async function searchUsers(query) {
   const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   if (!resultsContainer) return;
 
+  const normalizedQuery = normalizePlayerSearchQuery(query);
+
   if (typeof API === 'undefined' || !API.users || !API.users.search) {
     resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
     resultsContainer.style.display = 'block';
@@ -1558,7 +1588,7 @@ async function searchUsers(query) {
     resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
     resultsContainer.style.display = 'block';
     
-    const response = await API.users.search(query, { playersOnly: true });
+    const response = await API.users.search(normalizedQuery, { playersOnly: true });
     // Ignore stale responses from older debounced searches.
     if (requestId !== latestSearchRequestId) return [];
 
@@ -1568,13 +1598,19 @@ async function searchUsers(query) {
     const currentUser = API.getCurrentUser();
     const filteredUsers = users.filter(user => {
       if (user.role !== 'PLAYER') return false;
-      if (currentUser && user.id === currentUser.id) return false;
-      if (bookingState.players.some(p => p.id === user.id)) return false;
+      if (currentUser && String(user.id) === String(currentUser.id)) return false;
+      if (bookingState.players.some(p => String(p.id) === String(user.id))) return false;
       return true;
     });
     
     if (filteredUsers.length === 0) {
-      resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No users found</div>';
+      const onlySelfMatch = users.some(user =>
+        currentUser && String(user.id) === String(currentUser.id)
+      );
+      resultsContainer.innerHTML = onlySelfMatch
+        ? '<div style="padding: 12px; text-align: center; color: #666;">You cannot add yourself. Search for another player\'s ID.</div>'
+        : '<div style="padding: 12px; text-align: center; color: #666;">No players found. Use the Player ID from their profile (PLR-...).</div>';
+      resultsContainer.style.display = 'block';
       return [];
     }
     
@@ -1589,6 +1625,7 @@ async function searchUsers(query) {
         </div>
         <div style="flex: 1;">
           <div style="font-weight: 500; color: #333;">${user.fullName}</div>
+          <div style="font-size: 12px; color: #666;">${user.playerCode || user.id}</div>
         </div>
         <i class="fi fi-rr-plus" style="color: #007bff;"></i>
       </div>
@@ -1629,7 +1666,8 @@ function addPlayerFromSearch(user) {
     id: user.id,
     name: user.fullName,
     email: user.email,
-    avatar: user.avatar
+    avatar: user.avatar,
+    playerCode: user.playerCode || null
   };
   
   bookingState.players.push(player);
@@ -1643,9 +1681,9 @@ async function addPlayer() {
   const resultsContainer = getOrCreatePlayerSearchResultsContainer();
   if (!input) return;
 
-  const searchValue = input.value.trim();
+  const searchValue = normalizePlayerSearchQuery(input.value);
   if (!searchValue) {
-    alert('Please enter a username or email to search.');
+    alert('Please enter a username, email, or Player ID to search.');
     return;
   }
   
@@ -1659,10 +1697,10 @@ async function addPlayer() {
   }
   
   // Otherwise, perform search and guide next action.
-  if (searchValue.length >= 2) {
+  if (searchValue.length >= getPlayerSearchMinLength(searchValue)) {
     const results = await searchUsers(searchValue);
     if (!results || results.length === 0) {
-      alert('No players found. Try searching by full name or email.');
+      alert('No players found. Try searching by name, email, Player ID (PLR-...), or account ID.');
       return;
     }
 
@@ -1675,7 +1713,7 @@ async function addPlayer() {
 
     alert('Multiple players found. Please select one from the list.');
   } else {
-    alert('Please enter at least 2 characters to search.');
+    alert('Please enter at least 4 characters for a Player ID or account ID, or 2 characters for a name.');
   }
 }
 

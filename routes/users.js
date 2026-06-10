@@ -1,7 +1,15 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { MongoClient } = require('mongodb');
 const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
+const {
+  backfillMissingPlayerCodes,
+  normalizePlayerCodeQuery,
+  isHexIdQuery,
+  isPlayerCodeQuery,
+  getSearchMinLength
+} = require('../lib/playerCode');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -64,25 +72,83 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
 });
 
 // Search users (must be before /:id so "search" is not treated as an id)
+async function searchUsersByPartialObjectId(hexPrefix, restrictToPlayers) {
+  const client = new MongoClient(process.env.DATABASE_URL);
+  await client.connect();
+  try {
+    const db = client.db();
+    const pipeline = [
+      {
+        $addFields: {
+          idString: { $toString: '$_id' }
+        }
+      },
+      {
+        $match: {
+          idString: { $regex: hexPrefix, $options: 'i' },
+          ...(restrictToPlayers ? { role: 'PLAYER' } : {})
+        }
+      },
+      { $limit: 10 },
+      {
+        $project: {
+          _id: 1,
+          email: 1,
+          full_name: 1,
+          avatar: 1,
+          role: 1,
+          player_code: 1
+        }
+      }
+    ];
+    const docs = await db.collection('users').aggregate(pipeline).toArray();
+    return docs.map((doc) => ({
+      id: String(doc._id),
+      email: doc.email,
+      fullName: doc.full_name,
+      avatar: doc.avatar,
+      role: doc.role,
+      playerCode: doc.player_code || null
+    }));
+  } finally {
+    await client.close();
+  }
+}
+
 router.get('/search/users', authenticate, async (req, res) => {
   try {
     const { q, playersOnly } = req.query;
     const restrictToPlayers = playersOnly === '1' || String(playersOnly || '').toLowerCase() === 'true';
 
-    const qTrim = typeof q === 'string' ? q.trim() : '';
-    if (!qTrim || qTrim.length < 2) {
+    const qTrim = typeof q === 'string' ? normalizePlayerCodeQuery(q) : '';
+    const minLen = getSearchMinLength(qTrim);
+    if (!qTrim || qTrim.length < minLen) {
       return res.json({ users: [] });
+    }
+
+    if (restrictToPlayers) {
+      await backfillMissingPlayerCodes(prisma);
     }
 
     const orFilters = [
       { fullName: { contains: qTrim, mode: 'insensitive' } },
       { email: { contains: qTrim, mode: 'insensitive' } }
     ];
+
+    if (isPlayerCodeQuery(qTrim)) {
+      orFilters.push({ playerCode: { equals: qTrim, mode: 'insensitive' } });
+      if (qTrim.length > 4) {
+        orFilters.push({ playerCode: { contains: qTrim, mode: 'insensitive' } });
+      }
+    } else if (qTrim.length >= 4) {
+      orFilters.push({ playerCode: { contains: qTrim, mode: 'insensitive' } });
+    }
+
     if (/^[a-fA-F0-9]{24}$/.test(qTrim)) {
       orFilters.push({ id: qTrim });
     }
 
-    const users = await prisma.user.findMany({
+    let users = await prisma.user.findMany({
       where: {
         OR: orFilters,
         ...(restrictToPlayers ? { role: 'PLAYER' } : {})
@@ -93,9 +159,22 @@ router.get('/search/users', authenticate, async (req, res) => {
         email: true,
         fullName: true,
         avatar: true,
-        role: true
+        role: true,
+        playerCode: true
       }
     });
+
+    if (isHexIdQuery(qTrim) && qTrim.length >= 4 && qTrim.length < 24) {
+      const partialMatches = await searchUsersByPartialObjectId(qTrim, restrictToPlayers);
+      const seen = new Set(users.map((user) => String(user.id)));
+      partialMatches.forEach((user) => {
+        if (!seen.has(String(user.id))) {
+          seen.add(String(user.id));
+          users.push(user);
+        }
+      });
+      users = users.slice(0, 10);
+    }
 
     res.json({ users });
   } catch (error) {
