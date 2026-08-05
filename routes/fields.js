@@ -66,6 +66,27 @@ function dayUtcRangeFromYmd(dateStr) {
   };
 }
 
+function dayStartUtcFromYmd(dateStr) {
+  const range = dayUtcRangeFromYmd(dateStr);
+  return range ? range.start : null;
+}
+
+function utcDateWithMinutesFromYmd(dateStr, mins) {
+  const base = dayStartUtcFromYmd(dateStr);
+  if (!base || !Number.isInteger(mins) || mins < 0 || mins >= 24 * 60) return null;
+  const d = new Date(base.getTime());
+  d.setUTCMinutes(mins, 0, 0);
+  return d;
+}
+
+function ymdAndTimeFromUtcDate(dateObj) {
+  if (!(dateObj instanceof Date) || Number.isNaN(dateObj.getTime())) return null;
+  const ymd = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')}`;
+  const hh = String(dateObj.getUTCHours()).padStart(2, '0');
+  const mm = String(dateObj.getUTCMinutes()).padStart(2, '0');
+  return { ymd, time: `${hh}:${mm}` };
+}
+
 function parsePositiveIntOr(defaultValue, value, maxValue) {
   const n = parseInt(value, 10);
   if (!Number.isFinite(n) || n <= 0) return defaultValue;
@@ -620,7 +641,11 @@ router.get('/:id/unavailable-dates', authenticate, async (req, res) => {
 router.post(
   '/:id/unavailable-dates',
   authenticate,
-  [body('date').trim().matches(/^\d{4}-\d{2}-\d{2}$/)],
+  [
+    body('date').trim().matches(/^\d{4}-\d{2}-\d{2}$/),
+    body('startTime').optional({ nullable: true, checkFalsy: true }).trim().matches(/^\d{2}:\d{2}$/),
+    body('endTime').optional({ nullable: true, checkFalsy: true }).trim().matches(/^\d{2}:\d{2}$/)
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -629,7 +654,7 @@ router.post(
       }
 
       const { id } = req.params;
-      const { date } = req.body;
+      const { date, startTime, endTime } = req.body;
       const idTrim = typeof id === 'string' ? id.trim() : '';
       if (!isMongoObjectIdParam(idTrim)) {
         return res.status(400).json({ error: 'Invalid field id' });
@@ -651,27 +676,66 @@ router.post(
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      const range = dayUtcRangeFromYmd(date);
-      if (!range) {
+      const dayStart = dayStartUtcFromYmd(date);
+      if (!dayStart) {
         return res.status(400).json({ error: 'Invalid date' });
       }
 
-      let created;
+      const hasStart = typeof startTime === 'string' && startTime.trim() !== '';
+      const hasEnd = typeof endTime === 'string' && endTime.trim() !== '';
+      if (hasStart !== hasEnd) {
+        return res.status(400).json({ error: 'Provide both startTime and endTime, or neither.' });
+      }
+
+      let slotsToInsert = [];
+      if (hasStart && hasEnd) {
+        const startMins = timeToMinutes(startTime);
+        const endMins = timeToMinutes(endTime);
+        if (startMins == null || endMins == null || endMins <= startMins) {
+          return res.status(400).json({ error: 'Invalid time range. endTime must be after startTime.' });
+        }
+        if (startMins % 60 !== 0 || endMins % 60 !== 0) {
+          return res.status(400).json({ error: 'Only hourly slots are supported. Use times like 09:00 to 12:00.' });
+        }
+        for (let mins = startMins; mins < endMins; mins += 60) {
+          const slotDate = utcDateWithMinutesFromYmd(date, mins);
+          if (slotDate) slotsToInsert.push(slotDate);
+        }
+      } else {
+        slotsToInsert = [dayStart];
+      }
+
+      if (!slotsToInsert.length) {
+        return res.status(400).json({ error: 'No valid blocked slots provided.' });
+      }
+
+      let inserted = 0;
+      const createdRows = [];
       try {
-        created = await mongoFieldUnavailableInsertDayStart(idTrim, range.start);
+        for (let i = 0; i < slotsToInsert.length; i++) {
+          const row = await mongoFieldUnavailableInsertDayStart(idTrim, slotsToInsert[i]);
+          if (row) {
+            inserted += 1;
+            createdRows.push(row);
+          }
+        }
       } catch (error) {
         console.error('Add unavailable date error:', error);
-        return res.status(500).json({ error: 'Failed to block date' });
+        return res.status(500).json({ error: 'Failed to block date/time' });
       }
 
-      if (!created) {
-        return res.status(409).json({ error: 'This date is already blocked' });
+      if (inserted === 0) {
+        return res.status(409).json({ error: 'This date/time is already blocked' });
       }
 
-      res.status(201).json({ message: 'Date blocked', unavailableDate: created });
+      res.status(201).json({
+        message: inserted > 1 ? 'Time range blocked' : 'Date/time blocked',
+        inserted,
+        unavailableDates: createdRows
+      });
     } catch (error) {
       console.error('Add unavailable date error:', error);
-      res.status(500).json({ error: 'Failed to block date' });
+      res.status(500).json({ error: 'Failed to block date/time' });
     }
   }
 );
@@ -680,7 +744,7 @@ router.post(
 router.delete('/:id/unavailable-dates', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { date } = req.query;
+    const { date, startTime, endTime } = req.query;
 
     if (!date || typeof date !== 'string') {
       return res.status(400).json({ error: 'Query parameter date is required (YYYY-MM-DD)' });
@@ -707,27 +771,50 @@ router.delete('/:id/unavailable-dates', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const range = dayUtcRangeFromYmd(date);
-    if (!range) {
+    const dayRange = dayUtcRangeFromYmd(date);
+    if (!dayRange) {
       return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    const hasStart = typeof startTime === 'string' && startTime.trim() !== '';
+    const hasEnd = typeof endTime === 'string' && endTime.trim() !== '';
+    if (hasStart !== hasEnd) {
+      return res.status(400).json({ error: 'Provide both startTime and endTime, or neither.' });
+    }
+
+    let deleteStart = dayRange.start;
+    let deleteEnd = dayRange.end;
+    if (hasStart && hasEnd) {
+      const startMins = timeToMinutes(startTime);
+      const endMins = timeToMinutes(endTime);
+      if (startMins == null || endMins == null || endMins <= startMins) {
+        return res.status(400).json({ error: 'Invalid time range. endTime must be after startTime.' });
+      }
+      const slotStart = utcDateWithMinutesFromYmd(date, startMins);
+      const slotEndExclusive = utcDateWithMinutesFromYmd(date, endMins);
+      if (!slotStart || !slotEndExclusive) {
+        return res.status(400).json({ error: 'Invalid date/time range' });
+      }
+      deleteStart = slotStart;
+      deleteEnd = new Date(slotEndExclusive.getTime() - 1);
     }
 
     let removed;
     try {
-      removed = await mongoFieldUnavailableDeleteInRange(idTrim, range.start, range.end);
+      removed = await mongoFieldUnavailableDeleteInRange(idTrim, deleteStart, deleteEnd);
     } catch (e) {
       console.error('Delete unavailable date error:', e);
-      return res.status(500).json({ error: 'Failed to unblock date' });
+      return res.status(500).json({ error: 'Failed to unblock date/time' });
     }
 
     if (removed === 0) {
-      return res.status(404).json({ error: 'No blocked date found for that day' });
+      return res.status(404).json({ error: 'No blocked date/time found for that range' });
     }
 
-    res.json({ message: 'Date unblocked', removed });
+    res.json({ message: hasStart ? 'Time range unblocked' : 'Date unblocked', removed });
   } catch (error) {
     console.error('Delete unavailable date error:', error);
-    res.status(500).json({ error: 'Failed to unblock date' });
+    res.status(500).json({ error: 'Failed to unblock date/time' });
   }
 });
 
@@ -818,23 +905,37 @@ router.get('/:id/availability', async (req, res) => {
       });
     }
 
-    // Check if the entire date is unavailable (locked by owner)
-    const unavailableDate = await prisma.fieldUnavailableDate.findFirst({
+    // Owner blocks can be full-day (00:00) or specific hourly slots.
+    const unavailableRows = await prisma.fieldUnavailableDate.findMany({
       where: {
         fieldId: id,
         date: {
           gte: startOfDay,
           lte: endOfDay
         }
+      },
+      select: { date: true }
+    });
+
+    const ownerBlockedSlots = [];
+    let hasAllDayLock = false;
+    unavailableRows.forEach((row) => {
+      const parsed = ymdAndTimeFromUtcDate(row.date);
+      if (!parsed) return;
+      if (parsed.time === '00:00') {
+        hasAllDayLock = true;
+      } else if (!ownerBlockedSlots.includes(parsed.time)) {
+        ownerBlockedSlots.push(parsed.time);
       }
     });
 
-    if (unavailableDate) {
+    if (hasAllDayLock) {
       return res.json({
         available: false,
         lockedByOwner: true,
         closedBySchedule: false,
         bookedSlots: [],
+        ownerBlockedSlots: [],
         workingSlots,
         message: 'This field is not available on the selected date'
       });
@@ -877,12 +978,16 @@ router.get('/:id/availability', async (req, res) => {
       });
     });
 
-    const bookedInWorkingSlots = bookedSlots.filter((s) => workingSlots.includes(s));
+    const ownerBlockedInWorkingSlots = ownerBlockedSlots.filter((s) => workingSlots.includes(s));
+    const bookedInWorkingSlots = bookedSlots
+      .concat(ownerBlockedInWorkingSlots)
+      .filter((s, idx, arr) => workingSlots.includes(s) && arr.indexOf(s) === idx);
     res.json({
       available: true,
       lockedByOwner: false,
       closedBySchedule: false,
       bookedSlots: bookedInWorkingSlots,
+      ownerBlockedSlots: ownerBlockedInWorkingSlots,
       workingSlots,
       debug: { bookingsFound: bookings.length, dateRange: { start: startOfDay.toISOString(), end: endOfDay.toISOString() } }
     });

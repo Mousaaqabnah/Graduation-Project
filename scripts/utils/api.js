@@ -662,16 +662,26 @@ const fieldsAPI = {
     return apiRequest(`/fields/${encodeURIComponent(fieldId)}/unavailable-dates`);
   },
 
-  addUnavailableDate: async (fieldId, dateYmd) => {
+  addUnavailableDate: async (fieldId, dateYmd, startTime, endTime) => {
+    const body = { date: dateYmd };
+    if (startTime && endTime) {
+      body.startTime = startTime;
+      body.endTime = endTime;
+    }
     return apiRequest(`/fields/${encodeURIComponent(fieldId)}/unavailable-dates`, {
       method: 'POST',
-      body: { date: dateYmd }
+      body
     });
   },
 
-  removeUnavailableDate: async (fieldId, dateYmd) => {
+  removeUnavailableDate: async (fieldId, dateYmd, startTime, endTime) => {
+    const params = new URLSearchParams({ date: dateYmd });
+    if (startTime && endTime) {
+      params.set('startTime', startTime);
+      params.set('endTime', endTime);
+    }
     return apiRequest(
-      `/fields/${encodeURIComponent(fieldId)}/unavailable-dates?date=${encodeURIComponent(dateYmd)}`,
+      `/fields/${encodeURIComponent(fieldId)}/unavailable-dates?${params.toString()}`,
       {
         method: 'DELETE'
       }

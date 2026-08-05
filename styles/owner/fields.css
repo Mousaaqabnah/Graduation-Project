@@ -778,6 +778,10 @@
   flex: 1;
 }
 
+.unavailable-dates-container input[type="time"] {
+  flex: 0 0 130px;
+}
+
 .btn-add-date {
   padding: 10px 20px;
   background: #007BFF;

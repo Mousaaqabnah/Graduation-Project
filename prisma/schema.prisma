@@ -1,16 +1,22 @@
-// MatchField - Prisma Schema (MongoDB)
-// Sports venue and field booking platform
+// MatchField - Production PostgreSQL schema
+// Prisma + Supabase PostgreSQL
+//
+// Money is stored as Int in the smallest currency unit (for example agorot).
+// All timestamps should be handled in UTC by the backend.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mongodb"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-// ============== ENUMS ==============
+// ==============================
+// ENUMS
+// ==============================
 
 enum UserRole {
   PLAYER
@@ -21,6 +27,20 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+  DEACTIVATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AuthProvider {
+  GOOGLE
+  APPLE
+  FACEBOOK
 }
 
 enum VerificationStatus {
@@ -30,271 +50,780 @@ enum VerificationStatus {
   REJECTED
 }
 
+enum VerificationDocumentType {
+  ID_FRONT
+  ID_BACK
+  OWNERSHIP_DOCUMENT
+  BUSINESS_LICENSE
+  OTHER
+}
+
 enum FieldType {
   INDOOR
   OUTDOOR
 }
 
 enum FieldModerationStatus {
+  DRAFT
   PENDING
   APPROVED
   REJECTED
+  SUSPENDED
+}
+
+enum FieldDocumentType {
+  OWNERSHIP_DOCUMENT
+  BUSINESS_LICENSE
+  SAFETY_CERTIFICATE
+  OTHER
 }
 
 enum BookingStatus {
   PENDING
-  UPCOMING
   CONFIRMED
   COMPLETED
   CANCELLED
+  EXPIRED
+}
+
+enum BookingParticipantStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  REMOVED
 }
 
 enum PaymentMethod {
-  ORGANIZER  // Organizer pays full amount
-  SPLIT      // Equal split among all players
-  MIXED      // Custom amounts per player
+  ORGANIZER
+  SPLIT
+  MIXED
 }
 
 enum PaymentStatus {
   PENDING
+  PROCESSING
   PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
-// ============== MODELS ==============
+enum PaymentProvider {
+  MANUAL
+  STRIPE
+  PAYPAL
+  OTHER
+}
+
+enum PaymentShareStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum ConversationType {
+  DIRECT
+  SUPPORT
+  BOOKING
+  GROUP
+}
+
+enum ConversationParticipantRole {
+  MEMBER
+  MODERATOR
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum NotificationType {
+  BOOKING
+  PAYMENT
+  MESSAGE
+  REVIEW
+  VERIFICATION
+  FIELD_MODERATION
+  SUPPORT
+  SYSTEM
+}
+
+enum NotificationAudience {
+  PRIVATE
+  ALL
+  PLAYERS
+  OWNERS
+  ADMINS
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  APPROVE
+  REJECT
+  SUSPEND
+  RESTORE
+  OTHER
+}
+
+// ==============================
+// USERS & AUTHENTICATION
+// ==============================
 
 model User {
-  id             String    @id @default(auto()) @map("_id") @db.ObjectId
-  email          String    @unique
-  passwordHash   String?   @map("password_hash")
-  fullName       String    @map("full_name")
-  phone          String?
-  dateOfBirth    DateTime? @map("date_of_birth")
-  gender         String?
-  location       String?
-  avatar         String?
-  /// Public shareable code shown as "Player ID" (e.g. PLR-AB12CD34)
-  playerCode     String?   @map("player_code")
-  role           UserRole  @default(PLAYER)
-  status         UserStatus @default(ACTIVE)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique @db.VarChar(320)
+  username        String     @unique @db.VarChar(40)
+  passwordHash    String?    @map("password_hash") @db.VarChar(255)
+  fullName        String     @map("full_name") @db.VarChar(120)
+  phone           String?    @db.VarChar(30)
+  dateOfBirth     DateTime?  @map("date_of_birth") @db.Date
+  gender          Gender?
+  location        String?    @db.VarChar(160)
+  avatarUrl       String?    @map("avatar_url") @db.Text
+  playerCode      String     @unique @default(cuid()) @map("player_code") @db.VarChar(40)
+  role            UserRole   @default(PLAYER)
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  deletedAt       DateTime?  @map("deleted_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  // Owner verification (for OWNER role)
-  verificationStatus VerificationStatus? @default(NOT_SUBMITTED) @map("verification_status")
-  idFrontUrl         String?            @map("id_front_url")
-  idBackUrl          String?            @map("id_back_url")
-  verifiedAt         DateTime?          @map("verified_at")
+  preferences Json?
 
-  /// UI settings keyed by role: { "owner": { ... }, "player": { ... } }
-  preferences Json? @map("preferences")
+  passwordResetTokenHash String?   @map("password_reset_token_hash") @db.VarChar(64)
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
 
-  /// SHA-256 hex of raw reset token; cleared after successful reset
-  passwordResetTokenHash String?   @map("password_reset_token_hash")
-  passwordResetExpires   DateTime? @map("password_reset_expires")
+  ownerProfile  OwnerProfile?
+  authAccounts  AuthAccount[]
+  refreshTokens RefreshToken[]
 
-  // Relations
-  ownedFields         Field[]             @relation("FieldOwner")
-  reviews             Review[]
-  favorites           Favorite[]
-  organizedBookings   Booking[]            @relation("BookingOrganizer")
-  bookingParticipants BookingParticipant[]
-  sentMessages        Message[]            @relation("SentMessages")
-  conversationsAsUser1 Conversation[]     @relation("ConversationUser1")
-  conversationsAsUser2 Conversation[]     @relation("ConversationUser2")
-  userNotifications   UserNotification[]
+  ownedFields              Field[]                   @relation("FieldOwner")
+  moderatedFields          Field[]                   @relation("FieldModerator")
+  reviews                  Review[]
+  favorites                Favorite[]
+  organizedBookings        Booking[]                 @relation("BookingOrganizer")
+  bookingParticipants      BookingParticipant[]
+  paymentShares            PaymentShare[]
+  payments                 Payment[]
+  sentMessages             Message[]                 @relation("MessageSender")
+  conversationParticipants ConversationParticipant[]
+  createdConversations     Conversation[]            @relation("ConversationCreator")
+  userNotifications        UserNotification[]
+  createdNotifications     Notification[]            @relation("NotificationCreator")
+  verificationRequests     OwnerVerification[]       @relation("VerificationOwner")
+  reviewedVerifications    OwnerVerification[]       @relation("VerificationReviewer")
+  supportTickets           SupportTicket[]           @relation("SupportRequester")
+  assignedTickets          SupportTicket[]           @relation("SupportAssignee")
+  supportMessages          SupportMessage[]
+  auditLogs                AuditLog[]                @relation("AuditActor")
 
+  @@index([role, status])
+  @@index([createdAt])
+  @@index([deletedAt])
   @@map("users")
 }
 
+model OwnerProfile {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @unique @map("user_id") @db.Uuid
+  businessName       String?            @map("business_name") @db.VarChar(160)
+  description        String?            @db.Text
+  verificationStatus VerificationStatus @default(NOT_SUBMITTED) @map("verification_status")
+  verifiedAt         DateTime?          @map("verified_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([verificationStatus])
+  @@map("owner_profiles")
+}
+
+model AuthAccount {
+  id                String       @id @default(uuid()) @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  provider          AuthProvider
+  providerAccountId String       @map("provider_account_id") @db.VarChar(255)
+  providerEmail     String?      @map("provider_email") @db.VarChar(320)
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("auth_accounts")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(128)
+  userAgent String?   @map("user_agent") @db.Text
+  ipAddress String?   @map("ip_address") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model OwnerVerification {
+  id              String             @id @default(uuid()) @db.Uuid
+  ownerId         String             @map("owner_id") @db.Uuid
+  status          VerificationStatus @default(PENDING)
+  rejectionReason String?            @map("rejection_reason") @db.Text
+  reviewedById    String?            @map("reviewed_by_id") @db.Uuid
+  submittedAt     DateTime           @default(now()) @map("submitted_at")
+  reviewedAt      DateTime?          @map("reviewed_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  owner      User                   @relation("VerificationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  reviewedBy User?                  @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  documents  VerificationDocument[]
+
+  @@index([ownerId, status])
+  @@index([status, submittedAt])
+  @@map("owner_verifications")
+}
+
+model VerificationDocument {
+  id             String                   @id @default(uuid()) @db.Uuid
+  verificationId String                   @map("verification_id") @db.Uuid
+  type           VerificationDocumentType
+  storagePath    String                   @map("storage_path") @db.Text
+  mimeType       String                   @map("mime_type") @db.VarChar(120)
+  sizeBytes      Int                      @map("size_bytes")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+
+  verification OwnerVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@index([verificationId])
+  @@map("verification_documents")
+}
+
+// ==============================
+// FIELDS
+// ==============================
+
 model Field {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  sport       String    // Football, Tennis, Basketball, Padel, Volleyball, Ice Hockey, etc.
-  description String?
-  capacity    Int?
-  type        FieldType @default(OUTDOOR) // INDOOR | OUTDOOR
-  location    String
-  address     String?
-  city        String?
-  district    String?
-  latitude    Float?
-  longitude   Float?
-  phone       String?
-  pricePerHour Int      @map("price_per_hour") // in smallest currency unit (e.g. kuruş for TRY)
-  amenities   String[]  @default([])
-  features    String[]  @default([]) // e.g. ["Parking", "Changing Rooms", "Water Station"]
-  highlights  String[]  @default([])
-  images      String[]  @default([]) // URLs of images
-  schedule    Json?
-  bookingType String?   @map("booking_type")
-  advanceBooking String? @map("advance_booking")
-  cancellationPolicy String? @map("cancellation_policy")
-  visibilityRequested Boolean? @map("visibility_requested")
-  /// Optional URLs for owner-submitted verification files (shown in admin review).
-  ownershipDocumentUrl String? @map("ownership_document_url")
-  licensesDocumentUrl  String? @map("licenses_document_url")
-  rating      Float?    @default(0) // computed from reviews
-  reviewCount Int       @default(0) @map("review_count")
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id                 String                @id @default(uuid()) @db.Uuid
+  ownerId            String                @map("owner_id") @db.Uuid
+  name               String                @db.VarChar(160)
+  sport              String                @db.VarChar(80)
+  description        String?               @db.Text
+  capacity           Int?
+  type               FieldType             @default(OUTDOOR)
+  location           String                @db.VarChar(200)
+  address            String?               @db.VarChar(300)
+  city               String?               @db.VarChar(100)
+  district           String?               @db.VarChar(100)
+  latitude           Decimal?              @db.Decimal(9, 6)
+  longitude          Decimal?              @db.Decimal(9, 6)
+  phone              String?               @db.VarChar(30)
+  currency           String                @default("ILS") @db.Char(3)
+  pricePerHour       Int                   @map("price_per_hour")
+  bookingType        String?               @map("booking_type") @db.VarChar(80)
+  advanceBookingDays Int                   @default(30) @map("advance_booking_days")
+  cancellationPolicy String?               @map("cancellation_policy") @db.Text
+  ratingAverage      Decimal               @default(0) @map("rating_average") @db.Decimal(3, 2)
+  reviewCount        Int                   @default(0) @map("review_count")
+  isActive           Boolean               @default(true) @map("is_active")
+  moderationStatus   FieldModerationStatus @default(DRAFT) @map("moderation_status")
+  moderationReason   String?               @map("moderation_reason") @db.Text
+  moderatedAt        DateTime?             @map("moderated_at")
+  moderatedById      String?               @map("moderated_by_id") @db.Uuid
+  deletedAt          DateTime?             @map("deleted_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
 
-  // Admin moderation / approval workflow (optional for backward-compat with existing data)
-  moderationStatus FieldModerationStatus? @default(PENDING) @map("moderation_status")
-  moderationReason String?                @map("moderation_reason")
-  moderatedAt      DateTime?              @map("moderated_at")
-  moderatedById    String?                @map("moderated_by_id") @db.ObjectId
+  owner       User  @relation("FieldOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  moderatedBy User? @relation("FieldModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
 
-  ownerId     String    @map("owner_id") @db.ObjectId
-  owner       User      @relation("FieldOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  images       FieldImage[]
+  amenities    FieldAmenity[]
+  highlights   FieldHighlight[]
+  openingHours FieldOpeningHour[]
+  blockedSlots FieldBlockedSlot[]
+  documents    FieldDocument[]
+  reviews      Review[]
+  bookings     Booking[]
+  bookingSlots BookingSlot[]
+  favorites    Favorite[]
 
-  // Relations
-  reviews           Review[]
-  bookings          Booking[]
-  favorites         Favorite[]
-  unavailableDates  FieldUnavailableDate[]
-
+  @@index([ownerId, moderationStatus])
+  @@index([sport, city, moderationStatus, isActive])
+  @@index([latitude, longitude])
+  @@index([ratingAverage])
+  @@index([createdAt])
+  @@index([deletedAt])
   @@map("fields")
 }
 
-model FieldUnavailableDate {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  date      DateTime
-  fieldId   String   @map("field_id") @db.ObjectId
-  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+model FieldImage {
+  id           String   @id @default(uuid()) @db.Uuid
+  fieldId      String   @map("field_id") @db.Uuid
+  storagePath  String   @map("storage_path") @db.Text
+  publicUrl    String?  @map("public_url") @db.Text
+  altText      String?  @map("alt_text") @db.VarChar(200)
+  displayOrder Int      @default(0) @map("display_order")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, displayOrder])
+  @@index([fieldId, isPrimary])
+  @@map("field_images")
+}
+
+model FieldAmenity {
+  id      String @id @default(uuid()) @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  name    String @db.VarChar(100)
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, name])
+  @@map("field_amenities")
+}
+
+model FieldHighlight {
+  id      String @id @default(uuid()) @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  text    String @db.VarChar(180)
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, text])
+  @@map("field_highlights")
+}
+
+model FieldOpeningHour {
+  id             String  @id @default(uuid()) @db.Uuid
+  fieldId        String  @map("field_id") @db.Uuid
+  dayOfWeek      Int     @map("day_of_week") // 0=Sunday ... 6=Saturday
+  opensAtMinute  Int     @map("opens_at_minute") // minutes after midnight
+  closesAtMinute Int     @map("closes_at_minute")
+  isClosed       Boolean @default(false) @map("is_closed")
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, dayOfWeek])
+  @@index([fieldId])
+  @@map("field_opening_hours")
+}
+
+model FieldBlockedSlot {
+  id        String   @id @default(uuid()) @db.Uuid
+  fieldId   String   @map("field_id") @db.Uuid
+  startAt   DateTime @map("start_at")
+  endAt     DateTime @map("end_at")
+  reason    String?  @db.VarChar(300)
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@unique([fieldId, date])
-  @@map("field_unavailable_dates")
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId, startAt, endAt])
+  @@map("field_blocked_slots")
 }
 
-model Review {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  rating     Int      // 1-5
-  reviewText String   @map("review_text")
-  context    String?  // e.g. "Played 5v5 last week"
-  createdAt  DateTime @default(now()) @map("created_at")
+model FieldDocument {
+  id          String            @id @default(uuid()) @db.Uuid
+  fieldId     String            @map("field_id") @db.Uuid
+  type        FieldDocumentType
+  storagePath String            @map("storage_path") @db.Text
+  mimeType    String            @map("mime_type") @db.VarChar(120)
+  sizeBytes   Int               @map("size_bytes")
+  createdAt   DateTime          @default(now()) @map("created_at")
 
-  fieldId   String   @map("field_id") @db.ObjectId
-  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  userId    String   @map("user_id") @db.ObjectId
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
-  @@unique([fieldId, userId])
-  @@map("field_reviews")
+  @@index([fieldId])
+  @@map("field_documents")
 }
+
+// ==============================
+// BOOKINGS & PAYMENTS
+// ==============================
 
 model Booking {
-  id                     String         @id @default(auto()) @map("_id") @db.ObjectId
-  date                   DateTime
-  timeSlotStart          String         @map("time_slot_start") // e.g. "18:00"
-  timeSlotEnd            String         @map("time_slot_end")   // e.g. "20:00"
-  timeSlotRanges         Json?          @map("time_slot_ranges") // [{start,end},...] for non-contiguous slots
-  totalCost              Int            @map("total_cost")      // in smallest currency unit
-  paymentMethod          PaymentMethod @map("payment_method")
-  status                 BookingStatus  @default(PENDING)
-  organizerPaymentStatus PaymentStatus? @map("organizer_payment_status") // for organizer's share
-  mixedPaymentDistribution Json?       @map("mixed_payment_distribution") // { [userId]: amount } when paymentMethod = MIXED
-  teamSize               Int?          @map("team_size")       // total players (organizer + participants)
-  createdAt              DateTime       @default(now()) @map("created_at")
-  confirmedAt            DateTime?      @map("confirmed_at")
+  id                 String        @id @default(uuid()) @db.Uuid
+  fieldId            String        @map("field_id") @db.Uuid
+  organizerId        String        @map("organizer_id") @db.Uuid
+  startAt            DateTime      @map("start_at")
+  endAt              DateTime      @map("end_at")
+  teamSize           Int?          @map("team_size")
+  currency           String        @default("ILS") @db.Char(3)
+  subtotal           Int
+  serviceFee         Int           @default(0) @map("service_fee")
+  totalCost          Int           @map("total_cost")
+  paymentMethod      PaymentMethod @map("payment_method")
+  status             BookingStatus @default(PENDING)
+  notes              String?       @db.Text
+  expiresAt          DateTime?     @map("expires_at")
+  confirmedAt        DateTime?     @map("confirmed_at")
+  cancelledAt        DateTime?     @map("cancelled_at")
+  cancellationReason String?       @map("cancellation_reason") @db.Text
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  fieldId      String   @map("field_id") @db.ObjectId
-  field        Field    @relation(fields: [fieldId], references: [id], onDelete: Restrict)
-  organizerId  String   @map("organizer_id") @db.ObjectId
-  organizer    User     @relation("BookingOrganizer", fields: [organizerId], references: [id], onDelete: Restrict)
+  field     Field @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  organizer User  @relation("BookingOrganizer", fields: [organizerId], references: [id], onDelete: Restrict)
 
-  participants BookingParticipant[]
+  slots         BookingSlot[]
+  participants  BookingParticipant[]
+  paymentShares PaymentShare[]
+  payments      Payment[]
+  review        Review?
+  conversations Conversation[]
 
+  @@index([fieldId, startAt, status])
+  @@index([organizerId, createdAt])
+  @@index([status, startAt])
+  @@index([expiresAt])
   @@map("bookings")
 }
 
-model BookingParticipant {
-  id             String        @id @default(auto()) @map("_id") @db.ObjectId
-  paymentStatus  PaymentStatus @default(PENDING) @map("payment_status")
-  paymentAmount  Int?          @map("payment_amount") // assigned amount for split/mixed
-  createdAt      DateTime      @default(now()) @map("created_at")
+/// Each confirmed/pending booking must create one row per hourly slot.
+/// The unique constraint prevents two bookings from taking the same field/hour.
+model BookingSlot {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookingId String   @map("booking_id") @db.Uuid
+  fieldId   String   @map("field_id") @db.Uuid
+  startAt   DateTime @map("start_at")
+  endAt     DateTime @map("end_at")
 
-  bookingId String  @map("booking_id") @db.ObjectId
-  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  userId    String  @map("user_id") @db.ObjectId
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  field   Field   @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+
+  @@unique([fieldId, startAt])
+  @@index([bookingId])
+  @@map("booking_slots")
+}
+
+model BookingParticipant {
+  id          String                   @id @default(uuid()) @db.Uuid
+  bookingId   String                   @map("booking_id") @db.Uuid
+  userId      String                   @map("user_id") @db.Uuid
+  status      BookingParticipantStatus @default(INVITED)
+  isOrganizer Boolean                  @default(false) @map("is_organizer")
+  invitedAt   DateTime                 @default(now()) @map("invited_at")
+  respondedAt DateTime?                @map("responded_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([bookingId, userId])
+  @@index([userId, status])
   @@map("booking_participants")
 }
 
+model PaymentShare {
+  id        String             @id @default(uuid()) @db.Uuid
+  bookingId String             @map("booking_id") @db.Uuid
+  userId    String             @map("user_id") @db.Uuid
+  amount    Int
+  status    PaymentShareStatus @default(PENDING)
+  paidAt    DateTime?          @map("paid_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, userId])
+  @@index([userId, status])
+  @@map("payment_shares")
+}
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  bookingId         String          @map("booking_id") @db.Uuid
+  userId            String          @map("user_id") @db.Uuid
+  provider          PaymentProvider @default(MANUAL)
+  providerReference String?         @unique @map("provider_reference") @db.VarChar(255)
+  amount            Int
+  currency          String          @default("ILS") @db.Char(3)
+  status            PaymentStatus   @default(PENDING)
+  failureReason     String?         @map("failure_reason") @db.Text
+  paidAt            DateTime?       @map("paid_at")
+  refundedAmount    Int             @default(0) @map("refunded_amount")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId, status])
+  @@index([userId, createdAt])
+  @@map("payments")
+}
+
+// ==============================
+// REVIEWS & FAVORITES
+// ==============================
+
+model Review {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookingId  String   @unique @map("booking_id") @db.Uuid
+  fieldId    String   @map("field_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  rating     Int
+  reviewText String?  @map("review_text") @db.Text
+  context    String?  @db.VarChar(220)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  field   Field   @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([fieldId, createdAt])
+  @@index([userId])
+  @@map("field_reviews")
+}
+
 model Favorite {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @map("user_id") @db.ObjectId
-  fieldId   String   @map("field_id") @db.ObjectId
+  userId    String   @map("user_id") @db.Uuid
+  fieldId   String   @map("field_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, fieldId])
+  @@id([userId, fieldId])
+  @@index([fieldId])
   @@map("favorites")
 }
 
+// ==============================
+// CHAT
+// ==============================
+
 model Conversation {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  blockedAt DateTime? @map("blocked_at")
-  starredAt DateTime? @map("starred_at")
-  isSupportThread Boolean? @default(false) @map("is_support_thread")
+  id          String           @id @default(uuid()) @db.Uuid
+  type        ConversationType @default(DIRECT)
+  bookingId   String?          @map("booking_id") @db.Uuid
+  createdById String           @map("created_by_id") @db.Uuid
+  title       String?          @db.VarChar(160)
+  blockedAt   DateTime?        @map("blocked_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
 
-  user1Id String @map("user1_id") @db.ObjectId
-  user1   User   @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
-  user2Id String @map("user2_id") @db.ObjectId
-  user2   User   @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdBy User     @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
-  messages Message[]
+  participants ConversationParticipant[]
+  messages     Message[]
 
-  @@unique([user1Id, user2Id])
+  @@index([bookingId])
+  @@index([type, updatedAt])
   @@map("conversations")
 }
 
+model ConversationParticipant {
+  conversationId String                      @map("conversation_id") @db.Uuid
+  userId         String                      @map("user_id") @db.Uuid
+  role           ConversationParticipantRole @default(MEMBER)
+  joinedAt       DateTime                    @default(now()) @map("joined_at")
+  leftAt         DateTime?                   @map("left_at")
+  lastReadAt     DateTime?                   @map("last_read_at")
+  starredAt      DateTime?                   @map("starred_at")
+  mutedUntil     DateTime?                   @map("muted_until")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, leftAt])
+  @@map("conversation_participants")
+}
+
 model Message {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  content   String   @default("")
-  attachments Json?  @map("attachments") // [{ url, mimeType, originalName, size }]
-  createdAt DateTime @default(now()) @map("created_at")
-  readAt    DateTime? @map("read_at")
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  senderId       String      @map("sender_id") @db.Uuid
+  type           MessageType @default(TEXT)
+  content        String      @default("") @db.Text
+  editedAt       DateTime?   @map("edited_at")
+  deletedAt      DateTime?   @map("deleted_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
 
-  conversationId String       @map("conversation_id") @db.ObjectId
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       String       @map("sender_id") @db.ObjectId
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                @relation("MessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  attachments  MessageAttachment[]
 
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
   @@map("messages")
 }
 
-model Notification {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  title        String
-  message      String
-  audience     String   @default("all")   // all, players, owners, admins, private
-  channels     String[] @default(["in-app"])  // in-app, email
-  targetUserId String?  @map("target_user_id") @db.ObjectId
-  sentById     String?  @map("sent_by_id") @db.ObjectId
+model MessageAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  messageId    String   @map("message_id") @db.Uuid
+  storagePath  String   @map("storage_path") @db.Text
+  mimeType     String   @map("mime_type") @db.VarChar(120)
+  originalName String?  @map("original_name") @db.VarChar(255)
+  sizeBytes    Int      @map("size_bytes")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  userNotifications UserNotification[]
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+// ==============================
+// NOTIFICATIONS
+// ==============================
+
+model Notification {
+  id          String               @id @default(uuid()) @db.Uuid
+  type        NotificationType     @default(SYSTEM)
+  audience    NotificationAudience @default(PRIVATE)
+  title       String               @db.VarChar(180)
+  message     String               @db.Text
+  link        String?              @db.Text
+  metadata    Json?
+  createdById String?              @map("created_by_id") @db.Uuid
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  createdBy  User?                  @relation("NotificationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  recipients UserNotification[]
+  channels   NotificationDelivery[]
+
+  @@index([audience, createdAt])
   @@map("notifications")
 }
 
 model UserNotification {
-  id             String      @id @default(auto()) @map("_id") @db.ObjectId
-  readAt         DateTime?   @map("read_at")
-  createdAt      DateTime    @default(now()) @map("created_at")
+  userId         String    @map("user_id") @db.Uuid
+  notificationId String    @map("notification_id") @db.Uuid
+  readAt         DateTime? @map("read_at")
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  userId         String      @map("user_id") @db.ObjectId
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  notificationId String      @map("notification_id") @db.ObjectId
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
+  @@id([userId, notificationId])
+  @@index([userId, readAt, createdAt])
   @@map("user_notifications")
+}
+
+model NotificationDelivery {
+  id                String              @id @default(uuid()) @db.Uuid
+  notificationId    String              @map("notification_id") @db.Uuid
+  channel           NotificationChannel
+  status            String              @default("PENDING") @db.VarChar(40)
+  providerReference String?             @map("provider_reference") @db.VarChar(255)
+  attemptedAt       DateTime?           @map("attempted_at")
+  deliveredAt       DateTime?           @map("delivered_at")
+  failureReason     String?             @map("failure_reason") @db.Text
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId, channel])
+  @@map("notification_deliveries")
+}
+
+// ==============================
+// SUPPORT & AUDIT
+// ==============================
+
+model SupportTicket {
+  id           String                @id @default(uuid()) @db.Uuid
+  requesterId  String?               @map("requester_id") @db.Uuid
+  assignedToId String?               @map("assigned_to_id") @db.Uuid
+  email        String?               @db.VarChar(320)
+  subject      String                @db.VarChar(180)
+  message      String                @db.Text
+  status       SupportTicketStatus   @default(OPEN)
+  priority     SupportTicketPriority @default(NORMAL)
+  resolvedAt   DateTime?             @map("resolved_at")
+  closedAt     DateTime?             @map("closed_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  requester  User?            @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  assignedTo User?            @relation("SupportAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages   SupportMessage[]
+
+  @@index([status, priority, createdAt])
+  @@index([requesterId])
+  @@index([assignedToId, status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id         String   @id @default(uuid()) @db.Uuid
+  ticketId   String   @map("ticket_id") @db.Uuid
+  senderId   String?  @map("sender_id") @db.Uuid
+  message    String   @db.Text
+  isInternal Boolean  @default(false) @map("is_internal")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User?         @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@map("support_messages")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  actorId    String?     @map("actor_id") @db.Uuid
+  action     AuditAction
+  entityType String      @map("entity_type") @db.VarChar(100)
+  entityId   String?     @map("entity_id") @db.VarChar(100)
+  metadata   Json?
+  ipAddress  String?     @map("ip_address") @db.VarChar(64)
+  userAgent  String?     @map("user_agent") @db.Text
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }

@@ -1163,6 +1163,30 @@ function unavailableYmdFromApi(d) {
     );
 }
 
+function unavailableHmFromApi(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return String(x.getUTCHours()).padStart(2, '0') + ':' + String(x.getUTCMinutes()).padStart(2, '0');
+}
+
+function formatUnavailableEntryLabel(ymd, startTime, endTime) {
+    const base = new Date(ymd + 'T12:00:00').toLocaleDateString();
+    if (startTime && endTime) return base + ' • ' + startTime + ' - ' + endTime;
+    return base + ' • All day';
+}
+
+function collectManageUnavailableEntriesFromDom() {
+    return Array.from(document.querySelectorAll('#manageUnavailableDatesList .date-item[data-ymd]')).map(function (el) {
+        return {
+            ymd: el.getAttribute('data-ymd') || '',
+            startTime: el.getAttribute('data-start-time') || '',
+            endTime: el.getAttribute('data-end-time') || ''
+        };
+    }).filter(function (x) {
+        return !!x.ymd;
+    });
+}
+
 function inferFileNameFromUrl(url, fallback) {
     const value = String(url || '').trim();
     if (!value) return fallback;
@@ -1456,18 +1480,58 @@ async function loadFieldData(fieldId) {
             try {
                 const ud = await API.fields.listUnavailableDates(fieldId);
                 const rows = (ud && ud.unavailableDates) || [];
+                const grouped = {};
                 rows.forEach(function(row) {
                     const ymd = unavailableYmdFromApi(row.date);
-                    if (!ymd) return;
-                    const dateItem = document.createElement('div');
-                    dateItem.className = 'date-item';
-                    dateItem.dataset.ymd = ymd;
-                    dateItem.dataset.fromServer = '1';
-                    dateItem.innerHTML =
-                        '<span>' +
-                        ownerFieldEsc(new Date(ymd + 'T12:00:00').toLocaleDateString()) +
-                        '</span><button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>';
-                    datesList.appendChild(dateItem);
+                    const hm = unavailableHmFromApi(row.date);
+                    if (!ymd || !hm) return;
+                    if (!grouped[ymd]) grouped[ymd] = [];
+                    grouped[ymd].push(hm);
+                });
+                Object.keys(grouped).sort().forEach(function(ymd) {
+                    const times = grouped[ymd].slice().sort();
+                    if (!times.length) return;
+                    if (times.length === 1 && times[0] === '00:00') {
+                        const dateItem = document.createElement('div');
+                        dateItem.className = 'date-item';
+                        dateItem.dataset.ymd = ymd;
+                        dateItem.dataset.fromServer = '1';
+                        dateItem.innerHTML =
+                            '<span>' +
+                            ownerFieldEsc(formatUnavailableEntryLabel(ymd, '', '')) +
+                            '</span><button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>';
+                        datesList.appendChild(dateItem);
+                        return;
+                    }
+                    let rangeStart = times[0];
+                    let prev = times[0];
+                    for (let i = 1; i <= times.length; i++) {
+                        const next = times[i];
+                        const prevHour = parseInt(prev.split(':')[0], 10);
+                        const expectedNext = String(prevHour + 1).padStart(2, '0') + ':00';
+                        const isContiguous = next === expectedNext;
+                        if (isContiguous) {
+                            prev = next;
+                            continue;
+                        }
+                        const endHour = parseInt(prev.split(':')[0], 10) + 1;
+                        const rangeEnd = String(endHour).padStart(2, '0') + ':00';
+                        const dateItem = document.createElement('div');
+                        dateItem.className = 'date-item';
+                        dateItem.dataset.ymd = ymd;
+                        dateItem.dataset.startTime = rangeStart;
+                        dateItem.dataset.endTime = rangeEnd;
+                        dateItem.dataset.fromServer = '1';
+                        dateItem.innerHTML =
+                            '<span>' +
+                            ownerFieldEsc(formatUnavailableEntryLabel(ymd, rangeStart, rangeEnd)) +
+                            '</span><button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>';
+                        datesList.appendChild(dateItem);
+                        if (next) {
+                            rangeStart = next;
+                            prev = next;
+                        }
+                    }
                 });
             } catch (e) {
                 console.warn('listUnavailableDates', e);
@@ -1770,17 +1834,38 @@ function collectManageSchedule() {
 
 function addManageUnavailableDate() {
     const input = document.getElementById('manageUnavailableDateInput');
+    const startInput = document.getElementById('manageUnavailableStartTimeInput');
+    const endInput = document.getElementById('manageUnavailableEndTimeInput');
     const datesList = document.getElementById('manageUnavailableDatesList');
     
     if (!input || !datesList) return;
     
     const date = input.value;
+    const startTime = startInput ? startInput.value : '';
+    const endTime = endInput ? endInput.value : '';
     if (date) {
+        const hasTime = !!startTime && !!endTime;
+        if (hasTime && startTime >= endTime) {
+            alert('End time must be after start time.');
+            return;
+        }
+        const duplicate = Array.from(datesList.querySelectorAll('.date-item')).some(function (item) {
+            const d = item.getAttribute('data-ymd') || '';
+            const s = item.getAttribute('data-start-time') || '';
+            const e = item.getAttribute('data-end-time') || '';
+            return d === date && s === (hasTime ? startTime : '') && e === (hasTime ? endTime : '');
+        });
+        if (duplicate) {
+            alert('This unavailable date/time entry already exists.');
+            return;
+        }
         const dateItem = document.createElement('div');
         dateItem.className = 'date-item';
         dateItem.dataset.ymd = date;
+        dateItem.dataset.startTime = hasTime ? startTime : '';
+        dateItem.dataset.endTime = hasTime ? endTime : '';
         dateItem.innerHTML = `
-            <span>${new Date(date + 'T12:00:00').toLocaleDateString()}</span>
+            <span>${formatUnavailableEntryLabel(date, hasTime ? startTime : '', hasTime ? endTime : '')}</span>
             <button type="button" onclick="removeManageUnavailableDate(this)">&times;</button>
         `;
         datesList.appendChild(dateItem);
@@ -1793,13 +1878,15 @@ async function removeManageUnavailableDate(button) {
     if (!row) return;
 
     const ymd = row.getAttribute('data-ymd');
+    const startTime = row.getAttribute('data-start-time') || '';
+    const endTime = row.getAttribute('data-end-time') || '';
     const fromServer = row.getAttribute('data-from-server') === '1';
 
     if (fromServer && ymd && ownerManagingFieldId && typeof API !== 'undefined' && API.fields && API.fields.removeUnavailableDate) {
         try {
-            await API.fields.removeUnavailableDate(ownerManagingFieldId, ymd);
+            await API.fields.removeUnavailableDate(ownerManagingFieldId, ymd, startTime || undefined, endTime || undefined);
         } catch (e) {
-            alert((e && e.message) || 'Could not remove blocked date on server.');
+            alert((e && e.message) || 'Could not remove blocked date/time on server.');
             return;
         }
     }
@@ -2013,25 +2100,38 @@ async function submitManageChanges() {
         if (API.fields.addUnavailableDate && API.fields.listUnavailableDates) {
             try {
                 const existing = await API.fields.listUnavailableDates(ownerManagingFieldId);
-                const have = new Set(
-                    ((existing && existing.unavailableDates) || []).map(function(r) {
-                        return unavailableYmdFromApi(r.date);
-                    })
-                );
-                const domDates = Array.from(
-                    document.querySelectorAll('#manageUnavailableDatesList .date-item[data-ymd]')
-                )
-                    .map(function(el) {
-                        return el.getAttribute('data-ymd');
-                    })
-                    .filter(Boolean);
-                for (let i = 0; i < domDates.length; i++) {
-                    const ymd = domDates[i];
-                    if (!have.has(ymd)) {
+                const have = new Set(((existing && existing.unavailableDates) || []).map(function(r) {
+                    const ymd = unavailableYmdFromApi(r.date);
+                    const hm = unavailableHmFromApi(r.date);
+                    return ymd && hm ? (ymd + '|' + hm) : '';
+                }).filter(Boolean));
+                const domEntries = collectManageUnavailableEntriesFromDom();
+                for (let i = 0; i < domEntries.length; i++) {
+                    const entry = domEntries[i];
+                    if (entry.startTime && entry.endTime) {
+                        const startHour = parseInt(entry.startTime.split(':')[0], 10);
+                        const endHour = parseInt(entry.endTime.split(':')[0], 10);
+                        if (!Number.isFinite(startHour) || !Number.isFinite(endHour) || endHour <= startHour) continue;
+                        let hasAll = true;
+                        for (let hour = startHour; hour < endHour; hour++) {
+                            const hm = String(hour).padStart(2, '0') + ':00';
+                            if (!have.has(entry.ymd + '|' + hm)) {
+                                hasAll = false;
+                                break;
+                            }
+                        }
+                        if (hasAll) continue;
                         try {
-                            await API.fields.addUnavailableDate(ownerManagingFieldId, ymd);
+                            await API.fields.addUnavailableDate(ownerManagingFieldId, entry.ymd, entry.startTime, entry.endTime);
                         } catch (err) {
-                            console.warn('addUnavailableDate', ymd, err);
+                            console.warn('addUnavailableDate', entry, err);
+                        }
+                    } else {
+                        if (have.has(entry.ymd + '|00:00')) continue;
+                        try {
+                            await API.fields.addUnavailableDate(ownerManagingFieldId, entry.ymd);
+                        } catch (err) {
+                            console.warn('addUnavailableDate', entry, err);
                         }
                     }
                 }
