@@ -22,17 +22,33 @@ async function recalculateFieldRating(tx, fieldId) {
 
 router.get('/user/me', authenticate, async (req, res) => {
   try {
-    const reviews = await prisma.review.findMany({
-      where: { userId: req.user.id },
-      select: { rating: true }
-    });
-    const avgRating = reviews.length
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * take;
+    const where = { userId: req.user.id };
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        select: { rating: true, id: true, fieldId: true, createdAt: true }
+      }),
+      prisma.review.count({ where })
+    ]);
+    const avgRating = total
       ? reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / reviews.length
       : 0;
     res.json({
-      reviews: reviews.map((r) => ({ rating: Number(r.rating || 0) })),
+      reviews: reviews.map((r) => ({
+        id: r.id,
+        rating: Number(r.rating || 0),
+        fieldId: r.fieldId,
+        createdAt: r.createdAt
+      })),
       averageRating: Math.round(avgRating * 10) / 10,
-      count: reviews.length
+      count: total,
+      pagination: { page, limit: take, total, pages: Math.ceil(total / take) || 1 }
     });
   } catch (error) {
     console.error('Get user reviews error:', error);
@@ -130,14 +146,16 @@ router.post(
             return res.status(403).json({ error: 'You can only review bookings you participated in' });
           }
         }
-        if (booking.status !== 'COMPLETED' && booking.status !== 'CONFIRMED') {
-          return res.status(400).json({ error: 'You can only review completed or confirmed bookings' });
+        if (booking.status !== 'COMPLETED') {
+          return res.status(400).json({
+            error: 'You can only review a booking after it is completed'
+          });
         }
       } else {
         booking = await prisma.booking.findFirst({
           where: {
             fieldId,
-            status: { in: ['COMPLETED', 'CONFIRMED'] },
+            status: 'COMPLETED',
             OR: [
               { organizerId: req.user.id },
               { participants: { some: { userId: req.user.id } } }

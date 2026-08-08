@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../lib/prisma');
 
-async function loadUser(userId, { allowSuspended = false } = {}) {
+async function loadUser(userId) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -11,6 +11,7 @@ async function loadUser(userId, { allowSuspended = false } = {}) {
       fullName: true,
       role: true,
       status: true,
+      sessionVersion: true,
       avatarUrl: true,
       playerCode: true,
       deletedAt: true,
@@ -29,11 +30,16 @@ async function loadUser(userId, { allowSuspended = false } = {}) {
     fullName: user.fullName,
     role: user.role,
     status: user.status,
+    sessionVersion: user.sessionVersion ?? 0,
     avatar: user.avatarUrl,
     avatarUrl: user.avatarUrl,
     playerCode: user.playerCode,
     verificationStatus: user.ownerProfile?.verificationStatus || null
   };
+}
+
+function attachUser(req, user) {
+  req.user = user;
 }
 
 const authenticate = async (req, res, next) => {
@@ -44,6 +50,9 @@ const authenticate = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.typ && decoded.typ !== 'access') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     const user = await loadUser(decoded.userId);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -51,8 +60,12 @@ const authenticate = async (req, res, next) => {
     if (user.status !== 'ACTIVE') {
       return res.status(403).json({ error: 'Account is suspended' });
     }
+    const tokenVersion = decoded.sv != null ? Number(decoded.sv) : 0;
+    if (tokenVersion !== Number(user.sessionVersion || 0)) {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
 
-    req.user = user;
+    attachUser(req, user);
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -72,11 +85,15 @@ const authenticateAllowSuspended = async (req, res, next) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await loadUser(decoded.userId, { allowSuspended: true });
+    const user = await loadUser(decoded.userId);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
-    req.user = user;
+    const tokenVersion = decoded.sv != null ? Number(decoded.sv) : 0;
+    if (tokenVersion !== Number(user.sessionVersion || 0)) {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+    attachUser(req, user);
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -86,6 +103,25 @@ const authenticateAllowSuspended = async (req, res, next) => {
       return res.status(401).json({ error: 'Token expired' });
     }
     return res.status(500).json({ error: 'Authentication error' });
+  }
+};
+
+const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await loadUser(decoded.userId);
+    if (
+      user &&
+      user.status === 'ACTIVE' &&
+      Number(decoded.sv != null ? decoded.sv : 0) === Number(user.sessionVersion || 0)
+    ) {
+      attachUser(req, user);
+    }
+    next();
+  } catch {
+    next();
   }
 };
 
@@ -128,22 +164,6 @@ const requireVerifiedOwner = (req, res, next) => {
     });
   }
   return next();
-};
-
-/** Attach req.user when a valid Bearer token is present; otherwise continue anonymously. */
-const optionalAuthenticate = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return next();
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await loadUser(decoded.userId);
-    if (user && user.status === 'ACTIVE') {
-      req.user = user;
-    }
-    next();
-  } catch {
-    next();
-  }
 };
 
 module.exports = {

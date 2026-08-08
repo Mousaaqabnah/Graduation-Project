@@ -6,27 +6,35 @@ const router = express.Router();
 
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const rows = await prisma.userNotification.findMany({
-      where: {
-        userId: req.user.id,
-        archivedAt: null
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        notification: {
-          select: {
-            id: true,
-            title: true,
-            message: true,
-            type: true,
-            link: true,
-            createdAt: true,
-            createdById: true
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * take;
+    const where = {
+      userId: req.user.id,
+      archivedAt: null
+    };
+    const [rows, total] = await Promise.all([
+      prisma.userNotification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          notification: {
+            select: {
+              id: true,
+              title: true,
+              message: true,
+              type: true,
+              link: true,
+              createdAt: true,
+              createdById: true
+            }
           }
         }
-      }
-    });
+      }),
+      prisma.userNotification.count({ where })
+    ]);
 
     res.json({
       notifications: rows.map((r) => ({
@@ -38,7 +46,8 @@ router.get('/me', authenticate, async (req, res) => {
         createdAt: r.notification.createdAt,
         readAt: r.readAt,
         sentById: r.notification.createdById
-      }))
+      })),
+      pagination: { page, limit: take, total, pages: Math.ceil(total / take) || 1 }
     });
   } catch (error) {
     console.error('Get notifications error:', error);

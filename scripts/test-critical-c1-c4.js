@@ -263,6 +263,21 @@ async function main() {
         // Split: partial then full
         const slotSplit = await pickBookableSlot(player.token, field.id);
         if (slotSplit) {
+          const bcrypt = require('bcryptjs');
+          const { createUniqueUsername } = require('../lib/username');
+          const { createUniquePlayerCode } = require('../lib/playerCode');
+          const tempPlayer = await prisma.user.create({
+            data: {
+              email: `split.temp.${Date.now()}@matchfield.test`,
+              username: await createUniqueUsername(prisma, 'splittemp'),
+              passwordHash: await bcrypt.hash('TempPlayer123!', 10),
+              fullName: 'Split Temp Player',
+              role: 'PLAYER',
+              status: 'ACTIVE',
+              playerCode: await createUniquePlayerCode()
+            }
+          });
+
           const splitCreate = await req('POST', '/api/bookings', {
             token: player.token,
             body: {
@@ -271,12 +286,12 @@ async function main() {
               timeSlotStart: slotSplit.timeSlotStart,
               timeSlotEnd: slotSplit.timeSlotEnd,
               paymentMethod: 'SPLIT',
-              teamSize: 2
+              teamSize: 2,
+              participantIds: [tempPlayer.id]
             }
           });
           const splitId = splitCreate.body.booking && splitCreate.body.booking.id;
           if (splitId) {
-            // Organizer share only = half; settle organizer
             await req('POST', `/api/bookings/${splitId}/payments/manual-settle`, {
               token: player.token,
               body: {}
@@ -291,33 +306,13 @@ async function main() {
               partialConfirm.status
             );
 
-            // Add second share for a fictional second user amount to cover total — use owner as second participant if player role allows
-            // Create share for admin as invitee via prisma to finish payment math
-            const bookingRow = await prisma.booking.findUnique({ where: { id: splitId } });
-            const remaining = bookingRow.totalCost - Math.round(bookingRow.totalCost / 2);
-            await prisma.paymentShare.create({
-              data: {
-                bookingId: splitId,
-                userId: admin.user.id,
-                amount: remaining,
-                status: 'PENDING'
-              }
+            const tempLogin = await req('POST', '/api/auth/login', {
+              body: { email: tempPlayer.email, password: 'TempPlayer123!' }
             });
-            // Ensure sum equals total (adjust organizer share if needed)
-            const shares = await prisma.paymentShare.findMany({ where: { bookingId: splitId } });
-            const sum = shares.reduce((s, x) => s + x.amount, 0);
-            if (sum !== bookingRow.totalCost) {
-              await prisma.paymentShare.update({
-                where: { id: shares[0].id },
-                data: { amount: bookingRow.totalCost - shares.slice(1).reduce((s, x) => s + x.amount, 0) }
-              });
-            }
-
             await req('POST', `/api/bookings/${splitId}/payments/manual-settle`, {
-              token: admin.token,
+              token: tempLogin.body.token,
               body: {}
             });
-            // Organizer already paid; after admin share paid, settle should confirm for instant
             const afterFull = await prisma.booking.findUnique({
               where: { id: splitId },
               include: { paymentShares: true }
@@ -346,6 +341,10 @@ async function main() {
               body: { status: 'CANCELLED' }
             });
           }
+          await prisma.payment.deleteMany({ where: { userId: tempPlayer.id } }).catch(() => {});
+          await prisma.paymentShare.deleteMany({ where: { userId: tempPlayer.id } }).catch(() => {});
+          await prisma.bookingParticipant.deleteMany({ where: { userId: tempPlayer.id } }).catch(() => {});
+          await prisma.user.delete({ where: { id: tempPlayer.id } }).catch(() => {});
         }
 
         // MIXED shares must equal total
@@ -368,16 +367,57 @@ async function main() {
               timeSlotStart: slotM.timeSlotStart,
               timeSlotEnd: slotM.timeSlotEnd,
               paymentMethod: 'MIXED',
-              teamSize: 1
+              teamSize: 1,
+              mixedPaymentDistribution: { organizer: 1 }
             }
           });
           const mid = mixed.body.booking && mixed.body.booking.id;
-          if (mid) {
+          if (!mid) {
+            // Create ORGANIZER then force mismatch for the sum check
+            const fallback = await req('POST', '/api/bookings', {
+              token: player.token,
+              body: {
+                fieldId: field.id,
+                date: slotM.date,
+                timeSlotStart: slotM.timeSlotStart,
+                timeSlotEnd: slotM.timeSlotEnd,
+                paymentMethod: 'ORGANIZER',
+                teamSize: 1
+              }
+            });
+            const fid = fallback.body.booking && fallback.body.booking.id;
+            if (fid) {
+              const row = await prisma.booking.findUnique({
+                where: { id: fid },
+                include: { paymentShares: true }
+              });
+              if (row.paymentShares[0]) {
+                await prisma.paymentShare.update({
+                  where: { id: row.paymentShares[0].id },
+                  data: { amount: Math.max(1, row.totalCost - 1), status: 'PAID', paidAt: new Date() }
+                });
+              }
+              const conf = await req('PUT', `/api/bookings/${fid}/status`, {
+                token: player.token,
+                body: { status: 'CONFIRMED' }
+              });
+              record(
+                'C2 mixed shares must equal total',
+                conf.status === 402 || conf.status === 400,
+                conf.status
+              );
+              await req('PUT', `/api/bookings/${fid}/status`, {
+                token: player.token,
+                body: { status: 'CANCELLED' }
+              });
+            } else {
+              record('C2 mixed shares must equal total', false, 'could not create booking');
+            }
+          } else {
             const row = await prisma.booking.findUnique({
               where: { id: mid },
               include: { paymentShares: true }
             });
-            // Force share amount mismatch
             if (row.paymentShares[0]) {
               await prisma.paymentShare.update({
                 where: { id: row.paymentShares[0].id },

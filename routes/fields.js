@@ -679,7 +679,8 @@ router.get('/recommendations', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 20, sport, type, location, search, minPrice, maxPrice } = req.query;
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const take = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * take;
 
     const where = publicFieldWhere();
     if (sport) where.sport = sport;
@@ -701,7 +702,7 @@ router.get('/', async (req, res) => {
       prisma.field.findMany({
         where,
         skip,
-        take: parseInt(limit, 10),
+        take,
         include: {
           ...fieldInclude,
           _count: { select: { reviews: true, bookings: true } }
@@ -714,10 +715,10 @@ router.get('/', async (req, res) => {
     res.json({
       fields: fieldsRaw.map((f) => publicFieldSerializer(f)),
       pagination: {
-        page: parseInt(page, 10),
-        limit: parseInt(limit, 10),
+        page: Math.max(1, parseInt(page, 10) || 1),
+        limit: take,
         total,
-        pages: Math.ceil(total / parseInt(limit, 10))
+        pages: Math.ceil(total / take) || 1
       }
     });
   } catch (error) {
@@ -1563,6 +1564,8 @@ router.put(
         scalarUpdates.moderationReason = null;
         scalarUpdates.moderatedAt = null;
         scalarUpdates.moderatedById = null;
+        // Hide from public listings until re-approved
+        scalarUpdates.isActive = false;
       }
 
       const updatedField = await prisma.$transaction(async (tx) => {

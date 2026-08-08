@@ -536,10 +536,22 @@ router.put(
         return res.status(400).json({ error: 'Invalid user id' });
       }
 
-      const user = await prisma.user.update({
-        where: { id: idTrim },
-        data: { status: req.body.status },
-        select: { id: true, email: true, fullName: true, status: true }
+      const user = await prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id: idTrim },
+          data: {
+            status: req.body.status,
+            ...(req.body.status !== 'ACTIVE' ? { sessionVersion: { increment: 1 } } : {})
+          },
+          select: { id: true, email: true, fullName: true, status: true }
+        });
+        if (req.body.status !== 'ACTIVE') {
+          await tx.refreshToken.updateMany({
+            where: { userId: idTrim, revokedAt: null },
+            data: { revokedAt: new Date() }
+          });
+        }
+        return updated;
       });
 
       await writeAuditLog({

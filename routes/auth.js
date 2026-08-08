@@ -9,18 +9,21 @@ const { ensurePlayerCodeForUser, createUniquePlayerCode } = require('../lib/play
 const { createUniqueUsername } = require('../lib/username');
 const { serializeUser } = require('../lib/serializers');
 const { writeAuditLog } = require('../lib/audit');
+const { invalidateUserSessions, revokeAllRefreshTokens } = require('../lib/session');
 
 const router = express.Router();
 
-const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_TTL || '7d';
+const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_TTL || '1h';
 const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS) || 30 * 24 * 60 * 60 * 1000;
 const RESET_TOKEN_BYTES = 32;
 const RESET_EXPIRY_MS = 60 * 60 * 1000;
 
-function generateAccessToken(userId) {
-  return jwt.sign({ userId, typ: 'access' }, process.env.JWT_SECRET, {
-    expiresIn: ACCESS_TOKEN_TTL
-  });
+function generateAccessToken(userId, sessionVersion = 0) {
+  return jwt.sign(
+    { userId, typ: 'access', sv: Number(sessionVersion) || 0 },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_TTL }
+  );
 }
 
 function hashToken(raw) {
@@ -131,7 +134,7 @@ router.post(
         return created;
       });
 
-      const token = generateAccessToken(user.id);
+      const token = generateAccessToken(user.id, user.sessionVersion ?? 0);
       const refreshToken = await issueRefreshToken(user.id, req);
 
       await writeAuditLog({
@@ -180,6 +183,14 @@ router.post(
       if (!user || user.deletedAt) {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
+      if (user.status === 'SUSPENDED' || user.status === 'DEACTIVATED') {
+        return res.status(403).json({
+          error:
+            user.status === 'SUSPENDED'
+              ? 'Account is suspended'
+              : 'Account is deactivated'
+        });
+      }
       if (!user.passwordHash) {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
@@ -198,7 +209,7 @@ router.post(
         data: { lastLoginAt: new Date() }
       });
 
-      const token = generateAccessToken(user.id);
+      const token = generateAccessToken(user.id, user.sessionVersion);
       const refreshToken = await issueRefreshToken(user.id, req);
       const userData = await userPayload(user.id);
 
@@ -242,8 +253,20 @@ router.post(
       }
 
       const user = await prisma.user.findUnique({ where: { id: stored.userId } });
-      if (!user || user.deletedAt || user.status === 'DEACTIVATED') {
+      if (!user || user.deletedAt) {
         return res.status(401).json({ error: 'User not found' });
+      }
+      if (user.status === 'SUSPENDED' || user.status === 'DEACTIVATED') {
+        await prisma.refreshToken.update({
+          where: { id: stored.id },
+          data: { revokedAt: new Date() }
+        });
+        return res.status(403).json({
+          error:
+            user.status === 'SUSPENDED'
+              ? 'Account is suspended'
+              : 'Account is deactivated'
+        });
       }
 
       // Rotate refresh token
@@ -252,7 +275,7 @@ router.post(
         data: { revokedAt: new Date() }
       });
       const refreshToken = await issueRefreshToken(user.id, req);
-      const token = generateAccessToken(user.id);
+      const token = generateAccessToken(user.id, user.sessionVersion);
 
       res.json({ token, refreshToken });
     } catch (error) {
@@ -262,7 +285,7 @@ router.post(
   }
 );
 
-// Logout (revoke refresh token)
+// Logout (revoke refresh token); without body token, revokes all refresh tokens
 router.post('/logout', authenticateAllowSuspended, async (req, res) => {
   try {
     const raw = req.body?.refreshToken ? String(req.body.refreshToken).trim() : '';
@@ -273,10 +296,7 @@ router.post('/logout', authenticateAllowSuspended, async (req, res) => {
         data: { revokedAt: new Date() }
       });
     } else {
-      await prisma.refreshToken.updateMany({
-        where: { userId: req.user.id, revokedAt: null },
-        data: { revokedAt: new Date() }
-      });
+      await revokeAllRefreshTokens(req.user.id);
     }
     await writeAuditLog({
       actorId: req.user.id,
@@ -288,6 +308,25 @@ router.post('/logout', authenticateAllowSuspended, async (req, res) => {
     res.json({ message: 'Logged out' });
   } catch (error) {
     console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
+// Revoke all refresh tokens and bump sessionVersion (invalidates access JWTs)
+router.post('/logout-all', authenticate, async (req, res) => {
+  try {
+    await invalidateUserSessions(req.user.id);
+    await writeAuditLog({
+      actorId: req.user.id,
+      action: 'LOGOUT',
+      entityType: 'User',
+      entityId: req.user.id,
+      metadata: { scope: 'all' },
+      req
+    });
+    res.json({ message: 'Logged out of all sessions' });
+  } catch (error) {
+    console.error('Logout-all error:', error);
     res.status(500).json({ error: 'Logout failed' });
   }
 });
@@ -377,20 +416,21 @@ router.post(
       }
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
-      await prisma.$transaction([
-        prisma.user.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
           where: { id: user.id },
           data: {
             passwordHash,
             passwordResetTokenHash: null,
-            passwordResetExpiresAt: null
+            passwordResetExpiresAt: null,
+            sessionVersion: { increment: 1 }
           }
-        }),
-        prisma.refreshToken.updateMany({
+        });
+        await tx.refreshToken.updateMany({
           where: { userId: user.id, revokedAt: null },
           data: { revokedAt: new Date() }
-        })
-      ]);
+        });
+      });
 
       res.json({ message: 'Password reset successfully. You can log in with your new password.' });
     } catch (error) {
@@ -442,16 +482,16 @@ router.put(
       }
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
-      await prisma.$transaction([
-        prisma.user.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
           where: { id: user.id },
-          data: { passwordHash }
-        }),
-        prisma.refreshToken.updateMany({
+          data: { passwordHash, sessionVersion: { increment: 1 } }
+        });
+        await tx.refreshToken.updateMany({
           where: { userId: user.id, revokedAt: null },
           data: { revokedAt: new Date() }
-        })
-      ]);
+        });
+      });
 
       res.json({ message: 'Password updated successfully' });
     } catch (error) {

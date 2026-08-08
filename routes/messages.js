@@ -1,4 +1,6 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const { prisma } = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { isUuid } = require('../lib/ids');
@@ -36,55 +38,88 @@ function denyChatForUnverifiedOwner(req, res) {
 }
 
 async function enrichConversations(conversations, viewerId) {
-  const out = [];
-  for (const c of conversations) {
-    const [count, meta] = await Promise.all([
-      unreadCount(c.id, viewerId),
-      viewerMeta(c.id, viewerId)
-    ]);
-    out.push({
+  if (!conversations.length) return [];
+  const ids = conversations.map((c) => c.id);
+  const metas = await prisma.conversationParticipant.findMany({
+    where: { userId: viewerId, conversationId: { in: ids } },
+    select: { conversationId: true, lastReadAt: true, joinedAt: true, starredAt: true }
+  });
+  const metaByConv = new Map(metas.map((m) => [m.conversationId, m]));
+
+  const unreadCounts = await Promise.all(
+    conversations.map(async (c) => {
+      const meta = metaByConv.get(c.id);
+      if (!meta) return [c.id, 0];
+      const since = meta.lastReadAt || meta.joinedAt;
+      const count = await prisma.message.count({
+        where: {
+          conversationId: c.id,
+          senderId: { not: viewerId },
+          deletedAt: null,
+          createdAt: { gt: since }
+        }
+      });
+      return [c.id, count];
+    })
+  );
+  const unreadById = new Map(unreadCounts);
+
+  return conversations.map((c) => {
+    const meta = metaByConv.get(c.id) || {};
+    return {
       ...c,
-      unreadCount: count,
+      unreadCount: unreadById.get(c.id) || 0,
       starredAt: meta.starredAt || null,
       blockedAt: c.blockedAt || null
-    });
-  }
-  return out;
+    };
+  });
 }
 
 router.get('/conversations', authenticate, async (req, res) => {
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
 
-    const rows = await prisma.conversation.findMany({
-      where: {
-        participants: { some: { userId: req.user.id, leftAt: null } }
-      },
-      take: 500,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: { id: true, fullName: true, email: true, avatarUrl: true, role: true }
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * take;
+
+    const where = {
+      participants: { some: { userId: req.user.id, leftAt: null } }
+    };
+    const [rows, total] = await Promise.all([
+      prisma.conversation.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          participants: {
+            include: {
+              user: {
+                select: { id: true, fullName: true, email: true, avatarUrl: true, role: true }
+              }
+            }
+          },
+          messages: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: {
+              sender: { select: { id: true, fullName: true, avatarUrl: true } },
+              attachments: true
             }
           }
-        },
-        messages: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          include: {
-            sender: { select: { id: true, fullName: true, avatarUrl: true } },
-            attachments: true
-          }
         }
-      }
-    });
+      }),
+      prisma.conversation.count({ where })
+    ]);
 
     const mapped = rows.map((c) => mapConversationLegacy(c, req.user.id));
     const enriched = await enrichConversations(mapped, req.user.id);
-    res.json({ conversations: enriched });
+    res.json({
+      conversations: enriched,
+      pagination: { page, limit: take, total, pages: Math.ceil(total / take) || 1 }
+    });
   } catch (error) {
     console.error('Get conversations error:', error);
     res.status(500).json({ error: 'Failed to fetch conversations' });
@@ -223,12 +258,17 @@ router.post('/conversation/:conversationId/messages', authenticate, async (req, 
       attachments
         .slice(0, 5)
         .map((a) => ({
-          url: String(a.url || '').slice(0, 2048),
+          url: String(a.url || a.storagePath || '').slice(0, 2048),
           mimeType: String(a.mimeType || '').slice(0, 128),
           originalName: String(a.originalName || 'file').slice(0, 255),
           size: typeof a.size === 'number' ? a.size : parseInt(a.size, 10) || 0
         }))
-        .filter((a) => a.url.startsWith('/uploads/'));
+        .filter(
+          (a) =>
+            a.url.startsWith('/api/messages/files/') ||
+            a.url.startsWith('/uploads/chat/') ||
+            a.url.startsWith('storage/private/chat/')
+        );
 
     const message = await createMessage({
       conversationId,
@@ -372,5 +412,38 @@ router.put(
     }
   }
 );
+
+router.get('/files/:filename', authenticate, async (req, res) => {
+  try {
+    if (denyChatForUnverifiedOwner(req, res)) return;
+    const filename = path.basename(String(req.params.filename || ''));
+    if (!filename || filename !== req.params.filename || filename.includes('..')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    const conversationId = String(req.query.conversationId || '').trim();
+    if (!conversationId || !isUuid(conversationId)) {
+      return res.status(400).json({ error: 'conversationId is required' });
+    }
+    if (!(await isParticipant(conversationId, req.user.id))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const abs = path.join(__dirname, '..', 'storage', 'private', 'chat', filename);
+    const root = path.resolve(path.join(__dirname, '..', 'storage', 'private', 'chat'));
+    const resolved = path.resolve(abs);
+    if (!resolved.startsWith(root + path.sep)) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+    if (!fs.existsSync(resolved)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(resolved);
+  } catch (error) {
+    console.error('Chat file download error:', error);
+    res.status(500).json({ error: 'Failed to fetch file' });
+  }
+});
 
 module.exports = router;

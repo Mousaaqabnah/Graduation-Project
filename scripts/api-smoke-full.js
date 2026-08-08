@@ -360,7 +360,16 @@ async function main() {
     expect(r.status, [400], 'POST /api/messages/conversation/:id/messages empty body');
   }
 
-  // Chat upload: tiny PNG
+  // Ensure a player↔owner conversation exists for upload tests
+  if (!convId) {
+    const r = await req('GET', `/api/messages/conversation/${ownerId}`, { token: playerT });
+    if (r.status === 200 && r.body.conversation?.id) {
+      convId = r.body.conversation.id;
+      otherUserId = ownerId;
+    }
+  }
+
+  // Chat upload: tiny PNG (requires conversationId — H6)
   {
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -368,13 +377,15 @@ async function main() {
     );
     const form = new FormData();
     form.append('file', new Blob([png], { type: 'image/png' }), 'smoke.png');
+    if (convId) form.append('conversationId', convId);
     const res = await fetch(`${BASE}/api/messages/attachment`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${playerT}` },
       body: form
     });
     const b = await json(res);
-    record('POST /api/messages/attachment', res.status, res.status === 201, b.url || b.error);
+    const ok = convId ? res.status === 201 : res.status === 400;
+    record('POST /api/messages/attachment', res.status, ok, b.url || b.error);
   }
   {
     const form = new FormData();

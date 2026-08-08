@@ -269,10 +269,11 @@ router.get('/stats', async (req, res) => {
 // GET /bookings/region-stats
 router.get('/bookings/region-stats', async (req, res) => {
   try {
-    const bookings = await prisma.booking.findMany({
-      select: { fieldId: true }
+    const grouped = await prisma.booking.groupBy({
+      by: ['fieldId'],
+      _count: { _all: true }
     });
-    const fieldIds = [...new Set(bookings.map((b) => b.fieldId).filter(Boolean))];
+    const fieldIds = grouped.map((g) => g.fieldId).filter(Boolean);
     const fields = fieldIds.length
       ? await prisma.field.findMany({
           where: { id: { in: fieldIds } },
@@ -280,6 +281,13 @@ router.get('/bookings/region-stats', async (req, res) => {
         })
       : [];
     const fieldById = new Map(fields.map((f) => [f.id, f]));
+    // Expand to the shape buildBookingRegionStats expects (one entry per booking count)
+    const bookings = [];
+    for (const g of grouped) {
+      for (let i = 0; i < g._count._all; i += 1) {
+        bookings.push({ fieldId: g.fieldId });
+      }
+    }
     const { total, rows } = buildBookingRegionStats(bookings, fieldById);
     res.json({ total, rows });
   } catch (error) {
@@ -548,12 +556,15 @@ router.post(
           admins: 'ADMIN'
         };
         const role = roleMap[audience];
+        // Cap audience fan-out; large broadcasts should be chunked by job later
         const users = await prisma.user.findMany({
           where: {
             deletedAt: null,
+            status: 'ACTIVE',
             ...(role ? { role } : {})
           },
-          select: { id: true }
+          select: { id: true },
+          take: 5000
         });
         userIds = users.map((u) => u.id);
       }

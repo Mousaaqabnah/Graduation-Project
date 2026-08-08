@@ -13,6 +13,7 @@
     "db:seed": "node prisma/seed.js",
     "test:api": "node scripts/api-smoke-full.js",
     "test:critical": "node scripts/test-critical-c1-c4.js",
+    "test:high": "node scripts/test-high-h1-h8.js",
     "migrate:base64-docs": "node scripts/migrate-base64-documents.js --dry-run"
   },
   "devDependencies": {

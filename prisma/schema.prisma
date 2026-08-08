@@ -212,6 +212,7 @@ model User {
   playerCode      String     @unique @default(cuid()) @map("player_code") @db.VarChar(40)
   role            UserRole   @default(PLAYER)
   status          UserStatus @default(ACTIVE)
+  sessionVersion  Int        @default(0) @map("session_version")
   emailVerifiedAt DateTime?  @map("email_verified_at")
   lastLoginAt     DateTime?  @map("last_login_at")
   deletedAt       DateTime?  @map("deleted_at")

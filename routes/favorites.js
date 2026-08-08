@@ -16,11 +16,20 @@ const fieldInclude = {
 
 router.get('/', authenticate, async (req, res) => {
   try {
-    const favorites = await prisma.favorite.findMany({
-      where: { userId: req.user.id },
-      orderBy: { createdAt: 'desc' },
-      include: { field: { include: fieldInclude } }
-    });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * take;
+    const where = { userId: req.user.id };
+    const [favorites, total] = await Promise.all([
+      prisma.favorite.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { field: { include: fieldInclude } }
+      }),
+      prisma.favorite.count({ where })
+    ]);
 
     res.json({
       favorites: favorites.map((f) => ({
@@ -29,7 +38,8 @@ router.get('/', authenticate, async (req, res) => {
         fieldId: f.fieldId,
         createdAt: f.createdAt,
         field: serializeField(f.field)
-      }))
+      })),
+      pagination: { page, limit: take, total, pages: Math.ceil(total / take) || 1 }
     });
   } catch (error) {
     console.error('Get favorites error:', error);

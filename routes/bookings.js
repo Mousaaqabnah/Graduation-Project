@@ -14,6 +14,7 @@ const {
   settleManualShare,
   isInstantBookingField
 } = require('../lib/bookingPayment');
+const { buildPaymentSharesForCreate, equalSplitAmounts } = require('../lib/bookingShares');
 
 const router = express.Router();
 router.use(authenticate);
@@ -40,14 +41,33 @@ function utcDateTimeFromYmdAndHm(ymd, hm) {
 
 function expandHourlySlots(startAt, endAt) {
   const slots = [];
-  let cursor = new Date(startAt.getTime());
-  while (cursor < endAt) {
-    const next = new Date(cursor.getTime() + 60 * 60 * 1000);
-    const slotEnd = next > endAt ? new Date(endAt.getTime()) : next;
-    slots.push({ startAt: new Date(cursor), endAt: slotEnd });
-    cursor = next;
+  // Normalize to UTC hour boundaries for consistent unique([fieldId, startAt]) locking
+  const cursor = new Date(startAt.getTime());
+  cursor.setUTCMinutes(0, 0, 0);
+  const endNorm = new Date(endAt.getTime());
+  if (endNorm.getUTCMinutes() !== 0 || endNorm.getUTCSeconds() !== 0) {
+    // If end is not on the hour, include the partial final hour start
   }
-  return slots;
+  let t = cursor.getTime();
+  const endMs = endAt.getTime();
+  while (t < endMs) {
+    const slotStart = new Date(t);
+    const next = t + 60 * 60 * 1000;
+    const slotEnd = new Date(Math.min(next, endMs));
+    // Always store startAt on the hour for uniqueness
+    const normalizedStart = new Date(slotStart);
+    normalizedStart.setUTCMinutes(0, 0, 0);
+    slots.push({ startAt: normalizedStart, endAt: slotEnd });
+    t = next;
+  }
+  // Dedupe by startAt
+  const seen = new Set();
+  return slots.filter((s) => {
+    const key = s.startAt.toISOString();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function rangesOverlap(aStart, aEnd, bStart, bEnd) {
@@ -272,7 +292,8 @@ router.post(
     body('timeSlotStart').notEmpty(),
     body('timeSlotEnd').notEmpty(),
     body('paymentMethod').isIn(['ORGANIZER', 'SPLIT', 'MIXED']),
-    body('teamSize').isInt({ min: 1 }).optional()
+    body('teamSize').isInt({ min: 1 }).optional(),
+    body('participantIds').optional().isArray()
   ],
   async (req, res) => {
     try {
@@ -289,7 +310,8 @@ router.post(
         paymentMethod,
         teamSize,
         mixedPaymentDistribution,
-        timeSlotRanges
+        timeSlotRanges,
+        participantIds
       } = req.body;
 
       if (!isUuid(fieldId)) {
@@ -297,7 +319,12 @@ router.post(
       }
 
       const field = await prisma.field.findFirst({
-        where: { id: fieldId, isActive: true, deletedAt: null },
+        where: {
+          id: fieldId,
+          isActive: true,
+          deletedAt: null,
+          moderationStatus: 'APPROVED'
+        },
         include: { openingHours: true }
       });
       if (!field) {
@@ -325,11 +352,6 @@ router.post(
         return res.status(400).json({ error: 'Invalid booking date/time' });
       }
 
-      // Server-side pricing only (minor units)
-      const totalMajor = totalCostFromFieldPrice(toMajor(field.pricePerHour), ranges);
-      const totalCost = toMinor(totalMajor);
-      const status = isInstantBookingField(field) ? 'PENDING' : 'PENDING';
-
       const hourlySlots = [];
       for (const r of ranges) {
         const rs = utcDateTimeFromYmdAndHm(ymd, r.start);
@@ -337,26 +359,87 @@ router.post(
         if (!rs || !re) continue;
         hourlySlots.push(...expandHourlySlots(rs, re));
       }
+      if (!hourlySlots.length) {
+        return res.status(400).json({ error: 'No bookable slots in the selected range.' });
+      }
+
+      // Validate invitees exist and are players before entering the transaction
+      const inviteeIds = Array.isArray(participantIds)
+        ? [...new Set(participantIds.map((id) => String(id)).filter((id) => isUuid(id) && id !== req.user.id))]
+        : [];
+      if (inviteeIds.length) {
+        const users = await prisma.user.findMany({
+          where: { id: { in: inviteeIds }, deletedAt: null, status: 'ACTIVE' },
+          select: { id: true, role: true }
+        });
+        if (users.length !== inviteeIds.length) {
+          return res.status(400).json({ error: 'One or more participantIds are invalid' });
+        }
+        if (users.some((u) => u.role !== 'PLAYER')) {
+          return res.status(400).json({ error: 'Only players can be invited to a booking' });
+        }
+      }
 
       let booking;
       try {
         booking = await prisma.$transaction(async (tx) => {
+          // Re-check slot conflicts inside the transaction (TOCTOU hardening)
+          const slotStarts = hourlySlots.map((s) => s.startAt);
+          const conflict = await tx.bookingSlot.findFirst({
+            where: {
+              fieldId,
+              startAt: { in: slotStarts }
+            },
+            select: { id: true }
+          });
+          if (conflict) {
+            const err = new Error('One or more selected slots are already booked.');
+            err.code = 'P2002';
+            throw err;
+          }
+
+          // Server-side pricing only (minor units) inside the same transaction boundary
+          const totalMajor = totalCostFromFieldPrice(toMajor(field.pricePerHour), ranges);
+          const totalCost = toMinor(totalMajor);
+
+          const sharePlan = buildPaymentSharesForCreate({
+            paymentMethod,
+            totalCost,
+            organizerId: req.user.id,
+            participantIds: inviteeIds,
+            teamSize,
+            mixedPaymentDistribution,
+            toMinor
+          });
+          if (sharePlan.error) {
+            const err = new Error(sharePlan.error);
+            err.status = 400;
+            throw err;
+          }
+
+          const participantCreates = [
+            { userId: req.user.id, status: 'ACCEPTED', isOrganizer: true },
+            ...inviteeIds.map((uid) => ({
+              userId: uid,
+              status: 'INVITED',
+              isOrganizer: false
+            }))
+          ];
+
           const created = await tx.booking.create({
             data: {
               fieldId,
               organizerId: req.user.id,
               startAt,
               endAt,
-              teamSize: teamSize || 1,
+              teamSize: sharePlan.teamSize,
               currency: field.currency || 'ILS',
               subtotal: totalCost,
               serviceFee: 0,
               totalCost,
               paymentMethod,
-              status,
-              participants: {
-                create: [{ userId: req.user.id, status: 'ACCEPTED', isOrganizer: true }]
-              },
+              status: 'PENDING',
+              participants: { create: participantCreates },
               slots: {
                 create: hourlySlots.map((s) => ({
                   fieldId,
@@ -365,23 +448,10 @@ router.post(
                 }))
               },
               paymentShares: {
-                create: [
-                  {
-                    userId: req.user.id,
-                    amount:
-                      paymentMethod === 'ORGANIZER'
-                        ? totalCost
-                        : Math.round(totalCost / Math.max(1, teamSize || 1)),
-                    status: 'PENDING'
-                  }
-                ]
+                create: sharePlan.shares
               }
             }
           });
-
-          if (paymentMethod === 'MIXED' && mixedPaymentDistribution && typeof mixedPaymentDistribution === 'object') {
-            // Extra shares for named users can be added when participants are invited
-          }
 
           return tx.booking.findUnique({
             where: { id: created.id },
@@ -392,6 +462,9 @@ router.post(
         if (err.code === 'P2002') {
           return res.status(409).json({ error: 'One or more selected slots are already booked.' });
         }
+        if (err.status === 400) {
+          return res.status(400).json({ error: err.message });
+        }
         throw err;
       }
 
@@ -401,6 +474,9 @@ router.post(
       });
     } catch (error) {
       console.error('Create booking error:', error);
+      if (error.code === 'P2002') {
+        return res.status(409).json({ error: 'One or more selected slots are already booked.' });
+      }
       res.status(500).json({ error: 'Failed to create booking' });
     }
   }
@@ -623,10 +699,20 @@ router.post(
         }
       }
 
+      let requestedAmountMinor;
+      if (req.body.amount != null || req.body.amountMinor != null) {
+        if (req.body.amountMinor != null) {
+          requestedAmountMinor = Math.round(Number(req.body.amountMinor));
+        } else {
+          requestedAmountMinor = toMinor(req.body.amount);
+        }
+      }
+
       const result = await settleManualShare({
         bookingId: id,
         payerUserId,
-        actorUserId: uid
+        actorUserId: uid,
+        requestedAmountMinor
       });
 
       await writeAuditLog({
@@ -639,7 +725,8 @@ router.post(
           bookingId: id,
           payerUserId,
           confirmed: result.confirmed,
-          fullyPaid: result.fullyPaid
+          fullyPaid: result.fullyPaid,
+          idempotent: result.idempotent
         },
         req
       });
@@ -649,9 +736,12 @@ router.post(
           ? 'Payment settled and booking confirmed'
           : result.fullyPaid
             ? 'Payment settled; booking is fully paid'
-            : 'Payment share settled',
+            : result.idempotent
+              ? 'Payment share already settled'
+              : 'Payment share settled',
         fullyPaid: result.fullyPaid,
         confirmed: result.confirmed,
+        idempotent: !!result.idempotent,
         booking: serializeBooking(result.booking)
       });
     } catch (error) {
@@ -802,13 +892,6 @@ router.post(
         return res.status(400).json({ error: 'Only players can be invited to a booking.' });
       }
 
-      const shareAmount =
-        booking.paymentMethod === 'SPLIT'
-          ? Math.round(booking.totalCost / Math.max(1, booking.teamSize || 1))
-          : booking.paymentMethod === 'MIXED'
-            ? 0
-            : 0;
-
       const participant = await prisma.$transaction(async (tx) => {
         const p = await tx.bookingParticipant.create({
           data: {
@@ -821,18 +904,54 @@ router.post(
             user: { select: { id: true, fullName: true, avatarUrl: true } }
           }
         });
-        if (booking.paymentMethod !== 'ORGANIZER') {
-          await tx.paymentShare.upsert({
-            where: { bookingId_userId: { bookingId: id, userId } },
-            create: {
-              bookingId: id,
-              userId,
-              amount: shareAmount,
-              status: 'PENDING'
-            },
-            update: { amount: shareAmount }
+
+        if (booking.paymentMethod === 'SPLIT') {
+          const active = await tx.bookingParticipant.findMany({
+            where: { bookingId: id, status: { not: 'REMOVED' } },
+            select: { userId: true }
           });
+          const paidShares = await tx.paymentShare.findMany({
+            where: { bookingId: id, status: 'PAID' }
+          });
+          if (paidShares.length) {
+            // Do not rebalance after money is taken; invitee gets no new share if total already covered
+            const sumAll = await tx.paymentShare.aggregate({
+              where: { bookingId: id },
+              _sum: { amount: true }
+            });
+            const covered = Number(sumAll._sum.amount || 0);
+            if (covered < booking.totalCost) {
+              await tx.paymentShare.upsert({
+                where: { bookingId_userId: { bookingId: id, userId } },
+                create: {
+                  bookingId: id,
+                  userId,
+                  amount: booking.totalCost - covered,
+                  status: 'PENDING'
+                },
+                update: {}
+              });
+            }
+          } else {
+            const amounts = equalSplitAmounts(booking.totalCost, active.length);
+            await tx.paymentShare.deleteMany({ where: { bookingId: id } });
+            await tx.paymentShare.createMany({
+              data: active.map((row, i) => ({
+                bookingId: id,
+                userId: row.userId,
+                amount: amounts[i],
+                status: 'PENDING'
+              }))
+            });
+            await tx.booking.update({
+              where: { id },
+              data: { teamSize: active.length }
+            });
+          }
+        } else if (booking.paymentMethod === 'MIXED') {
+          // MIXED amounts are fixed at create; invitee without amount is not auto-added
         }
+
         return p;
       });
 
