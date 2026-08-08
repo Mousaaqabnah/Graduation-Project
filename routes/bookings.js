@@ -1,54 +1,22 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
-const { MongoClient, ObjectId } = require('mongodb');
+const { prisma } = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { totalCostFromFieldPrice, totalHoursFromRanges } = require('../lib/bookingPricing');
+const { isUuid } = require('../lib/ids');
+const { toMinor, toMajor } = require('../lib/money');
+const { totalHoursFromRanges, totalCostFromFieldPrice } = require('../lib/bookingPricing');
 const { earliestAllowedSlotStartMinutesForYmd } = require('../lib/bookingSameDayRules');
-const { isMongoObjectIdString, mongoBookingInsertOne, mongoBookingSetFields } = require('../lib/mongoBookingWrite');
-const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
+const { serializeBooking, scheduleFromOpeningHours, hmToMinutes, DAY_NAMES } = require('../lib/serializers');
+const { createUserNotification } = require('../lib/notifications');
+const { writeAuditLog } = require('../lib/audit');
+const {
+  evaluateBookingPayment,
+  settleManualShare,
+  isInstantBookingField
+} = require('../lib/bookingPayment');
 
 const router = express.Router();
-const prisma = new PrismaClient();
-
-function isInstantBookingField(field) {
-  const t = String(field?.bookingType ?? 'instant').toLowerCase();
-  return t !== 'request';
-}
-
 router.use(authenticate);
-
-async function mongoBookingParticipantInsertOne({ bookingId, userId, paymentAmount }) {
-  if (!isMongoObjectIdString(bookingId) || !isMongoObjectIdString(userId)) {
-    throw new Error('Invalid booking or user id');
-  }
-  const client = new MongoClient(process.env.DATABASE_URL);
-  await client.connect();
-  try {
-    const db = client.db();
-    const now = new Date();
-    const result = await db.collection('booking_participants').insertOne({
-      booking_id: new ObjectId(String(bookingId)),
-      user_id: new ObjectId(String(userId)),
-      payment_status: 'PENDING',
-      payment_amount: paymentAmount,
-      created_at: now
-    });
-    return String(result.insertedId);
-  } finally {
-    await client.close();
-  }
-}
-
-function timeToMinutes(value) {
-  if (typeof value !== 'string') return null;
-  const m = /^(\d{2}):(\d{2})$/.exec(value.trim());
-  if (!m) return null;
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-  return hh * 60 + mm;
-}
 
 function ymdFromDateLike(value) {
   const d = new Date(value);
@@ -60,7 +28,26 @@ function dayNameFromYmdUtc(ymd) {
   const parts = String(ymd || '').split('-').map(Number);
   if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
   const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0));
-  return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][d.getUTCDay()] || null;
+  return DAY_NAMES[d.getUTCDay()] || null;
+}
+
+function utcDateTimeFromYmdAndHm(ymd, hm) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const mins = hmToMinutes(hm);
+  if (!y || !m || !d || mins == null) return null;
+  return new Date(Date.UTC(y, m - 1, d, Math.floor(mins / 60), mins % 60, 0, 0));
+}
+
+function expandHourlySlots(startAt, endAt) {
+  const slots = [];
+  let cursor = new Date(startAt.getTime());
+  while (cursor < endAt) {
+    const next = new Date(cursor.getTime() + 60 * 60 * 1000);
+    const slotEnd = next > endAt ? new Date(endAt.getTime()) : next;
+    slots.push({ startAt: new Date(cursor), endAt: slotEnd });
+    cursor = next;
+  }
+  return slots;
 }
 
 function rangesOverlap(aStart, aEnd, bStart, bEnd) {
@@ -75,26 +62,30 @@ async function validateBookingWindow(field, dateValue, ranges, excludeBookingId)
   const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
   const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
-  const dayLocked = await prisma.fieldUnavailableDate.findFirst({
+  const dayBlocked = await prisma.fieldBlockedSlot.findFirst({
     where: {
       fieldId: field.id,
-      date: { gte: startOfDay, lte: endOfDay }
+      startAt: { lte: endOfDay },
+      endAt: { gte: startOfDay }
     },
-    select: { id: true }
+    select: { id: true, startAt: true, endAt: true }
   });
-  if (dayLocked) return 'This field is not available on the selected date.';
 
+  const schedule =
+    field.schedule ||
+    scheduleFromOpeningHours(
+      field.openingHours ||
+        (await prisma.fieldOpeningHour.findMany({ where: { fieldId: field.id } }))
+    );
   const dayName = dayNameFromYmdUtc(ymd);
-  const schedule = field.schedule && typeof field.schedule === 'object' ? field.schedule : null;
   const dayCfg = dayName && schedule ? schedule[dayName] : null;
-  const dayEnabled = dayCfg ? dayCfg.enabled !== false : true;
-  if (!dayEnabled) return 'This field is closed on the selected day.';
+  if (dayCfg && dayCfg.enabled === false) return 'This field is closed on the selected day.';
 
   let openingMins = 9 * 60;
   let closingMins = 22 * 60;
   if (dayCfg) {
-    openingMins = timeToMinutes(dayCfg.opening);
-    closingMins = timeToMinutes(dayCfg.closing);
+    openingMins = hmToMinutes(dayCfg.opening);
+    closingMins = hmToMinutes(dayCfg.closing);
     if (openingMins == null || closingMins == null || closingMins <= openingMins) {
       return 'Field schedule is invalid for this day.';
     }
@@ -103,43 +94,58 @@ async function validateBookingWindow(field, dateValue, ranges, excludeBookingId)
   const earliestSameDay = earliestAllowedSlotStartMinutesForYmd(ymd);
 
   for (const r of ranges) {
-    const start = timeToMinutes(r && r.start);
-    const end = timeToMinutes(r && r.end);
+    const start = hmToMinutes(r && r.start);
+    const end = hmToMinutes(r && r.end);
     if (start == null || end == null || end <= start) return 'Invalid time range.';
     if (earliestSameDay != null && start < earliestSameDay) {
       return 'You cannot book time slots before the current hour.';
     }
-    if (start < openingMins || end > closingMins) return 'Selected time is outside the field working schedule.';
+    if (start < openingMins || end > closingMins) {
+      return 'Selected time is outside the field working schedule.';
+    }
+
+    const rangeStart = utcDateTimeFromYmdAndHm(ymd, r.start);
+    const rangeEnd = utcDateTimeFromYmdAndHm(ymd, r.end);
+    if (!rangeStart || !rangeEnd) return 'Invalid time range.';
+
+    if (dayBlocked) {
+      const blocks = await prisma.fieldBlockedSlot.findMany({
+        where: {
+          fieldId: field.id,
+          startAt: { lt: rangeEnd },
+          endAt: { gt: rangeStart }
+        }
+      });
+      if (blocks.length) {
+        const allDay = blocks.some((b) => {
+          const bs = b.startAt.getUTCHours() * 60 + b.startAt.getUTCMinutes();
+          const be = b.endAt.getUTCHours() * 60 + b.endAt.getUTCMinutes();
+          return bs === 0 && be >= 23 * 60;
+        });
+        if (allDay) return 'This field is not available on the selected date.';
+        return 'One or more selected slots are blocked by the owner.';
+      }
+    }
   }
 
   const existingBookings = await prisma.booking.findMany({
     where: {
       fieldId: field.id,
-      date: { gte: startOfDay, lte: endOfDay },
-      status: { notIn: ['CANCELLED'] },
+      status: { notIn: ['CANCELLED', 'EXPIRED'] },
+      startAt: { lt: endOfDay },
+      endAt: { gt: startOfDay },
       ...(excludeBookingId ? { id: { not: excludeBookingId } } : {})
     },
-    select: {
-      id: true,
-      timeSlotStart: true,
-      timeSlotEnd: true,
-      timeSlotRanges: true
-    }
+    select: { id: true, startAt: true, endAt: true, slots: true }
   });
 
   for (const b of existingBookings) {
-    const bookingRanges = Array.isArray(b.timeSlotRanges) && b.timeSlotRanges.length
-      ? b.timeSlotRanges
-      : [{ start: b.timeSlotStart, end: b.timeSlotEnd }];
     for (const nr of ranges) {
-      const nStart = timeToMinutes(nr.start);
-      const nEnd = timeToMinutes(nr.end);
-      for (const br of bookingRanges) {
-        const bStart = timeToMinutes(br.start);
-        const bEnd = timeToMinutes(br.end);
-        if (nStart != null && nEnd != null && bStart != null && bEnd != null && rangesOverlap(nStart, nEnd, bStart, bEnd)) {
-          return 'One or more selected slots are already booked.';
-        }
+      const nStart = utcDateTimeFromYmdAndHm(ymd, nr.start);
+      const nEnd = utcDateTimeFromYmdAndHm(ymd, nr.end);
+      if (!nStart || !nEnd) continue;
+      if (rangesOverlap(nStart, nEnd, b.startAt, b.endAt)) {
+        return 'One or more selected slots are already booked.';
       }
     }
   }
@@ -147,99 +153,82 @@ async function validateBookingWindow(field, dateValue, ranges, excludeBookingId)
   return null;
 }
 
-// Get all bookings (with filters)
+function mapStatusForDb(status) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'UPCOMING') return 'CONFIRMED';
+  return s;
+}
+
+function bookingInclude() {
+  return {
+    field: {
+      include: {
+        images: { orderBy: { displayOrder: 'asc' } },
+        amenities: true,
+        openingHours: true,
+        owner: { select: { id: true, fullName: true, avatarUrl: true, phone: true } }
+      }
+    },
+    organizer: {
+      select: { id: true, fullName: true, avatarUrl: true, email: true, phone: true }
+    },
+    participants: {
+      include: {
+        user: { select: { id: true, fullName: true, avatarUrl: true, email: true } }
+      }
+    },
+    slots: true,
+    paymentShares: true
+  };
+}
+
 router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 20, status, fieldId, userId } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
+    const take = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * take;
     const where = {};
 
-    // Regular users can only see their own bookings
     if (req.user.role === 'PLAYER') {
       where.OR = [
         { organizerId: req.user.id },
         { participants: { some: { userId: req.user.id } } }
       ];
     } else if (req.user.role === 'OWNER') {
-      // Owners can see bookings for their fields
       where.field = { ownerId: req.user.id };
     }
 
-    if (status) where.status = status;
-    if (fieldId) where.fieldId = fieldId;
-    if (userId && req.user.role === 'ADMIN') {
+    if (status) {
+      const mapped = mapStatusForDb(status);
+      if (mapped === 'CONFIRMED') where.status = { in: ['CONFIRMED'] };
+      else where.status = mapped;
+    }
+    if (fieldId && isUuid(fieldId)) where.fieldId = fieldId;
+    if (userId && req.user.role === 'ADMIN' && isUuid(userId)) {
       where.OR = [
         { organizerId: userId },
         { participants: { some: { userId } } }
       ];
     }
 
-    const [bookingsRaw, total] = await Promise.all([
+    const [bookings, total] = await Promise.all([
       prisma.booking.findMany({
         where,
         skip,
-        take: parseInt(limit),
-        include: {
-          field: {
-            select: {
-              id: true,
-              name: true,
-              sport: true,
-              location: true,
-              city: true,
-              district: true,
-              latitude: true,
-              longitude: true,
-              images: true,
-              pricePerHour: true,
-              bookingType: true,
-              rating: true,
-              reviewCount: true
-            }
-          },
-          organizer: {
-            select: {
-              id: true,
-              fullName: true,
-              avatar: true,
-              email: true
-            }
-          },
-          participants: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  avatar: true
-                }
-              }
-            }
-          }
-        },
-        orderBy: { date: 'desc' }
+        take,
+        include: bookingInclude(),
+        orderBy: { startAt: 'desc' }
       }),
       prisma.booking.count({ where })
     ]);
 
-    // Ensure each booking appears only once (e.g. if OR + relations ever produced duplicates)
-    const seen = new Set();
-    const bookings = bookingsRaw.filter((b) => {
-      const id = b.id ? String(b.id) : null;
-      if (!id) return true;
-      if (seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-
     res.json({
-      bookings,
+      bookings: bookings.map(serializeBooking),
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: Math.max(1, parseInt(page, 10) || 1),
+        limit: take,
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / take)
       }
     });
   } catch (error) {
@@ -248,492 +237,647 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get booking by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid booking id' });
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      include: {
-        field: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                fullName: true,
-                avatar: true,
-                phone: true
-              }
-            }
-          }
-        },
-        organizer: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true,
-            email: true,
-            phone: true
-          }
-        },
-        participants: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                fullName: true,
-                avatar: true,
-                email: true
-              }
-            }
-          }
-        }
-      }
+      include: bookingInclude()
     });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    // Check access (string-compare ids — Mongo / JWT may differ in type)
     const uid = String(req.user.id);
     const isOrganizer = String(booking.organizerId) === uid;
-    const isParticipant = booking.participants.some(p => String(p.userId) === uid);
+    const isParticipant = booking.participants.some((p) => String(p.userId) === uid);
     const isFieldOwner = String(booking.field.ownerId) === uid;
     const isAdmin = req.user.role === 'ADMIN';
-
     if (!isOrganizer && !isParticipant && !isFieldOwner && !isAdmin) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    res.json({ booking });
+    res.json({ booking: serializeBooking(booking) });
   } catch (error) {
     console.error('Get booking error:', error);
     res.status(500).json({ error: 'Failed to fetch booking' });
   }
 });
 
-// Create booking
-router.post('/', [
-  body('fieldId').notEmpty(),
-  body('date').isISO8601(),
-  body('timeSlotStart').notEmpty(),
-  body('timeSlotEnd').notEmpty(),
-  body('paymentMethod').isIn(['ORGANIZER', 'SPLIT', 'MIXED']),
-  body('teamSize').isInt({ min: 1 }).optional()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { fieldId, date, timeSlotStart, timeSlotEnd, paymentMethod, teamSize, mixedPaymentDistribution, timeSlotRanges } = req.body;
-
-    // Check if field exists and is active
-    const field = await prisma.field.findUnique({
-      where: { id: fieldId },
-      select: { id: true, isActive: true, pricePerHour: true, schedule: true, bookingType: true }
-    });
-
-    if (!field || !field.isActive) {
-      return res.status(404).json({ error: 'Field not found or inactive' });
-    }
-
-    // Total cost: sum fractional hours from ranges (minutes respected, e.g. 18:00–19:30 = 1.5h)
-    const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0 ? timeSlotRanges : [{ start: timeSlotStart, end: timeSlotEnd }];
-    const totalHours = totalHoursFromRanges(ranges);
-    if (totalHours <= 0) {
-      return res.status(400).json({ error: 'End time must be after start time.' });
-    }
-    const bookingWindowError = await validateBookingWindow(field, date, ranges, null);
-    if (bookingWindowError) {
-      return res.status(400).json({ error: bookingWindowError });
-    }
-    const totalCost = totalCostFromFieldPrice(field.pricePerHour, ranges);
-
-    // Create booking via native driver (Prisma create uses transactions → replica set required on MongoDB)
-    const firstRange = ranges[0];
-    let bookingId;
+router.post(
+  '/',
+  [
+    body('fieldId').notEmpty(),
+    body('date').isISO8601(),
+    body('timeSlotStart').notEmpty(),
+    body('timeSlotEnd').notEmpty(),
+    body('paymentMethod').isIn(['ORGANIZER', 'SPLIT', 'MIXED']),
+    body('teamSize').isInt({ min: 1 }).optional()
+  ],
+  async (req, res) => {
     try {
-      bookingId = await mongoBookingInsertOne({
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const {
         fieldId,
-        organizerId: req.user.id,
-        date: new Date(date),
-        timeSlotStart: firstRange.start,
-        timeSlotEnd: firstRange.end,
-        timeSlotRanges: ranges.length > 1 ? ranges : null,
-        totalCost,
+        date,
+        timeSlotStart,
+        timeSlotEnd,
         paymentMethod,
-        teamSize: teamSize || 1,
-        mixedPaymentDistribution: paymentMethod === 'MIXED' ? mixedPaymentDistribution : null,
-        organizerPaymentStatus: paymentMethod === 'ORGANIZER' ? 'PENDING' : null
+        teamSize,
+        mixedPaymentDistribution,
+        timeSlotRanges
+      } = req.body;
+
+      if (!isUuid(fieldId)) {
+        return res.status(400).json({ error: 'Invalid field id' });
+      }
+
+      const field = await prisma.field.findFirst({
+        where: { id: fieldId, isActive: true, deletedAt: null },
+        include: { openingHours: true }
       });
-    } catch (err) {
-      console.error('Create booking error (mongo insert):', err);
-      return res.status(500).json({ error: 'Failed to create booking' });
-    }
+      if (!field) {
+        return res.status(404).json({ error: 'Field not found or inactive' });
+      }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        field: {
-          select: {
-            id: true,
-            name: true,
-            sport: true,
-            location: true,
-            bookingType: true
+      const ranges =
+        Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0
+          ? timeSlotRanges
+          : [{ start: timeSlotStart, end: timeSlotEnd }];
+      const totalHours = totalHoursFromRanges(ranges);
+      if (totalHours <= 0) {
+        return res.status(400).json({ error: 'End time must be after start time.' });
+      }
+
+      const bookingWindowError = await validateBookingWindow(field, date, ranges, null);
+      if (bookingWindowError) {
+        return res.status(400).json({ error: bookingWindowError });
+      }
+
+      const ymd = ymdFromDateLike(date);
+      const startAt = utcDateTimeFromYmdAndHm(ymd, ranges[0].start);
+      const endAt = utcDateTimeFromYmdAndHm(ymd, ranges[ranges.length - 1].end);
+      if (!startAt || !endAt) {
+        return res.status(400).json({ error: 'Invalid booking date/time' });
+      }
+
+      // Server-side pricing only (minor units)
+      const totalMajor = totalCostFromFieldPrice(toMajor(field.pricePerHour), ranges);
+      const totalCost = toMinor(totalMajor);
+      const status = isInstantBookingField(field) ? 'PENDING' : 'PENDING';
+
+      const hourlySlots = [];
+      for (const r of ranges) {
+        const rs = utcDateTimeFromYmdAndHm(ymd, r.start);
+        const re = utcDateTimeFromYmdAndHm(ymd, r.end);
+        if (!rs || !re) continue;
+        hourlySlots.push(...expandHourlySlots(rs, re));
+      }
+
+      let booking;
+      try {
+        booking = await prisma.$transaction(async (tx) => {
+          const created = await tx.booking.create({
+            data: {
+              fieldId,
+              organizerId: req.user.id,
+              startAt,
+              endAt,
+              teamSize: teamSize || 1,
+              currency: field.currency || 'ILS',
+              subtotal: totalCost,
+              serviceFee: 0,
+              totalCost,
+              paymentMethod,
+              status,
+              participants: {
+                create: [{ userId: req.user.id, status: 'ACCEPTED', isOrganizer: true }]
+              },
+              slots: {
+                create: hourlySlots.map((s) => ({
+                  fieldId,
+                  startAt: s.startAt,
+                  endAt: s.endAt
+                }))
+              },
+              paymentShares: {
+                create: [
+                  {
+                    userId: req.user.id,
+                    amount:
+                      paymentMethod === 'ORGANIZER'
+                        ? totalCost
+                        : Math.round(totalCost / Math.max(1, teamSize || 1)),
+                    status: 'PENDING'
+                  }
+                ]
+              }
+            }
+          });
+
+          if (paymentMethod === 'MIXED' && mixedPaymentDistribution && typeof mixedPaymentDistribution === 'object') {
+            // Extra shares for named users can be added when participants are invited
           }
-        },
-        organizer: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true
-          }
+
+          return tx.booking.findUnique({
+            where: { id: created.id },
+            include: bookingInclude()
+          });
+        });
+      } catch (err) {
+        if (err.code === 'P2002') {
+          return res.status(409).json({ error: 'One or more selected slots are already booked.' });
         }
+        throw err;
       }
-    });
 
-    if (!booking) {
-      return res.status(500).json({ error: 'Booking created but could not be loaded' });
+      res.status(201).json({
+        message: 'Booking created successfully',
+        booking: serializeBooking(booking)
+      });
+    } catch (error) {
+      console.error('Create booking error:', error);
+      res.status(500).json({ error: 'Failed to create booking' });
     }
-
-    res.status(201).json({ message: 'Booking created successfully', booking });
-  } catch (error) {
-    console.error('Create booking error:', error);
-    res.status(500).json({ error: 'Failed to create booking' });
   }
-});
+);
 
-// Update booking status
-router.put('/:id/status', [
-  body('status').isIn(['PENDING', 'UPCOMING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'])
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
+router.put(
+  '/:id/status',
+  [body('status').isIn(['PENDING', 'UPCOMING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'EXPIRED'])],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isUuid(id)) return res.status(400).json({ error: 'Invalid booking id' });
 
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        field: true,
-        participants: { select: { userId: true } }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
-    });
 
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
+      const status = mapStatusForDb(req.body.status);
+      const booking = await prisma.booking.findUnique({
+        where: { id },
+        include: {
+          field: true,
+          participants: { select: { userId: true } },
+          paymentShares: true
+        }
+      });
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    const uid = String(req.user.id);
-    const isOrganizer = String(booking.organizerId) === uid;
-    const isFieldOwner = String(booking.field.ownerId) === uid;
-    const isAdmin = req.user.role === 'ADMIN';
-    const isParticipant = (booking.participants || []).some((p) => String(p.userId) === uid);
+      const uid = String(req.user.id);
+      const isOrganizer = String(booking.organizerId) === uid;
+      const isFieldOwner = String(booking.field.ownerId) === uid;
+      const isAdmin = req.user.role === 'ADMIN';
+      const isParticipant = (booking.participants || []).some((p) => String(p.userId) === uid);
+      const prev = booking.status;
+      const instantField = isInstantBookingField(booking.field);
 
-    const prev = booking.status;
-    const instantField = isInstantBookingField(booking.field);
-    // Invited players paying last must be able to finalize instant bookings (same as organizer client flow).
-    const participantInstantFinalize =
-      isParticipant &&
-      !isOrganizer &&
-      !isFieldOwner &&
-      !isAdmin &&
-      prev === 'PENDING' &&
-      (status === 'CONFIRMED' || status === 'UPCOMING') &&
-      instantField;
-
-    if (!isOrganizer && !isFieldOwner && !isAdmin && !participantInstantFinalize) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    // Approve pending → confirmed: owner/admin for request-based fields; organizer or participant for instant fields
-    if (prev === 'PENDING' && (status === 'CONFIRMED' || status === 'UPCOMING')) {
-      if (isFieldOwner && !isAdmin && instantField) {
-        return res.status(403).json({
-          error:
-            'This field uses instant booking. Reservations are not approved here — they confirm when players complete payment (or you may cancel a pending booking if needed).'
+      // Idempotent cancel/expire: already in terminal state
+      if (
+        (status === 'CANCELLED' && prev === 'CANCELLED') ||
+        (status === 'EXPIRED' && prev === 'EXPIRED')
+      ) {
+        await prisma.bookingSlot.deleteMany({ where: { bookingId: id } });
+        const current = await prisma.booking.findUnique({
+          where: { id },
+          include: bookingInclude()
+        });
+        return res.json({
+          message: 'Booking status unchanged',
+          booking: serializeBooking(current)
         });
       }
-      const ownerOrAdmin = isFieldOwner || isAdmin;
-      const organizerInstant = isOrganizer && instantField;
-      const participantInstant = isParticipant && !isOrganizer && instantField;
-      if (!ownerOrAdmin && !organizerInstant && !participantInstant) {
-        return res.status(403).json({
-          error: isOrganizer
-            ? 'This field uses request-based booking. The owner must approve before it can be confirmed.'
-            : 'Only the field owner can approve booking requests.'
-        });
-      }
-    }
-    // Decline / withdraw while still pending: owner, admin, or organizer
-    if (prev === 'PENDING' && status === 'CANCELLED') {
-      if (!isFieldOwner && !isAdmin && !isOrganizer) {
+
+      const participantInstantFinalize =
+        isParticipant &&
+        !isOrganizer &&
+        !isFieldOwner &&
+        !isAdmin &&
+        prev === 'PENDING' &&
+        status === 'CONFIRMED' &&
+        instantField;
+
+      if (!isOrganizer && !isFieldOwner && !isAdmin && !participantInstantFinalize) {
         return res.status(403).json({ error: 'Access denied' });
       }
-    }
 
-    if (!isMongoObjectIdString(id)) {
-      return res.status(400).json({ error: 'Invalid booking id' });
-    }
+      if (prev === 'PENDING' && status === 'CONFIRMED') {
+        if (isFieldOwner && !isAdmin && instantField) {
+          return res.status(403).json({
+            error:
+              'This field uses instant booking. Reservations are not approved here — they confirm when players complete payment (or you may cancel a pending booking if needed).'
+          });
+        }
+        const ownerOrAdmin = isFieldOwner || isAdmin;
+        const organizerInstant = isOrganizer && instantField;
+        const participantInstant = isParticipant && !isOrganizer && instantField;
+        if (!ownerOrAdmin && !organizerInstant && !participantInstant) {
+          return res.status(403).json({
+            error: isOrganizer
+              ? 'This field uses request-based booking. The owner must approve before it can be confirmed.'
+              : 'Only the field owner can approve booking requests.'
+          });
+        }
 
-    const $set = { status };
-    if ((status === 'CONFIRMED' || status === 'UPCOMING') && !booking.confirmedAt) {
-      $set.confirmed_at = new Date();
-    }
+        // C2: server payment state is the only source of truth for confirmation
+        const paymentEval = await evaluateBookingPayment(id);
+        if (!paymentEval.ok) {
+          return res.status(402).json({
+            error: 'Booking cannot be confirmed until all required payments are settled on the server',
+            detail: paymentEval.reason
+          });
+        }
+      }
 
-    let matched;
-    try {
-      matched = await mongoBookingSetFields(id, $set);
-    } catch (err) {
-      console.error('Update booking error:', err);
-      return res.status(500).json({ error: 'Failed to update booking' });
-    }
-    if (!matched) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
+      if (prev === 'PENDING' && status === 'CANCELLED') {
+        if (!isFieldOwner && !isAdmin && !isOrganizer) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
 
-    if (prev === 'PENDING' && status === 'CANCELLED' && (isFieldOwner || isAdmin) && !isOrganizer) {
-      const fieldName = booking.field && booking.field.name ? booking.field.name : 'your booking';
-      try {
-        await mongoCreateUserNotification({
-          title: 'Booking Rejected',
-          message: `Your booking at ${fieldName} was rejected by the field owner.`,
-          targetUserId: booking.organizerId,
-          sentById: req.user.id
+      if (status === 'COMPLETED' && prev === 'COMPLETED') {
+        const current = await prisma.booking.findUnique({
+          where: { id },
+          include: bookingInclude()
         });
-      } catch (notifyErr) {
-        console.error('Booking rejection notification error:', notifyErr);
+        return res.json({
+          message: 'Booking status unchanged',
+          booking: serializeBooking(current)
+        });
       }
-    }
 
-    const updatedBooking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        field: true,
-        organizer: true,
-        participants: {
-          include: { user: true }
+      const data = { status };
+      if (status === 'CONFIRMED' && !booking.confirmedAt) data.confirmedAt = new Date();
+      if (status === 'CANCELLED') data.cancelledAt = new Date();
+
+      const releaseSlots = status === 'CANCELLED' || status === 'EXPIRED';
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const row = await tx.booking.update({
+          where: { id },
+          data,
+          include: bookingInclude()
+        });
+        if (releaseSlots) {
+          await tx.bookingSlot.deleteMany({ where: { bookingId: id } });
         }
-      }
-    });
-
-    res.json({ message: 'Booking status updated', booking: updatedBooking });
-  } catch (error) {
-    console.error('Update booking error:', error);
-    res.status(500).json({ error: 'Failed to update booking' });
-  }
-});
-
-// Reschedule booking (change date/time) - must be at least 24h before original start
-router.put('/:id/reschedule', [
-  body('date').isISO8601(),
-  body('timeSlotStart').notEmpty(),
-  body('timeSlotEnd').notEmpty()
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { date, timeSlotStart, timeSlotEnd, timeSlotRanges } = req.body;
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: { field: true }
-    });
-
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    const uid = String(req.user.id);
-    const isOrganizer = String(booking.organizerId) === uid;
-    const isFieldOwner = String(booking.field.ownerId) === uid;
-    const isAdmin = req.user.role === 'ADMIN';
-    if (!isOrganizer && !isFieldOwner && !isAdmin) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (!isMongoObjectIdString(id)) {
-      return res.status(400).json({ error: 'Invalid booking id' });
-    }
-
-    // Compute original start datetime
-    const originalDateStr = booking.date.toISOString().split('T')[0];
-    const originalStart = new Date(`${originalDateStr}T${booking.timeSlotStart}`);
-    const now = new Date();
-    const hoursUntilStart = (originalStart.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    if (hoursUntilStart < 24) {
-      return res.status(400).json({ error: 'You cannot reschedule a booking less than 24 hours before its start time.' });
-    }
-
-    // Recalculate total cost based on new time ranges (supports non-contiguous)
-    const ranges = Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0
-      ? timeSlotRanges
-      : [{ start: timeSlotStart, end: timeSlotEnd }];
-    const totalHours = totalHoursFromRanges(ranges);
-    if (totalHours <= 0) {
-      return res.status(400).json({ error: 'End time must be after start time.' });
-    }
-    const rescheduleWindowError = await validateBookingWindow(booking.field, date, ranges, id);
-    if (rescheduleWindowError) {
-      return res.status(400).json({ error: rescheduleWindowError });
-    }
-    const totalCost = totalCostFromFieldPrice(booking.field.pricePerHour, ranges);
-
-    const $set = {
-      date: new Date(date),
-      time_slot_start: ranges[0].start,
-      time_slot_end: ranges[ranges.length - 1].end,
-      time_slot_ranges: ranges.length > 1 ? ranges : null,
-      total_cost: totalCost
-    };
-
-    let matched;
-    try {
-      matched = await mongoBookingSetFields(id, $set);
-    } catch (err) {
-      console.error('Reschedule booking error:', err);
-      return res.status(500).json({ error: 'Failed to reschedule booking' });
-    }
-    if (!matched) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    const updated = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        field: true,
-        organizer: true,
-        participants: {
-          include: { user: true }
-        }
-      }
-    });
-
-    res.json({ message: 'Booking rescheduled', booking: updated });
-  } catch (error) {
-    console.error('Reschedule booking error:', error);
-    res.status(500).json({ error: 'Failed to reschedule booking' });
-  }
-});
-
-// Add participant to booking
-router.post('/:id/participants', [
-  body('userId').notEmpty()
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId } = req.body;
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: { participants: true }
-    });
-
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    // Only organizer can add participants
-    if (String(booking.organizerId) !== String(req.user.id)) {
-      return res.status(403).json({ error: 'Only organizer can add participants' });
-    }
-
-    // Check if user is already a participant
-    if (booking.participants.some(p => String(p.userId) === String(userId))) {
-      return res.status(400).json({ error: 'User is already a participant' });
-    }
-
-    const invitee = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, role: true }
-    });
-    if (!invitee) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    if (invitee.role !== 'PLAYER') {
-      return res.status(400).json({ error: 'Only players can be invited to a booking.' });
-    }
-
-    // Calculate payment amount based on payment method
-    let paymentAmount = null;
-    if (booking.paymentMethod === 'SPLIT') {
-      paymentAmount = Math.round(booking.totalCost / (booking.teamSize || 1));
-    } else if (booking.paymentMethod === 'MIXED' && booking.mixedPaymentDistribution) {
-      paymentAmount = booking.mixedPaymentDistribution[userId] || null;
-    }
-
-    let participantId;
-    try {
-      participantId = await mongoBookingParticipantInsertOne({
-        bookingId: id,
-        userId,
-        paymentAmount
+        return row;
       });
-    } catch (err) {
-      console.error('Add participant error (mongo insert):', err);
-      return res.status(500).json({ error: 'Failed to add participant' });
-    }
 
-    const participant = await prisma.bookingParticipant.findUnique({
-      where: { id: participantId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            avatar: true
+      if (prev === 'PENDING' && status === 'CANCELLED' && (isFieldOwner || isAdmin) && !isOrganizer) {
+        try {
+          await createUserNotification({
+            title: 'Booking Rejected',
+            message: `Your booking at ${booking.field.name || 'your booking'} was rejected by the field owner.`,
+            type: 'BOOKING',
+            targetUserId: booking.organizerId,
+            sentById: req.user.id
+          });
+        } catch (notifyErr) {
+          console.error('Booking rejection notification error:', notifyErr);
+        }
+        await writeAuditLog({
+          actorId: req.user.id,
+          action: 'OTHER',
+          entityType: 'Booking',
+          entityId: id,
+          metadata: { from: prev, to: status },
+          req
+        });
+      }
+
+      if (status === 'CANCELLED' || status === 'EXPIRED') {
+        await writeAuditLog({
+          actorId: req.user.id,
+          action: 'OTHER',
+          entityType: 'Booking',
+          entityId: id,
+          metadata: { action: status === 'EXPIRED' ? 'expire' : 'cancel', from: prev },
+          req
+        });
+      }
+
+      res.json({ message: 'Booking status updated', booking: serializeBooking(updated) });
+    } catch (error) {
+      console.error('Update booking error:', error);
+      res.status(500).json({ error: 'Failed to update booking' });
+    }
+  }
+);
+
+/**
+ * MANUAL payment settlement — server records PaymentShare + Payment as PAID.
+ * Never accepts or stores card numbers / CVV / expiry.
+ * Instant bookings auto-confirm in the same transaction when fully paid.
+ */
+router.post(
+  '/:id/payments/manual-settle',
+  [body('userId').optional().isString()],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isUuid(id)) return res.status(400).json({ error: 'Invalid booking id' });
+
+      const booking = await prisma.booking.findUnique({
+        where: { id },
+        include: {
+          field: { select: { ownerId: true, bookingType: true } },
+          participants: { select: { userId: true } },
+          paymentShares: true
+        }
+      });
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+      const uid = String(req.user.id);
+      const isAdmin = req.user.role === 'ADMIN';
+      const isFieldOwner = String(booking.field.ownerId) === uid;
+      const isOrganizer = String(booking.organizerId) === uid;
+      const isParticipant = (booking.participants || []).some((p) => String(p.userId) === uid);
+
+      let payerUserId = uid;
+      if (req.body.userId && String(req.body.userId) !== uid) {
+        if (!isAdmin && !isFieldOwner && !isOrganizer) {
+          return res.status(403).json({ error: 'Cannot settle payment for another user' });
+        }
+        if (!isUuid(String(req.body.userId))) {
+          return res.status(400).json({ error: 'Invalid user id' });
+        }
+        payerUserId = String(req.body.userId);
+      } else if (!isParticipant && !isOrganizer && !isAdmin && !isFieldOwner) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Reject any client attempt to send card material (defense in depth)
+      const forbiddenKeys = ['cardNumber', 'cvv', 'expiry', 'expiryDate', 'card'];
+      for (const k of forbiddenKeys) {
+        if (req.body && req.body[k] != null) {
+          return res.status(400).json({
+            error: 'Card details must not be sent to the server. Use the manual settlement flow only.'
+          });
+        }
+      }
+
+      const result = await settleManualShare({
+        bookingId: id,
+        payerUserId,
+        actorUserId: uid
+      });
+
+      await writeAuditLog({
+        actorId: uid,
+        action: 'OTHER',
+        entityType: 'Payment',
+        entityId: result.payment?.id || id,
+        metadata: {
+          action: 'manual_settle',
+          bookingId: id,
+          payerUserId,
+          confirmed: result.confirmed,
+          fullyPaid: result.fullyPaid
+        },
+        req
+      });
+
+      res.json({
+        message: result.confirmed
+          ? 'Payment settled and booking confirmed'
+          : result.fullyPaid
+            ? 'Payment settled; booking is fully paid'
+            : 'Payment share settled',
+        fullyPaid: result.fullyPaid,
+        confirmed: result.confirmed,
+        booking: serializeBooking(result.booking)
+      });
+    } catch (error) {
+      console.error('Manual settle error:', error);
+      const status = error.status || 500;
+      res.status(status).json({ error: error.message || 'Failed to settle payment' });
+    }
+  }
+);
+
+router.put(
+  '/:id/reschedule',
+  [body('date').isISO8601(), body('timeSlotStart').notEmpty(), body('timeSlotEnd').notEmpty()],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isUuid(id)) return res.status(400).json({ error: 'Invalid booking id' });
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { date, timeSlotStart, timeSlotEnd, timeSlotRanges } = req.body;
+      const booking = await prisma.booking.findUnique({
+        where: { id },
+        include: { field: { include: { openingHours: true } } }
+      });
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+      const uid = String(req.user.id);
+      const isOrganizer = String(booking.organizerId) === uid;
+      const isFieldOwner = String(booking.field.ownerId) === uid;
+      const isAdmin = req.user.role === 'ADMIN';
+      if (!isOrganizer && !isFieldOwner && !isAdmin) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const hoursUntilStart = (booking.startAt.getTime() - Date.now()) / (1000 * 60 * 60);
+      if (hoursUntilStart < 24) {
+        return res.status(400).json({
+          error: 'You cannot reschedule a booking less than 24 hours before its start time.'
+        });
+      }
+
+      const ranges =
+        Array.isArray(timeSlotRanges) && timeSlotRanges.length > 0
+          ? timeSlotRanges
+          : [{ start: timeSlotStart, end: timeSlotEnd }];
+      const totalHours = totalHoursFromRanges(ranges);
+      if (totalHours <= 0) {
+        return res.status(400).json({ error: 'End time must be after start time.' });
+      }
+
+      const rescheduleWindowError = await validateBookingWindow(booking.field, date, ranges, id);
+      if (rescheduleWindowError) {
+        return res.status(400).json({ error: rescheduleWindowError });
+      }
+
+      const ymd = ymdFromDateLike(date);
+      const startAt = utcDateTimeFromYmdAndHm(ymd, ranges[0].start);
+      const endAt = utcDateTimeFromYmdAndHm(ymd, ranges[ranges.length - 1].end);
+      const totalMajor = totalCostFromFieldPrice(toMajor(booking.field.pricePerHour), ranges);
+      const totalCost = toMinor(totalMajor);
+
+      const hourlySlots = [];
+      for (const r of ranges) {
+        const rs = utcDateTimeFromYmdAndHm(ymd, r.start);
+        const re = utcDateTimeFromYmdAndHm(ymd, r.end);
+        if (!rs || !re) continue;
+        hourlySlots.push(...expandHourlySlots(rs, re));
+      }
+
+      let updated;
+      try {
+        updated = await prisma.$transaction(async (tx) => {
+          await tx.bookingSlot.deleteMany({ where: { bookingId: id } });
+          await tx.booking.update({
+            where: { id },
+            data: {
+              startAt,
+              endAt,
+              subtotal: totalCost,
+              totalCost,
+              slots: {
+                create: hourlySlots.map((s) => ({
+                  fieldId: booking.fieldId,
+                  startAt: s.startAt,
+                  endAt: s.endAt
+                }))
+              }
+            }
+          });
+          return tx.booking.findUnique({
+            where: { id },
+            include: bookingInclude()
+          });
+        });
+      } catch (err) {
+        if (err.code === 'P2002') {
+          return res.status(409).json({ error: 'One or more selected slots are already booked.' });
+        }
+        throw err;
+      }
+
+      res.json({ message: 'Booking rescheduled', booking: serializeBooking(updated) });
+    } catch (error) {
+      console.error('Reschedule booking error:', error);
+      res.status(500).json({ error: 'Failed to reschedule booking' });
+    }
+  }
+);
+
+router.post(
+  '/:id/participants',
+  [body('userId').notEmpty()],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.body;
+      if (!isUuid(id) || !isUuid(userId)) {
+        return res.status(400).json({ error: 'Invalid id' });
+      }
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const booking = await prisma.booking.findUnique({
+        where: { id },
+        include: { participants: true, paymentShares: true }
+      });
+      if (!booking) return res.status(404).json({ error: 'Booking not found' });
+      if (String(booking.organizerId) !== String(req.user.id)) {
+        return res.status(403).json({ error: 'Only organizer can add participants' });
+      }
+      if (booking.participants.some((p) => String(p.userId) === String(userId))) {
+        return res.status(400).json({ error: 'User is already a participant' });
+      }
+
+      const invitee = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true }
+      });
+      if (!invitee) return res.status(404).json({ error: 'User not found' });
+      if (invitee.role !== 'PLAYER') {
+        return res.status(400).json({ error: 'Only players can be invited to a booking.' });
+      }
+
+      const shareAmount =
+        booking.paymentMethod === 'SPLIT'
+          ? Math.round(booking.totalCost / Math.max(1, booking.teamSize || 1))
+          : booking.paymentMethod === 'MIXED'
+            ? 0
+            : 0;
+
+      const participant = await prisma.$transaction(async (tx) => {
+        const p = await tx.bookingParticipant.create({
+          data: {
+            bookingId: id,
+            userId,
+            status: 'INVITED',
+            isOrganizer: false
+          },
+          include: {
+            user: { select: { id: true, fullName: true, avatarUrl: true } }
+          }
+        });
+        if (booking.paymentMethod !== 'ORGANIZER') {
+          await tx.paymentShare.upsert({
+            where: { bookingId_userId: { bookingId: id, userId } },
+            create: {
+              bookingId: id,
+              userId,
+              amount: shareAmount,
+              status: 'PENDING'
+            },
+            update: { amount: shareAmount }
+          });
+        }
+        return p;
+      });
+
+      res.status(201).json({
+        message: 'Participant added',
+        participant: {
+          id: participant.id,
+          userId: participant.userId,
+          status: participant.status,
+          user: {
+            id: participant.user.id,
+            fullName: participant.user.fullName,
+            avatar: participant.user.avatarUrl
           }
         }
-      }
-    });
-
-    res.status(201).json({ message: 'Participant added', participant });
-  } catch (error) {
-    console.error('Add participant error:', error);
-    res.status(500).json({ error: 'Failed to add participant' });
+      });
+    } catch (error) {
+      console.error('Add participant error:', error);
+      res.status(500).json({ error: 'Failed to add participant' });
+    }
   }
-});
+);
 
-// Remove current user as participant (leave booking)
 router.delete('/:id/participants/me', async (req, res) => {
   try {
     const { id } = req.params;
+    if (!isUuid(id)) return res.status(400).json({ error: 'Invalid booking id' });
 
     const booking = await prisma.booking.findUnique({
       where: { id },
       include: { participants: true }
     });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    const participant = booking.participants.find(p => p.userId === req.user.id);
+    const participant = booking.participants.find((p) => String(p.userId) === String(req.user.id));
     if (!participant) {
       return res.status(400).json({ error: 'You are not a participant in this booking' });
     }
+    if (participant.isOrganizer) {
+      return res.status(400).json({ error: 'Organizer cannot leave; cancel the booking instead' });
+    }
 
-    await prisma.bookingParticipant.delete({
-      where: { id: participant.id }
+    await prisma.bookingParticipant.update({
+      where: { id: participant.id },
+      data: { status: 'REMOVED', respondedAt: new Date() }
     });
 
     res.json({ message: 'Successfully left the booking' });
@@ -744,4 +888,3 @@ router.delete('/:id/participants/me', async (req, res) => {
 });
 
 module.exports = router;
-

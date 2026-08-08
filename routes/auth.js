@@ -3,220 +3,295 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
-const { MongoClient, ObjectId } = require('mongodb');
+const { prisma } = require('../lib/prisma');
 const { authenticate, authenticateAllowSuspended } = require('../middleware/auth');
-const { mongoUserSetFields, mongoUserFindByPasswordResetToken } = require('../lib/mongoUserWrite');
-const { createUniquePlayerCode, ensurePlayerCodeForUser } = require('../lib/playerCode');
+const { ensurePlayerCodeForUser, createUniquePlayerCode } = require('../lib/playerCode');
+const { createUniqueUsername } = require('../lib/username');
+const { serializeUser } = require('../lib/serializers');
+const { writeAuditLog } = require('../lib/audit');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// Generate JWT token
-const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
-};
-
+const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_TTL || '7d';
+const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS) || 30 * 24 * 60 * 60 * 1000;
 const RESET_TOKEN_BYTES = 32;
-const RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+const RESET_EXPIRY_MS = 60 * 60 * 1000;
 
-function hashPasswordResetToken(rawToken) {
-  return crypto.createHash('sha256').update(String(rawToken), 'utf8').digest('hex');
+function generateAccessToken(userId) {
+  return jwt.sign({ userId, typ: 'access' }, process.env.JWT_SECRET, {
+    expiresIn: ACCESS_TOKEN_TTL
+  });
+}
+
+function hashToken(raw) {
+  return crypto.createHash('sha256').update(String(raw), 'utf8').digest('hex');
+}
+
+async function issueRefreshToken(userId, req) {
+  const raw = crypto.randomBytes(48).toString('hex');
+  const tokenHash = hashToken(raw);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash,
+      userAgent: req.get?.('user-agent') || null,
+      ipAddress: String(req.ip || '').slice(0, 64) || null,
+      expiresAt
+    }
+  });
+  return raw;
 }
 
 function appBaseUrl(req) {
   const fromEnv = process.env.APP_BASE_URL && String(process.env.APP_BASE_URL).trim();
-  if (fromEnv) {
-    return fromEnv.replace(/\/$/, '');
-  }
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
   const host = req.get('host') || `localhost:${process.env.PORT || 3000}`;
   const proto = req.protocol || 'http';
   return `${proto}://${host}`;
 }
 
-async function createUserWithNativeMongo(data) {
-  const client = new MongoClient(process.env.DATABASE_URL);
-  await client.connect();
-  try {
-    const db = client.db();
-    const now = new Date();
-    const roleValue = data.role || 'PLAYER';
-    const playerCode = roleValue === 'PLAYER' ? await createUniquePlayerCode(prisma) : null;
-    const userDoc = {
-      email: data.email,
-      password_hash: data.passwordHash != null && data.passwordHash !== '' ? data.passwordHash : null,
-      full_name: data.fullName,
-      phone: data.phone || null,
-      date_of_birth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
-      gender: data.gender || null,
-      location: data.location || null,
-      avatar: null,
-      role: roleValue,
-      status: 'ACTIVE',
-      verification_status: roleValue === 'OWNER' ? 'NOT_SUBMITTED' : null,
-      player_code: playerCode,
-      created_at: now,
-      updated_at: now
-    };
-
-    const result = await db.collection('users').insertOne(userDoc);
-    return {
-      id: String(result.insertedId),
-      email: userDoc.email,
-      fullName: userDoc.full_name,
-      role: userDoc.role,
-      status: userDoc.status,
-      avatar: userDoc.avatar,
-      playerCode: userDoc.player_code,
-      createdAt: userDoc.created_at
-    };
-  } finally {
-    await client.close();
-  }
+async function userPayload(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { ownerProfile: true }
+  });
+  return serializeUser(user, { includePrivate: true });
 }
 
-async function deleteUserWithNativeMongo(userId) {
-  const client = new MongoClient(process.env.DATABASE_URL);
-  await client.connect();
-  try {
-    const db = client.db();
-    const result = await db.collection('users').deleteOne({ _id: new ObjectId(String(userId)) });
-    return result.deletedCount > 0;
-  } finally {
-    await client.close();
-  }
-}
+// Register
+router.post(
+  '/register',
+  [
+    body('email').trim().isEmail(),
+    body('password').isLength({ min: 8 }),
+    body('fullName').trim().notEmpty(),
+    body('role').isIn(['PLAYER', 'OWNER']).optional(),
+    body('username').optional().trim().isLength({ min: 3, max: 40 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-// Register new user
-router.post('/register', [
-  body('email').trim().isEmail(),
-  body('password').isLength({ min: 8 }),
-  body('fullName').trim().notEmpty(),
-  body('role').isIn(['PLAYER', 'OWNER']).optional()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      const email = String(req.body.email).trim().toLowerCase();
+      const { password, fullName, phone, dateOfBirth, gender, location } = req.body;
+      const role = req.body.role === 'OWNER' ? 'OWNER' : 'PLAYER';
+
+      const genderMap = {
+        male: 'MALE',
+        female: 'FEMALE',
+        other: 'OTHER',
+        prefer_not_to_say: 'PREFER_NOT_TO_SAY',
+        'prefer not to say': 'PREFER_NOT_TO_SAY'
+      };
+      const genderRaw = gender != null ? String(gender).trim() : '';
+      const genderNormalized = genderRaw
+        ? genderMap[genderRaw.toLowerCase()] ||
+          (['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'].includes(genderRaw.toUpperCase())
+            ? genderRaw.toUpperCase()
+            : null)
+        : null;
+      if (genderRaw && !genderNormalized) {
+        return res.status(400).json({ error: 'Invalid gender value' });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const usernameSeed = req.body.username || email.split('@')[0] || fullName;
+      const username = await createUniqueUsername(prisma, usernameSeed);
+      const playerCode = await createUniquePlayerCode();
+
+      const user = await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email,
+            username,
+            passwordHash,
+            fullName: String(fullName).trim(),
+            phone: phone ? String(phone).trim() : null,
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+            gender: genderNormalized,
+            location: location ? String(location).trim() : null,
+            role,
+            playerCode,
+            ownerProfile:
+              role === 'OWNER'
+                ? { create: { verificationStatus: 'NOT_SUBMITTED' } }
+                : undefined
+          },
+          include: { ownerProfile: true }
+        });
+        return created;
+      });
+
+      const token = generateAccessToken(user.id);
+      const refreshToken = await issueRefreshToken(user.id, req);
+
+      await writeAuditLog({
+        actorId: user.id,
+        action: 'CREATE',
+        entityType: 'User',
+        entityId: user.id,
+        req
+      });
+
+      res.status(201).json({
+        message: 'User registered successfully',
+        user: serializeUser(user, { includePrivate: true }),
+        token,
+        refreshToken
+      });
+    } catch (error) {
+      if (error && (error.code === 'P2002' || String(error.message || '').includes('Unique'))) {
+        return res.status(400).json({ error: 'Email or username already registered' });
+      }
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
     }
-
-    const email = String(req.body.email).trim().toLowerCase();
-    const { password, fullName, phone, dateOfBirth, gender, location, role } = req.body;
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // Create user via native MongoDB write to support standalone MongoDB (no replica set).
-    const user = await createUserWithNativeMongo({
-      email,
-      passwordHash,
-      fullName,
-      phone,
-      dateOfBirth,
-      gender,
-      location,
-      role
-    });
-
-    // Generate token
-    const token = generateToken(user.id);
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      user,
-      token
-    });
-  } catch (error) {
-    if (error && (error.code === 11000 || error.code === '11000')) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
   }
-});
+);
 
 // Login
-router.post('/login', [
-  body('email').trim().isEmail(),
-  body('password').notEmpty()
-], async (req, res) => {
+router.post(
+  '/login',
+  [body('email').trim().isEmail(), body('password').notEmpty()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const email = String(req.body.email).trim().toLowerCase();
+      const { password } = req.body;
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: { ownerProfile: true }
+      });
+
+      if (!user || user.deletedAt) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      if (!user.passwordHash) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+
+      if (user.role === 'PLAYER') {
+        await ensurePlayerCodeForUser(user.id);
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() }
+      });
+
+      const token = generateAccessToken(user.id);
+      const refreshToken = await issueRefreshToken(user.id, req);
+      const userData = await userPayload(user.id);
+
+      await writeAuditLog({
+        actorId: user.id,
+        action: 'LOGIN',
+        entityType: 'User',
+        entityId: user.id,
+        req
+      });
+
+      res.json({
+        message: 'Login successful',
+        user: userData,
+        token,
+        refreshToken
+      });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  }
+);
+
+// Refresh access token
+router.post(
+  '/refresh',
+  [body('refreshToken').trim().notEmpty()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const raw = String(req.body.refreshToken).trim();
+      const tokenHash = hashToken(raw);
+      const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+      if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+        return res.status(401).json({ error: 'Invalid or expired refresh token' });
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: stored.userId } });
+      if (!user || user.deletedAt || user.status === 'DEACTIVATED') {
+        return res.status(401).json({ error: 'User not found' });
+      }
+
+      // Rotate refresh token
+      await prisma.refreshToken.update({
+        where: { id: stored.id },
+        data: { revokedAt: new Date() }
+      });
+      const refreshToken = await issueRefreshToken(user.id, req);
+      const token = generateAccessToken(user.id);
+
+      res.json({ token, refreshToken });
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      res.status(500).json({ error: 'Failed to refresh token' });
+    }
+  }
+);
+
+// Logout (revoke refresh token)
+router.post('/logout', authenticateAllowSuspended, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const email = String(req.body.email).trim().toLowerCase();
-    const { password } = req.body;
-
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    if (!user.passwordHash || typeof user.passwordHash !== 'string') {
-      console.error('Login: user missing password_hash', email);
-      return res.status(500).json({
-        error:
-          'Account data is incomplete. Run npm run db:seed to repair demo users, or reset your password from Settings.'
+    const raw = req.body?.refreshToken ? String(req.body.refreshToken).trim() : '';
+    if (raw) {
+      const tokenHash = hashToken(raw);
+      await prisma.refreshToken.updateMany({
+        where: { userId: req.user.id, tokenHash, revokedAt: null },
+        data: { revokedAt: new Date() }
+      });
+    } else {
+      await prisma.refreshToken.updateMany({
+        where: { userId: req.user.id, revokedAt: null },
+        data: { revokedAt: new Date() }
       });
     }
-
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    if (user.role === 'PLAYER') {
-      await ensurePlayerCodeForUser(prisma, user.id);
-    }
-
-    const freshUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        status: true,
-        avatar: true,
-        playerCode: true,
-        verificationStatus: true
-      }
+    await writeAuditLog({
+      actorId: req.user.id,
+      action: 'LOGOUT',
+      entityType: 'User',
+      entityId: req.user.id,
+      req
     });
-
-    // Generate token
-    const token = generateToken(user.id);
-
-    // Return user data (without password)
-    const userData = {
-      id: freshUser.id,
-      email: freshUser.email,
-      fullName: freshUser.fullName,
-      role: freshUser.role,
-      status: freshUser.status,
-      avatar: freshUser.avatar,
-      playerCode: freshUser.playerCode,
-      verificationStatus: freshUser.verificationStatus
-    };
-
-    res.json({
-      message: 'Login successful',
-      user: userData,
-      token
-    });
+    res.json({ message: 'Logged out' });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
   }
 });
 
-// Request password reset (stores token; email delivery not wired — see response in non-production)
 router.post(
   '/forgot-password',
   [body('email').trim().isEmail()],
@@ -238,17 +313,20 @@ router.post(
         select: { id: true, passwordHash: true }
       });
 
-      if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
+      if (!user || !user.passwordHash) {
         return res.json(generic);
       }
 
       const rawToken = crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
-      const tokenHash = hashPasswordResetToken(rawToken);
+      const tokenHash = hashToken(rawToken);
       const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
 
-      await mongoUserSetFields(user.id, {
-        password_reset_token_hash: tokenHash,
-        password_reset_expires: expiresAt
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: expiresAt
+        }
       });
 
       const resetPath = `/pages/auth/reset-password.html?token=${encodeURIComponent(rawToken)}`;
@@ -271,13 +349,9 @@ router.post(
   }
 );
 
-// Complete password reset with token from email (or dev link)
 router.post(
   '/reset-password',
-  [
-    body('token').trim().isLength({ min: 32 }),
-    body('newPassword').isLength({ min: 8 })
-  ],
+  [body('token').trim().isLength({ min: 32 }), body('newPassword').isLength({ min: 8 })],
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -287,9 +361,14 @@ router.post(
 
       const rawToken = String(req.body.token).trim();
       const { newPassword } = req.body;
-      const tokenHash = hashPasswordResetToken(rawToken);
+      const tokenHash = hashToken(rawToken);
 
-      const user = await mongoUserFindByPasswordResetToken(tokenHash);
+      const user = await prisma.user.findFirst({
+        where: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: { gt: new Date() }
+        }
+      });
 
       if (!user) {
         return res.status(400).json({
@@ -298,11 +377,20 @@ router.post(
       }
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
-      await mongoUserSetFields(user.id, {
-        password_hash: passwordHash,
-        password_reset_token_hash: null,
-        password_reset_expires: null
-      });
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          data: {
+            passwordHash,
+            passwordResetTokenHash: null,
+            passwordResetExpiresAt: null
+          }
+        }),
+        prisma.refreshToken.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: new Date() }
+        })
+      ]);
 
       res.json({ message: 'Password reset successfully. You can log in with your new password.' });
     } catch (error) {
@@ -312,33 +400,12 @@ router.post(
   }
 );
 
-// Get current user (allows SUSPENDED so the app can show contact-only mode)
 router.get('/me', authenticateAllowSuspended, async (req, res) => {
   try {
     if (req.user.role === 'PLAYER') {
-      await ensurePlayerCodeForUser(prisma, req.user.id);
+      await ensurePlayerCodeForUser(req.user.id);
     }
-
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        dateOfBirth: true,
-        gender: true,
-        location: true,
-        avatar: true,
-        playerCode: true,
-        role: true,
-        status: true,
-        verificationStatus: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    });
-
+    const user = await userPayload(req.user.id);
     res.json({ user });
   } catch (error) {
     console.error('Get user error:', error);
@@ -346,95 +413,106 @@ router.get('/me', authenticateAllowSuspended, async (req, res) => {
   }
 });
 
-// Update password
-router.put('/password', authenticate, [
-  body('currentPassword').notEmpty(),
-  body('newPassword').isLength({ min: 8 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+router.put(
+  '/password',
+  authenticate,
+  [body('currentPassword').notEmpty(), body('newPassword').isLength({ min: 8 })],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+      if (String(currentPassword) === String(newPassword)) {
+        return res.status(400).json({
+          error: 'New password must be different from current password'
+        });
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+      if (!user || !user.passwordHash) {
+        return res.status(400).json({ error: 'Account has no password on file.' });
+      }
+
+      const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash }
+        }),
+        prisma.refreshToken.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: new Date() }
+        })
+      ]);
+
+      res.json({ message: 'Password updated successfully' });
+    } catch (error) {
+      console.error('Password update error:', error);
+      res.status(500).json({ error: 'Failed to update password' });
     }
-
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.user.id;
-
-    if (String(currentPassword) === String(newPassword)) {
-      return res.status(400).json({
-        error: 'New password must be different from current password'
-      });
-    }
-
-    // Get user with password
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
-
-    if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
-      return res.status(400).json({
-        error:
-          'Account has no password on file. Run npm run db:seed if this is a demo account, or contact support.'
-      });
-    }
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
-    }
-
-    // Hash new password
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    await mongoUserSetFields(userId, { password_hash: passwordHash });
-
-    res.json({ message: 'Password updated successfully' });
-  } catch (error) {
-    console.error('Password update error:', error);
-    res.status(500).json({ error: 'Failed to update password' });
   }
-});
+);
 
-// Delete current user account
-router.delete('/me', authenticate, [
-  body('currentPassword').notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+router.delete(
+  '/me',
+  authenticate,
+  [body('currentPassword').notEmpty()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-    const { currentPassword } = req.body;
-    const userId = req.user.id;
+      const { currentPassword } = req.body;
+      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+      if (!user || !user.passwordHash) {
+        return res.status(400).json({
+          error: 'Account has no password on file. Unable to verify account deletion request.'
+        });
+      }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
+      const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
 
-    if (!user || !user.passwordHash || typeof user.passwordHash !== 'string') {
-      return res.status(400).json({
-        error: 'Account has no password on file. Unable to verify account deletion request.'
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          deletedAt: new Date(),
+          status: 'DEACTIVATED',
+          email: `deleted_${user.id}@deleted.local`,
+          username: `deleted_${user.id}`.slice(0, 40)
+        }
       });
-    }
+      await prisma.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() }
+      });
 
-    const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
-    }
+      await writeAuditLog({
+        actorId: user.id,
+        action: 'DELETE',
+        entityType: 'User',
+        entityId: user.id,
+        req
+      });
 
-    const deleted = await deleteUserWithNativeMongo(userId);
-    if (!deleted) {
-      return res.status(404).json({ error: 'User not found' });
+      res.json({ message: 'Account deleted successfully' });
+    } catch (error) {
+      console.error('Delete account error:', error);
+      res.status(500).json({ error: 'Failed to delete account' });
     }
-
-    res.json({ message: 'Account deleted successfully' });
-  } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({ error: 'Failed to delete account' });
   }
-});
+);
 
 module.exports = router;
-

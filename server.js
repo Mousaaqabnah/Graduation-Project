@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('./lib/prisma');
 const { setChatIo } = require('./lib/chatEvents');
 const { attachSocketChat } = require('./lib/socketChat');
 
@@ -20,9 +20,11 @@ if (!process.env.DATABASE_URL) {
   console.error('Missing DATABASE_URL in .env');
   process.exit(1);
 }
+if (!process.env.DIRECT_URL) {
+  console.warn('Warning: DIRECT_URL is not set (recommended for Prisma migrations)');
+}
 
 const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 const faviconPath = path.join(__dirname, 'assets', 'images', 'favicon.png');

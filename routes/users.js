@@ -1,8 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
-const { MongoClient } = require('mongodb');
-const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
+const { prisma } = require('../lib/prisma');
+const { isUuid } = require('../lib/ids');
 const {
   backfillMissingPlayerCodes,
   normalizePlayerCodeQuery,
@@ -11,26 +10,27 @@ const {
   getSearchMinLength
 } = require('../lib/playerCode');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { serializeUser } = require('../lib/serializers');
+const { writeAuditLog } = require('../lib/audit');
+const { persistIncomingFile, isStoredDataUrl } = require('../lib/secureStorage');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// Get all users (Admin only)
 router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
     const { page = 1, limit = 20, role, status, search } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * take;
 
-    const where = {};
-    
-    if (role) where.role = role;
-    if (status) where.status = status;
+    const where = { deletedAt: null };
+    if (role) where.role = String(role).toUpperCase();
+    if (status) where.status = String(status).toUpperCase();
     if (search) {
-      // Note: MongoDB with Prisma uses case-sensitive contains
-      // For case-insensitive, consider using toLowerCase() on both search term and stored values
+      const s = String(search);
       where.OR = [
-        { fullName: { contains: search } },
-        { email: { contains: search } }
+        { fullName: { contains: s, mode: 'insensitive' } },
+        { email: { contains: s, mode: 'insensitive' } },
+        { username: { contains: s, mode: 'insensitive' } }
       ];
     }
 
@@ -38,31 +38,20 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
       prisma.user.findMany({
         where,
         skip,
-        take: parseInt(limit),
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          phone: true,
-          location: true,
-          role: true,
-          status: true,
-          avatar: true,
-          verificationStatus: true,
-          createdAt: true
-        },
+        take,
+        include: { ownerProfile: true },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.user.count({ where })
     ]);
 
     res.json({
-      users,
+      users: users.map((u) => serializeUser(u, { includePrivate: true })),
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: Math.max(1, parseInt(page, 10) || 1),
+        limit: take,
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / take)
       }
     });
   } catch (error) {
@@ -71,55 +60,10 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
   }
 });
 
-// Search users (must be before /:id so "search" is not treated as an id)
-async function searchUsersByPartialObjectId(hexPrefix, restrictToPlayers) {
-  const client = new MongoClient(process.env.DATABASE_URL);
-  await client.connect();
-  try {
-    const db = client.db();
-    const pipeline = [
-      {
-        $addFields: {
-          idString: { $toString: '$_id' }
-        }
-      },
-      {
-        $match: {
-          idString: { $regex: hexPrefix, $options: 'i' },
-          ...(restrictToPlayers ? { role: 'PLAYER' } : {})
-        }
-      },
-      { $limit: 10 },
-      {
-        $project: {
-          _id: 1,
-          email: 1,
-          full_name: 1,
-          avatar: 1,
-          role: 1,
-          player_code: 1
-        }
-      }
-    ];
-    const docs = await db.collection('users').aggregate(pipeline).toArray();
-    return docs.map((doc) => ({
-      id: String(doc._id),
-      email: doc.email,
-      fullName: doc.full_name,
-      avatar: doc.avatar,
-      role: doc.role,
-      playerCode: doc.player_code || null
-    }));
-  } finally {
-    await client.close();
-  }
-}
-
 router.get('/search/users', authenticate, async (req, res) => {
   try {
     const { q, playersOnly } = req.query;
     const restrictToPlayers = playersOnly === '1' || String(playersOnly || '').toLowerCase() === 'true';
-
     const qTrim = typeof q === 'string' ? normalizePlayerCodeQuery(q) : '';
     const minLen = getSearchMinLength(qTrim);
     if (!qTrim || qTrim.length < minLen) {
@@ -127,12 +71,13 @@ router.get('/search/users', authenticate, async (req, res) => {
     }
 
     if (restrictToPlayers) {
-      await backfillMissingPlayerCodes(prisma);
+      await backfillMissingPlayerCodes();
     }
 
     const orFilters = [
       { fullName: { contains: qTrim, mode: 'insensitive' } },
-      { email: { contains: qTrim, mode: 'insensitive' } }
+      { email: { contains: qTrim, mode: 'insensitive' } },
+      { username: { contains: qTrim, mode: 'insensitive' } }
     ];
 
     if (isPlayerCodeQuery(qTrim)) {
@@ -144,12 +89,13 @@ router.get('/search/users', authenticate, async (req, res) => {
       orFilters.push({ playerCode: { contains: qTrim, mode: 'insensitive' } });
     }
 
-    if (/^[a-fA-F0-9]{24}$/.test(qTrim)) {
+    if (isUuid(qTrim)) {
       orFilters.push({ id: qTrim });
     }
 
-    let users = await prisma.user.findMany({
+    const users = await prisma.user.findMany({
       where: {
+        deletedAt: null,
         OR: orFilters,
         ...(restrictToPlayers ? { role: 'PLAYER' } : {})
       },
@@ -158,40 +104,33 @@ router.get('/search/users', authenticate, async (req, res) => {
         id: true,
         email: true,
         fullName: true,
-        avatar: true,
+        avatarUrl: true,
         role: true,
         playerCode: true
       }
     });
 
-    if (isHexIdQuery(qTrim) && qTrim.length >= 4 && qTrim.length < 24) {
-      const partialMatches = await searchUsersByPartialObjectId(qTrim, restrictToPlayers);
-      const seen = new Set(users.map((user) => String(user.id)));
-      partialMatches.forEach((user) => {
-        if (!seen.has(String(user.id))) {
-          seen.add(String(user.id));
-          users.push(user);
-        }
-      });
-      users = users.slice(0, 10);
-    }
-
-    res.json({ users });
+    res.json({
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        fullName: u.fullName,
+        avatar: u.avatarUrl,
+        role: u.role,
+        playerCode: u.playerCode
+      }))
+    });
   } catch (error) {
     console.error('Search users error:', error);
     res.status(500).json({ error: 'Failed to search users' });
   }
 });
 
-// Submit owner ID verification (must be before /:id)
 router.post(
   '/me/verification',
   authenticate,
   requireRole('OWNER'),
-  [
-    body('idFrontUrl').trim().notEmpty(),
-    body('idBackUrl').trim().notEmpty()
-  ],
+  [body('idFrontUrl').trim().notEmpty(), body('idBackUrl').trim().notEmpty()],
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -200,44 +139,79 @@ router.post(
       }
 
       const { idFrontUrl, idBackUrl } = req.body;
-
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { verificationStatus: true, role: true }
-      });
-
-      if (!user || user.role !== 'OWNER') {
-        return res.status(403).json({ error: 'Only field owners can submit verification' });
+      let profile = await prisma.ownerProfile.findUnique({ where: { userId: req.user.id } });
+      if (!profile) {
+        profile = await prisma.ownerProfile.create({
+          data: { userId: req.user.id, verificationStatus: 'NOT_SUBMITTED' }
+        });
       }
 
-      if (user.verificationStatus === 'PENDING') {
+      if (profile.verificationStatus === 'PENDING') {
         return res.status(400).json({ error: 'Verification is already pending review' });
       }
-
-      if (user.verificationStatus === 'APPROVED') {
+      if (profile.verificationStatus === 'APPROVED') {
         return res.status(400).json({ error: 'Account is already verified' });
       }
 
-      await mongoUserSetFields(req.user.id, {
-        id_front_url: idFrontUrl,
-        id_back_url: idBackUrl,
-        verification_status: 'PENDING'
+      const frontSaved = persistIncomingFile(idFrontUrl, { kind: 'verification' });
+      const backSaved = persistIncomingFile(idBackUrl, { kind: 'verification' });
+      if (
+        !frontSaved ||
+        !backSaved ||
+        isStoredDataUrl(frontSaved.storagePath) ||
+        isStoredDataUrl(backSaved.storagePath)
+      ) {
+        return res.status(400).json({ error: 'Invalid verification document upload' });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.ownerProfile.update({
+          where: { userId: req.user.id },
+          data: { verificationStatus: 'PENDING' }
+        });
+
+        return tx.ownerVerification.create({
+          data: {
+            ownerId: req.user.id,
+            status: 'PENDING',
+            documents: {
+              create: [
+                {
+                  type: 'ID_FRONT',
+                  storagePath: frontSaved.storagePath,
+                  mimeType: frontSaved.mimeType,
+                  sizeBytes: frontSaved.sizeBytes
+                },
+                {
+                  type: 'ID_BACK',
+                  storagePath: backSaved.storagePath,
+                  mimeType: backSaved.mimeType,
+                  sizeBytes: backSaved.sizeBytes
+                }
+              ]
+            }
+          }
+        });
       });
 
       const updated = await prisma.user.findUnique({
         where: { id: req.user.id },
-        select: {
-          id: true,
-          verificationStatus: true,
-          idFrontUrl: true,
-          idBackUrl: true
-        }
+        include: { ownerProfile: true }
       });
 
-      res.json({ message: 'Verification submitted', user: updated });
+      res.json({
+        message: 'Verification submitted',
+        user: {
+          id: updated.id,
+          verificationStatus: updated.ownerProfile?.verificationStatus,
+          idFrontUrl: null,
+          idBackUrl: null,
+          verificationDocumentsSubmitted: true
+        }
+      });
     } catch (error) {
       console.error('Submit verification error:', error);
-      res.status(500).json({ error: 'Failed to submit verification' });
+      res.status(error.status || 500).json({ error: error.message || 'Failed to submit verification' });
     }
   }
 );
@@ -302,34 +276,32 @@ function sanitizePrefsSlice(body, allowedKeys) {
   for (const k of Object.keys(body)) {
     if (!allowedKeys.has(k)) continue;
     const v = body[k];
-    if (typeof v === 'boolean') {
+    if (typeof v === 'boolean') out[k] = v;
+    else if (STRING_PREF_KEYS.has(k) && v != null && typeof v === 'string' && v.length < 200) {
       out[k] = v;
-    } else if (STRING_PREF_KEYS.has(k)) {
-      if (v != null && typeof v === 'string' && v.length < 200) out[k] = v;
     }
   }
   return out;
 }
 
-// Get current user's saved UI preferences (owner, player, admin slices)
 router.get('/me/preferences', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: { preferences: true }
     });
-    const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
-    const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
-    const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
-    const admin = raw.admin && typeof raw.admin === 'object' && !Array.isArray(raw.admin) ? raw.admin : {};
-    res.json({ owner, player, admin });
+    const raw = user?.preferences && typeof user.preferences === 'object' ? user.preferences : {};
+    res.json({
+      owner: raw.owner && typeof raw.owner === 'object' ? raw.owner : {},
+      player: raw.player && typeof raw.player === 'object' ? raw.player : {},
+      admin: raw.admin && typeof raw.admin === 'object' ? raw.admin : {}
+    });
   } catch (error) {
     console.error('Get preferences error:', error);
     res.status(500).json({ error: 'Failed to load preferences' });
   }
 });
 
-// Merge UI preferences for the current user's role (ADMIN → admin, OWNER → owner, else player)
 router.patch('/me/preferences', authenticate, async (req, res) => {
   try {
     let roleKey;
@@ -344,8 +316,9 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
       roleKey = 'player';
       allowed = PLAYER_PREF_KEYS;
     }
+
     const slice = sanitizePrefsSlice(req.body, allowed);
-    if (Object.keys(slice).length === 0) {
+    if (!Object.keys(slice).length) {
       return res.status(400).json({ error: 'No valid preference fields to save' });
     }
 
@@ -353,27 +326,20 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
       where: { id: req.user.id },
       select: { preferences: true }
     });
-    const raw = user && user.preferences && typeof user.preferences === 'object' ? user.preferences : {};
-    const owner = raw.owner && typeof raw.owner === 'object' && !Array.isArray(raw.owner) ? raw.owner : {};
-    const player = raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player) ? raw.player : {};
-    const admin = raw.admin && typeof raw.admin === 'object' && !Array.isArray(raw.admin) ? raw.admin : {};
+    const raw = user?.preferences && typeof user.preferences === 'object' ? user.preferences : {};
     const next = {
       ...raw,
-      owner: roleKey === 'owner' ? { ...owner, ...slice } : owner,
-      player: roleKey === 'player' ? { ...player, ...slice } : player,
-      admin: roleKey === 'admin' ? { ...admin, ...slice } : admin
+      owner: roleKey === 'owner' ? { ...(raw.owner || {}), ...slice } : raw.owner || {},
+      player: roleKey === 'player' ? { ...(raw.player || {}), ...slice } : raw.player || {},
+      admin: roleKey === 'admin' ? { ...(raw.admin || {}), ...slice } : raw.admin || {}
     };
 
-    const matched = await mongoUserSetFields(req.user.id, { preferences: next });
-    if (!matched) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const updated = await prisma.user.findUnique({
+    const updated = await prisma.user.update({
       where: { id: req.user.id },
+      data: { preferences: next },
       select: { preferences: true }
     });
-    const p = updated && updated.preferences && typeof updated.preferences === 'object' ? updated.preferences : {};
+    const p = updated.preferences && typeof updated.preferences === 'object' ? updated.preferences : {};
     res.json({
       preferences: {
         owner: p.owner && typeof p.owner === 'object' ? p.owner : {},
@@ -387,11 +353,10 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
   }
 });
 
-// Get user by ID
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-    if (!isMongoObjectIdString(idTrim)) {
+    if (!isUuid(idTrim)) {
       return res.status(400).json({ error: 'Invalid user id' });
     }
 
@@ -401,45 +366,29 @@ router.get('/:id', authenticate, async (req, res) => {
     if (isSelf || isAdmin) {
       const user = await prisma.user.findUnique({
         where: { id: idTrim },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          phone: true,
-          dateOfBirth: true,
-          gender: true,
-          location: true,
-          avatar: true,
-          role: true,
-          status: true,
-          verificationStatus: true,
-          createdAt: true
-        }
+        include: { ownerProfile: true }
       });
-
-      if (!user) {
+      if (!user || user.deletedAt) {
         return res.status(404).json({ error: 'User not found' });
       }
-
-      return res.json({ user });
+      return res.json({ user: serializeUser(user, { includePrivate: true }) });
     }
 
-    // Field owners may load a limited player profile for the owner chat sidebar (no email / phone).
     if (req.user.role === 'OWNER') {
       const target = await prisma.user.findUnique({
         where: { id: idTrim },
         select: {
           id: true,
           fullName: true,
-          avatar: true,
+          avatarUrl: true,
           role: true,
           status: true,
           createdAt: true,
-          location: true
+          location: true,
+          deletedAt: true
         }
       });
-
-      if (!target || target.role !== 'PLAYER') {
+      if (!target || target.deletedAt || target.role !== 'PLAYER') {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -457,15 +406,13 @@ router.get('/:id', authenticate, async (req, res) => {
         user: {
           id: target.id,
           fullName: target.fullName,
-          avatar: target.avatar,
+          avatar: target.avatarUrl,
           role: target.role,
           status: target.status,
           createdAt: target.createdAt,
           location: target.location
         },
-        playerChatSummary: {
-          totalBookings
-        }
+        playerChatSummary: { totalBookings }
       });
     }
 
@@ -476,18 +423,17 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Avatar only — large base64 body; Prisma Mongo can fail on some updates, so use native $set.
 router.put('/:id/avatar', authenticate, async (req, res) => {
   try {
     const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-    if (!isMongoObjectIdString(id)) {
+    if (!isUuid(id)) {
       return res.status(400).json({ error: 'Invalid user id' });
     }
     if (String(req.user.id) !== String(id) && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const avatar = req.body && req.body.avatar;
+    const avatar = req.body && (req.body.avatar || req.body.avatarUrl);
     if (typeof avatar !== 'string' || !avatar.startsWith('data:image/')) {
       return res.status(400).json({
         error: 'Invalid image: expected a data URL (data:image/jpeg;base64,...)'
@@ -497,155 +443,123 @@ router.put('/:id/avatar', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Image data is too large; use a smaller photo' });
     }
 
-    const matched = await mongoUserSetFields(id, { avatar });
-    if (!matched) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.update({
       where: { id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        dateOfBirth: true,
-        gender: true,
-        location: true,
-        avatar: true,
-        role: true,
-        status: true,
-        updatedAt: true
-      }
+      data: { avatarUrl: avatar },
+      include: { ownerProfile: true }
     });
 
-    res.json({ message: 'Avatar updated successfully', user });
+    res.json({
+      message: 'Avatar updated successfully',
+      user: serializeUser(user, { includePrivate: true })
+    });
   } catch (error) {
     console.error('Update avatar error:', error);
-    const details =
-      process.env.NODE_ENV !== 'production' && error && error.message
-        ? { details: error.message }
-        : {};
-    res.status(500).json({ error: 'Failed to update avatar', ...details });
+    res.status(500).json({ error: 'Failed to update avatar' });
   }
 });
 
-// Update user profile
-router.put('/:id', authenticate, [
-  body('fullName').optional().trim(),
-  body('phone').optional({ nullable: true }),
-  body('dateOfBirth').optional({ nullable: true }),
-  body('gender').optional({ nullable: true }),
-  body('location').optional({ nullable: true }),
-  body('avatar').optional()
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const idTrim = typeof id === 'string' ? id.trim() : '';
-
-    // Users can only update their own profile unless they're admin
-    if (String(req.user.id) !== String(idTrim) && req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (!isMongoObjectIdString(idTrim)) {
-      return res.status(400).json({ error: 'Invalid user id' });
-    }
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { fullName, phone, dateOfBirth, gender, location, avatar } = req.body;
-
-    const $set = {};
-    if (fullName !== undefined && String(fullName).trim()) $set.full_name = String(fullName).trim();
-    if (phone !== undefined) $set.phone = phone ? String(phone).trim() : null;
-    if (dateOfBirth !== undefined) {
-      $set.date_of_birth =
-        dateOfBirth && String(dateOfBirth).trim() ? new Date(dateOfBirth) : null;
-    }
-    if (gender !== undefined) $set.gender = gender ? String(gender).trim() : null;
-    if (location !== undefined) $set.location = location ? String(location).trim() : null;
-    if (avatar !== undefined && typeof avatar === 'string') $set.avatar = avatar;
-
-    if (Object.keys($set).length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    const matched = await mongoUserSetFields(idTrim, $set);
-    if (!matched) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: idTrim },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        dateOfBirth: true,
-        gender: true,
-        location: true,
-        avatar: true,
-        role: true,
-        status: true,
-        updatedAt: true
+router.put(
+  '/:id',
+  authenticate,
+  [
+    body('fullName').optional().trim(),
+    body('phone').optional({ nullable: true }),
+    body('dateOfBirth').optional({ nullable: true }),
+    body('gender').optional({ nullable: true }),
+    body('location').optional({ nullable: true }),
+    body('avatar').optional(),
+    body('avatarUrl').optional()
+  ],
+  async (req, res) => {
+    try {
+      const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!isUuid(idTrim)) {
+        return res.status(400).json({ error: 'Invalid user id' });
       }
-    });
-
-    res.json({ message: 'Profile updated successfully', user });
-  } catch (error) {
-    console.error('Update user error:', error);
-    const details =
-      process.env.NODE_ENV !== 'production' && error && error.message
-        ? { details: error.message }
-        : {};
-    res.status(500).json({ error: 'Failed to update profile', ...details });
-  }
-});
-
-// Update user status (Admin only)
-router.put('/:id/status', authenticate, requireRole('ADMIN'), [
-  body('status').isIn(['ACTIVE', 'SUSPENDED'])
-], async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const idTrim = typeof id === 'string' ? id.trim() : '';
-    if (!isMongoObjectIdString(idTrim)) {
-      return res.status(400).json({ error: 'Invalid user id' });
-    }
-
-    const matched = await mongoUserSetFields(idTrim, { status });
-    if (!matched) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: idTrim },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        status: true
+      if (String(req.user.id) !== String(idTrim) && req.user.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Access denied' });
       }
-    });
 
-    res.json({ message: 'User status updated', user });
-  } catch (error) {
-    console.error('Update status error:', error);
-    res.status(500).json({ error: 'Failed to update user status' });
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { fullName, phone, dateOfBirth, gender, location } = req.body;
+      const avatar = req.body.avatarUrl || req.body.avatar;
+      const data = {};
+      if (fullName !== undefined && String(fullName).trim()) data.fullName = String(fullName).trim();
+      if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
+      if (dateOfBirth !== undefined) {
+        data.dateOfBirth = dateOfBirth && String(dateOfBirth).trim() ? new Date(dateOfBirth) : null;
+      }
+      if (gender !== undefined) data.gender = gender || null;
+      if (location !== undefined) data.location = location ? String(location).trim() : null;
+      if (avatar !== undefined && typeof avatar === 'string') data.avatarUrl = avatar;
+
+      if (!Object.keys(data).length) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      const user = await prisma.user.update({
+        where: { id: idTrim },
+        data,
+        include: { ownerProfile: true }
+      });
+
+      res.json({
+        message: 'Profile updated successfully',
+        user: serializeUser(user, { includePrivate: true })
+      });
+    } catch (error) {
+      console.error('Update user error:', error);
+      res.status(500).json({ error: 'Failed to update profile' });
+    }
   }
-});
+);
+
+router.put(
+  '/:id/status',
+  authenticate,
+  requireRole('ADMIN'),
+  [body('status').isIn(['ACTIVE', 'SUSPENDED', 'DEACTIVATED'])],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+      if (!isUuid(idTrim)) {
+        return res.status(400).json({ error: 'Invalid user id' });
+      }
+
+      const user = await prisma.user.update({
+        where: { id: idTrim },
+        data: { status: req.body.status },
+        select: { id: true, email: true, fullName: true, status: true }
+      });
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        action: req.body.status === 'SUSPENDED' ? 'SUSPEND' : 'UPDATE',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { status: req.body.status },
+        req
+      });
+
+      res.json({
+        message: 'User status updated',
+        user: { ...user, avatar: null }
+      });
+    } catch (error) {
+      console.error('Update status error:', error);
+      res.status(500).json({ error: 'Failed to update user status' });
+    }
+  }
+);
 
 module.exports = router;
-

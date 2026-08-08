@@ -393,6 +393,22 @@ function removeAuthToken() {
   localStorage.removeItem('authToken');
 }
 
+function getRefreshToken() {
+  const s = getAuthStorage();
+  return s.getItem('refreshToken');
+}
+
+function setRefreshToken(token) {
+  if (!token) return;
+  const s = getAuthStorage();
+  s.setItem('refreshToken', token);
+}
+
+function removeRefreshToken() {
+  try { sessionStorage.removeItem('refreshToken'); } catch (_) { /* ignore */ }
+  localStorage.removeItem('refreshToken');
+}
+
 // Get current user from storage
 function getCurrentUser() {
   const s = getAuthStorage();
@@ -500,10 +516,16 @@ async function apiRequest(endpoint, options = {}) {
 // Auth API
 const authAPI = {
   register: async (userData) => {
-    return apiRequest('/auth/register', {
+    const data = await apiRequest('/auth/register', {
       method: 'POST',
       body: userData
     });
+    if (data.token && data.user) {
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
+    }
+    return data;
   },
 
   login: async (email, password) => {
@@ -515,8 +537,21 @@ const authAPI = {
     if (data.token && data.user) {
       setAuthToken(data.token);
       setCurrentUser(data.user);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
     }
 
+    return data;
+  },
+
+  refresh: async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) throw new Error('No refresh token');
+    const data = await apiRequest('/auth/refresh', {
+      method: 'POST',
+      body: { refreshToken }
+    });
+    if (data.token) setAuthToken(data.token);
+    if (data.refreshToken) setRefreshToken(data.refreshToken);
     return data;
   },
 
@@ -534,10 +569,21 @@ const authAPI = {
     });
   },
 
-  logout: () => {
+  logout: async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (getAuthToken()) {
+        await apiRequest('/auth/logout', {
+          method: 'POST',
+          body: refreshToken ? { refreshToken } : {}
+        });
+      }
+    } catch (_) {
+      /* ignore network errors on logout */
+    }
     removeAuthToken();
+    removeRefreshToken();
     removeCurrentUser();
-    // Use replace so Back button doesn't return to the page we just left
     window.location.replace('/pages/auth/login.html');
   },
 
@@ -732,6 +778,16 @@ const bookingsAPI = {
     return apiRequest(`/bookings/${encodeURIComponent(id)}/status`, {
       method: 'PUT',
       body: { status }
+    });
+  },
+
+  /** Server-side MANUAL settlement — never send card fields. */
+  manualSettle: async (id, options = {}) => {
+    const body = {};
+    if (options && options.userId) body.userId = options.userId;
+    return apiRequest(`/bookings/${encodeURIComponent(id)}/payments/manual-settle`, {
+      method: 'POST',
+      body
     });
   },
 

@@ -85,7 +85,7 @@ async function loadDashboardStats() {
         els.bookingsSubtext.textContent = s.bookingsPercent >= 0
             ? `+${s.bookingsPercent}% vs last week`
             : `${s.bookingsPercent}% vs last week`;
-        const revTry = Math.round((s.totalRevenue || 0) / 100);
+        const revTry = Math.round(s.totalRevenue || 0);
         els.revenue.textContent = '\u20BA' + revTry.toLocaleString();
     } catch (err) {
         console.warn('Dashboard stats load failed:', err);

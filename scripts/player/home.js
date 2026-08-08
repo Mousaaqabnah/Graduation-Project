@@ -1839,27 +1839,18 @@ function saveBookingAndSendInvitations(booking) {
       const createdBooking = res.booking;
       console.log('Booking created:', createdBooking);
       
-      // If organizer already paid during booking flow, remember it locally
+      // If organizer completed the payment step, settle on the SERVER (never trust localStorage alone)
       try {
         if (booking.organizerPaymentStatus === 'paid' && createdBooking && createdBooking.id) {
-          var organizerPaidKey = 'organizerPaidBookings';
-          var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
-          organizerPaid[String(createdBooking.id)] = true;
-          localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
-
-          // Also store a local copy of the booking with organizerPaymentStatus so merge can pick it up
-          var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-          var existingIdx = allBookings.findIndex(function(b) { return String(b.id) === String(createdBooking.id); });
-          var mergedLocal = Object.assign({}, createdBooking, { organizerPaymentStatus: 'paid' });
-          if (existingIdx !== -1) {
-            applyPaymentStateOntoStoredBooking(allBookings[existingIdx], mergedLocal);
-          } else {
-            allBookings.push(compactBookingForStorage(mergedLocal));
+          if (API.bookings.manualSettle) {
+            const settleRes = await API.bookings.manualSettle(String(createdBooking.id));
+            if (settleRes && settleRes.booking) {
+              Object.assign(createdBooking, settleRes.booking);
+            }
           }
-          persistPlayerBookings(allBookings);
         }
       } catch (e) {
-        console.warn('Failed to persist initial organizer payment state', e);
+        console.warn('Failed to settle organizer payment on server', e);
       }
       
       // Add participants to the booking if there are any players
@@ -1883,17 +1874,14 @@ function saveBookingAndSendInvitations(booking) {
       }
 
       const fld = (createdBooking && createdBooking.field) || bookingState.field;
-      let fullyPaidNow = checkFullPayment(booking);
-      let didAutoConfirm = false;
-      if (fullyPaidNow && createdBooking && createdBooking.id && fieldUsesInstantBooking(fld)) {
-        try {
-          didAutoConfirm = await tryAutoConfirmPaidInstantBooking(createdBooking.id, fld);
-        } catch (e) {
-          console.warn('Instant booking auto-confirm failed', e);
-        }
-        if (didAutoConfirm) createdBooking.status = 'CONFIRMED';
-      }
-      const isFullyPaidUi = !!(fullyPaidNow && fieldUsesInstantBooking(fld) && didAutoConfirm);
+      const serverPaid =
+        createdBooking &&
+        (String(createdBooking.paymentStatus || '').toUpperCase() === 'PAID' ||
+          String(createdBooking.organizerPaymentStatus || '').toLowerCase() === 'paid');
+      const statusNow = createdBooking && (createdBooking.statusRaw || createdBooking.status);
+      const didAutoConfirm =
+        statusNow === 'CONFIRMED' || statusNow === 'UPCOMING';
+      const isFullyPaidUi = !!(serverPaid && fieldUsesInstantBooking(fld) && didAutoConfirm);
       showBookingConfirmation(booking, isFullyPaidUi);
       closeBookingModal();
       setTimeout(function() { window.location.href = 'bookings.html'; }, 2000);
@@ -2165,29 +2153,36 @@ function fieldUsesInstantBooking(field) {
   return t !== 'request';
 }
 
-/** After full payment: confirm on server for instant-booking fields (no owner approval). */
+/** After full payment: confirm on server for instant-booking fields (no owner approval).
+ * Prefer manualSettle which auto-confirms when fully paid; updateStatus alone will 402 if unpaid.
+ */
 function tryAutoConfirmPaidInstantBooking(bookingId, bookingOrFieldHint) {
   if (!bookingId || typeof API === 'undefined' || !API.bookings) return Promise.resolve(false);
   const fieldHint = bookingOrFieldHint && bookingOrFieldHint.field ? bookingOrFieldHint.field : bookingOrFieldHint;
-  if (fieldHint && fieldHint.bookingType !== undefined && fieldHint.bookingType !== null) {
-    if (!fieldUsesInstantBooking(fieldHint)) return Promise.resolve(false);
-    return API.bookings.updateStatus(String(bookingId), 'CONFIRMED')
-      .then(function () { return true; })
+  function afterPaidConfirm() {
+    if (fieldHint && fieldHint.bookingType !== undefined && fieldHint.bookingType !== null) {
+      if (!fieldUsesInstantBooking(fieldHint)) return Promise.resolve(false);
+    }
+    // Settlement endpoint already confirms instant bookings when fully paid.
+    return API.bookings.getById(String(bookingId)).then(function (res) {
+      const b = res && res.booking;
+      const st = b && (b.statusRaw || b.status);
+      return st === 'CONFIRMED' || st === 'UPCOMING';
+    });
+  }
+  if (API.bookings.manualSettle) {
+    return API.bookings
+      .manualSettle(String(bookingId))
+      .then(function (res) {
+        if (res && res.confirmed) return true;
+        return afterPaidConfirm();
+      })
       .catch(function (e) {
-        console.warn('Auto-confirm booking failed', e);
+        console.warn('Manual settle / auto-confirm failed', e);
         return false;
       });
   }
-  return API.bookings.getById(String(bookingId))
-    .then(function (res) {
-      const fld = res && res.booking && res.booking.field;
-      if (!fieldUsesInstantBooking(fld)) return false;
-      return API.bookings.updateStatus(String(bookingId), 'CONFIRMED').then(function () { return true; });
-    })
-    .catch(function (e) {
-      console.warn('Auto-confirm booking failed', e);
-      return false;
-    });
+  return Promise.resolve(false);
 }
 
 // Show booking confirmation message
@@ -2697,146 +2692,87 @@ function markOrganizerCoveredLeftSharePayment(bookingId, coverLeftShare) {
 }
 
 function processPayment(paymentData) {
-  // In a real app, this would send payment data to a secure payment gateway
+  // Card fields are validated client-side only for UX; they are NEVER sent to the API.
   const num = (paymentData && paymentData.cardNumber) ? String(paymentData.cardNumber).replace(/\D/g, '') : '';
   const cardLast4 = num.length >= 4 ? num.slice(-4) : '----';
-  console.log('Processing payment:', {
+  console.log('Processing payment (manual settle):', {
     amount: paymentState.amount,
     bookingId: paymentState.bookingId,
-    // Never log actual card details in production
-    cardLast4: cardLast4,
-    cardholderName: paymentData && paymentData.cardholderName
+    cardLast4: cardLast4
   });
 
-  let updatedBooking = null;
-  let bookingForConfirm = null;
-  let bookingsArrayForSave = null;
+  const bookingId = String(paymentState.bookingId || '');
+  if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.manualSettle) {
+    alert('Unable to settle payment on the server. Please refresh and try again.');
+    return;
+  }
+
   const isCoveringLeftShare = !!paymentState.coverLeftShare;
 
-  // Update booking payment status (paying for an EXISTING booking - do NOT create a new one)
-  if (paymentState.booking) {
-    if (isCoveringLeftShare) {
-      markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
-    } else if (paymentState.isOrganizer) {
-      paymentState.booking.organizerPaymentStatus = 'paid';
-      var organizerPaidKey = 'organizerPaidBookings';
-      var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
-      organizerPaid[String(paymentState.bookingId)] = true;
-      localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
-    } else {
-      // Update player payment status
-      const playerData = getPlayerData();
-      const uid = String((playerData && (playerData.id || playerData._id)) || '');
-      const players = paymentState.booking.players || paymentState.booking.participants || [];
-      const player = players.find(function (p) {
-        return participantRecordUserId(p) === uid;
-      });
-      if (player) {
-        player.paymentStatus = 'paid';
-      }
-      // Notify organizer that participant paid
-      notifyOrganizerOfPayment(paymentState.booking, playerData, paymentState.amount);
-      // Store in dedicated key so refresh always shows paid (works with API + localStorage)
-      var paidKey = 'playerPaidBookings';
-      var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
-      paid[String(paymentState.bookingId) + '_' + uid] = true;
-      localStorage.setItem(paidKey, JSON.stringify(paid));
-    }
-
-    // Persist to localStorage (merge into playerBookings so refresh shows updated status)
-    const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    const idx = allBookings.findIndex(b => String(b.id) === String(paymentState.bookingId));
-    if (idx !== -1) {
-      applyPaymentStateOntoStoredBooking(allBookings[idx], paymentState.booking);
-    } else {
-      allBookings.push(compactBookingForStorage(paymentState.booking));
-    }
-    persistPlayerBookings(allBookings);
-    // Do NOT call saveBookingAndSendInvitations - that creates a NEW booking and causes duplicates
-    bookingForConfirm = paymentState.booking;
-    bookingsArrayForSave = allBookings;
-    updatedBooking = paymentState.booking;
-  } else if (paymentState.bookingId) {
-    // Update existing booking
-    const bookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
-    const bookingIndex = bookings.findIndex(function (b) {
-      return String(b.id) === String(paymentState.bookingId);
-    });
-    
-    if (bookingIndex !== -1) {
-      const booking = bookings[bookingIndex];
-      
+  API.bookings
+    .manualSettle(bookingId)
+    .then(function (settleRes) {
+      const updatedBooking = (settleRes && settleRes.booking) || paymentState.booking;
       if (isCoveringLeftShare) {
-        markOrganizerCoveredLeftSharePayment(paymentState.bookingId, paymentState.coverLeftShare);
-      } else if (paymentState.isOrganizer) {
-        booking.organizerPaymentStatus = 'paid';
-        var organizerPaidKey = 'organizerPaidBookings';
-        var organizerPaid = JSON.parse(localStorage.getItem(organizerPaidKey) || '{}');
-        organizerPaid[String(paymentState.bookingId)] = true;
-        localStorage.setItem(organizerPaidKey, JSON.stringify(organizerPaid));
-      } else {
-        const playerData = getPlayerData();
-        const uid = String((playerData && (playerData.id || playerData._id)) || '');
-        const players = booking.players || booking.participants || [];
-        const player = players.find(function (p) {
-          return participantRecordUserId(p) === uid;
-        });
-        if (player) {
-          player.paymentStatus = 'paid';
-        }
-        // Notify organizer that participant paid
-        notifyOrganizerOfPayment(booking, playerData, paymentState.amount);
-        var paidKey = 'playerPaidBookings';
-        var paid = JSON.parse(localStorage.getItem(paidKey) || '{}');
-        paid[String(paymentState.bookingId) + '_' + uid] = true;
-        localStorage.setItem(paidKey, JSON.stringify(paid));
+        markOrganizerCoveredLeftSharePayment(bookingId, paymentState.coverLeftShare);
       }
 
-      persistPlayerBookings(bookings);
-      bookingForConfirm = booking;
-      bookingsArrayForSave = bookings;
-      updatedBooking = booking;
-    }
-  }
+      try {
+        const allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
+        const idx = allBookings.findIndex(function (b) {
+          return String(b.id) === bookingId;
+        });
+        if (idx !== -1 && updatedBooking) {
+          allBookings[idx] = Object.assign({}, allBookings[idx], updatedBooking);
+          persistPlayerBookings(allBookings);
+        }
+      } catch (_) {}
 
-  function finishPaymentFlow() {
-    closePaymentModal();
-    if (paymentState.booking) {
-      closeBookingModal();
-    }
-    alert(isCoveringLeftShare
-      ? 'Payment successful! Missing player share has been paid.'
-      : 'Payment successful! Your share has been paid.');
-    window.location.href = 'bookings.html';
-  }
+      function finishPaymentFlow() {
+        closePaymentModal();
+        if (paymentState.booking) {
+          closeBookingModal();
+        }
+        alert(
+          isCoveringLeftShare
+            ? 'Payment successful! Missing player share has been paid.'
+            : 'Payment successful! Your share has been paid.'
+        );
+        window.location.href = 'bookings.html';
+      }
 
-  if (
-    bookingForConfirm
-    && checkFullPayment(bookingForConfirm)
-    && !isBookingApprovedLocal(bookingForConfirm.status)
-  ) {
-    const fld = bookingForConfirm.field || {};
-    if (fieldUsesInstantBooking(fld)) {
-      var confirmBookingId = String(paymentState.bookingId || bookingIdString(bookingForConfirm) || '');
-      tryAutoConfirmPaidInstantBooking(confirmBookingId, bookingForConfirm)
-        .then(function (ok) {
-          if (ok) {
-            bookingForConfirm.status = 'CONFIRMED';
-            bookingForConfirm.confirmedAt = new Date().toISOString();
-            if (bookingsArrayForSave) {
-              persistPlayerBookings(bookingsArrayForSave);
-            }
-            showBookingConfirmation(bookingForConfirm, true);
-          }
-          notifyFieldOwner(bookingForConfirm);
-        })
-        .finally(finishPaymentFlow);
-      return;
-    }
-    notifyFieldOwner(bookingForConfirm);
-  }
+      const confirmed =
+        settleRes &&
+        (settleRes.confirmed ||
+          (updatedBooking &&
+            (updatedBooking.status === 'UPCOMING' ||
+              updatedBooking.status === 'CONFIRMED' ||
+              updatedBooking.statusRaw === 'CONFIRMED')));
 
-  finishPaymentFlow();
+      if (confirmed && updatedBooking) {
+        showBookingConfirmation(
+          Object.assign({}, updatedBooking, {
+            fieldName:
+              (updatedBooking.field && updatedBooking.field.name) ||
+              (paymentState.booking && paymentState.booking.fieldName) ||
+              'the field',
+            timeSlots: paymentState.booking && paymentState.booking.timeSlots
+              ? paymentState.booking.timeSlots
+              : [],
+            date: updatedBooking.date || (paymentState.booking && paymentState.booking.date),
+            totalCost: updatedBooking.totalCost,
+            paymentMethod: String(updatedBooking.paymentMethod || '').toLowerCase()
+          }),
+          true
+        );
+      }
+
+      finishPaymentFlow();
+    })
+    .catch(function (err) {
+      console.error('Server payment settle failed', err);
+      alert((err && err.message) || 'Payment could not be completed on the server.');
+    });
 }
 
 // Make functions available globally for use from other pages

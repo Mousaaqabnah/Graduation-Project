@@ -1,23 +1,186 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
-const { MongoClient, ObjectId } = require('mongodb');
+const { prisma } = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { isMongoObjectIdString, mongoUserSetFields } = require('../lib/mongoUserWrite');
-const { mongoFieldUpdateAndFetch, mongoFieldGetByIdPublicDetail } = require('../lib/mongoFieldWrite');
-const { mongoCreateMessageAndTouchConversation, mongoMarkMessageRead } = require('../lib/mongoMessageWrite');
-const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
+const { isUuid } = require('../lib/ids');
+const { createUserNotification } = require('../lib/notifications');
+const { writeAuditLog } = require('../lib/audit');
+const { serializeField, adminFieldSerializer } = require('../lib/serializers');
+const { toMajor } = require('../lib/money');
+const { createUniqueUsername } = require('../lib/username');
+const { createUniquePlayerCode } = require('../lib/playerCode');
 const { buildBookingRegionStats } = require('../lib/bookingRegionStats');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// All admin routes require authentication and ADMIN role
 router.use(authenticate);
 router.use(requireRole('ADMIN'));
 
-// Get dashboard stats
+const REPLY_TITLE = 'Reply from MatchField Support';
+
+const AUDIENCE_TO_ENUM = {
+  all: 'ALL',
+  players: 'PLAYERS',
+  owners: 'OWNERS',
+  admins: 'ADMINS',
+  private: 'PRIVATE'
+};
+
+const AUDIENCE_FROM_ENUM = {
+  ALL: 'all',
+  PLAYERS: 'players',
+  OWNERS: 'owners',
+  ADMINS: 'admins',
+  PRIVATE: 'private'
+};
+
+const CHANNEL_TO_ENUM = {
+  'in-app': 'IN_APP',
+  inapp: 'IN_APP',
+  email: 'EMAIL',
+  push: 'PUSH'
+};
+
+const fieldListInclude = {
+  images: { orderBy: { displayOrder: 'asc' } },
+  amenities: true,
+  highlights: true,
+  openingHours: true,
+  owner: { select: { id: true, fullName: true, email: true, avatarUrl: true, phone: true } }
+};
+
+function normalizeFieldModerationStatusFromQuery(q) {
+  const s = String(q || '').toLowerCase().trim();
+  if (s === 'pending') return 'PENDING';
+  if (s === 'approved') return 'APPROVED';
+  if (s === 'rejected') return 'REJECTED';
+  if (s === 'suspended') return 'SUSPENDED';
+  if (s === 'draft') return 'DRAFT';
+  return null;
+}
+
+function serializeAdminNotification(notification) {
+  const channels = Array.isArray(notification.channels)
+    ? notification.channels.map((row) => {
+        const ch = row.channel || row;
+        if (ch === 'IN_APP') return 'in-app';
+        if (ch === 'EMAIL') return 'email';
+        if (ch === 'PUSH') return 'push';
+        return String(ch).toLowerCase();
+      })
+    : ['in-app'];
+
+  return {
+    id: notification.id,
+    title: notification.title,
+    message: notification.message,
+    audience: AUDIENCE_FROM_ENUM[notification.audience] || String(notification.audience || '').toLowerCase(),
+    channels: channels.length ? channels : ['in-app'],
+    createdAt: notification.createdAt,
+    sentById: notification.createdById || null
+  };
+}
+
+function serializeSupportMessage(row) {
+  return {
+    id: row.id,
+    content: row.message,
+    createdAt: row.createdAt,
+    readAt: null,
+    sender: row.sender
+      ? {
+          id: row.sender.id,
+          fullName: row.sender.fullName,
+          avatar: row.sender.avatarUrl || null,
+          role: row.sender.role
+        }
+      : {
+          id: null,
+          fullName: 'Guest',
+          avatar: null,
+          role: null
+        }
+  };
+}
+
+function mapTicketToSubmissionBacklog(ticket) {
+  const fullName =
+    ticket.requester?.fullName ||
+    (ticket.email ? String(ticket.email).split('@')[0] : 'User');
+
+  return {
+    id: ticket.id,
+    fullName,
+    email: ticket.requester?.email || ticket.email || '',
+    phone: null,
+    topic: ticket.subject,
+    message: ticket.message,
+    userId: ticket.requesterId,
+    createdAt: ticket.createdAt,
+    adminSeenAt: ticket.status === 'OPEN' ? null : ticket.createdAt
+  };
+}
+
+async function findSupportTicket(ticketId) {
+  return prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    include: {
+      requester: { select: { id: true, fullName: true, email: true } }
+    }
+  });
+}
+
+async function notifySupportRequester(ticket, adminId, content) {
+  if (!ticket?.requesterId) return;
+  try {
+    await createUserNotification({
+      title: REPLY_TITLE,
+      message: content,
+      type: 'SUPPORT',
+      audience: 'PRIVATE',
+      targetUserId: ticket.requesterId,
+      sentById: adminId
+    });
+  } catch (err) {
+    console.warn('Admin support notify error:', err);
+  }
+}
+
+async function createAdminSupportReply(ticketId, adminId, content) {
+  const ticket = await findSupportTicket(ticketId);
+  if (!ticket) return null;
+
+  const message = await prisma.$transaction(async (tx) => {
+    const created = await tx.supportMessage.create({
+      data: {
+        ticketId,
+        senderId: adminId,
+        message: String(content),
+        isInternal: false
+      },
+      include: {
+        sender: { select: { id: true, fullName: true, avatarUrl: true, role: true } }
+      }
+    });
+
+    await tx.supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        assignedToId: adminId,
+        status: ticket.status === 'OPEN' ? 'IN_PROGRESS' : ticket.status,
+        updatedAt: new Date()
+      }
+    });
+
+    return created;
+  });
+
+  await notifySupportRequester(ticket, adminId, content);
+  return serializeSupportMessage(message);
+}
+
+// GET /stats
 router.get('/stats', async (req, res) => {
   try {
     const now = Date.now();
@@ -34,20 +197,22 @@ router.get('/stats', async (req, res) => {
       totalRevenue,
       revenueLastWeek
     ] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({ where: { deletedAt: null } }),
       prisma.user.count({
-        where: { createdAt: { gte: sevenDaysAgo } }
+        where: { deletedAt: null, createdAt: { gte: sevenDaysAgo } }
       }),
       prisma.user.count({
         where: {
           role: 'OWNER',
-          verificationStatus: 'APPROVED'
+          deletedAt: null,
+          ownerProfile: { verificationStatus: 'APPROVED' }
         }
       }),
       prisma.user.count({
         where: {
           role: 'OWNER',
-          verificationStatus: 'PENDING'
+          deletedAt: null,
+          ownerProfile: { verificationStatus: 'PENDING' }
         }
       }),
       prisma.booking.count({
@@ -74,11 +239,14 @@ router.get('/stats', async (req, res) => {
       })
     ]);
 
-    const rev7 = totalRevenue._sum.totalCost || 0;
-    const revPrev = revenueLastWeek._sum.totalCost || 0;
-    const bookingsPercent = bookingsLastWeek > 0
-      ? Math.round(((recentBookings - bookingsLastWeek) / bookingsLastWeek) * 100)
-      : recentBookings > 0 ? 100 : 0;
+    const rev7 = toMajor(totalRevenue._sum.totalCost || 0);
+    const revPrev = toMajor(revenueLastWeek._sum.totalCost || 0);
+    const bookingsPercent =
+      bookingsLastWeek > 0
+        ? Math.round(((recentBookings - bookingsLastWeek) / bookingsLastWeek) * 100)
+        : recentBookings > 0
+          ? 100
+          : 0;
 
     res.json({
       stats: {
@@ -98,11 +266,9 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Bar chart data: all bookings grouped by field region (admin dashboard)
+// GET /bookings/region-stats
 router.get('/bookings/region-stats', async (req, res) => {
   try {
-    // Load field ids only — some DB rows may reference deleted fields; including `field`
-    // would make Prisma throw "got null instead" for required relation reads.
     const bookings = await prisma.booking.findMany({
       select: { fieldId: true }
     });
@@ -122,152 +288,189 @@ router.get('/bookings/region-stats', async (req, res) => {
   }
 });
 
-// Verify owner
-router.put('/verify-owner/:userId', [
-  body('verificationStatus').isIn(['APPROVED', 'REJECTED']),
-  body('reason').optional()
-], async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { verificationStatus, reason } = req.body;
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const idTrim = typeof userId === 'string' ? userId.trim() : '';
-    if (!isMongoObjectIdString(idTrim)) {
-      return res.status(400).json({ error: 'Invalid user id' });
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: idTrim },
-      select: {
-        id: true,
-        role: true,
-        fullName: true,
-        verificationStatus: true
-      }
-    });
-    if (!currentUser || String(currentUser.role || '').toUpperCase() !== 'OWNER') {
-      return res.status(404).json({ error: 'Owner not found' });
-    }
-    if (String(currentUser.verificationStatus || '').toUpperCase() !== 'PENDING') {
-      return res.status(400).json({ error: 'Only pending owner verifications can be reviewed' });
-    }
-
-    const matched = await mongoUserSetFields(idTrim, {
-      verification_status: verificationStatus,
-      verified_at: verificationStatus === 'APPROVED' ? new Date() : null
-    });
-    if (!matched) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: idTrim },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        verificationStatus: true,
-        verifiedAt: true
-      }
-    });
-
-    // Notify owner about verification decision (best effort).
+// PUT /verify-owner/:userId
+router.put(
+  '/verify-owner/:userId',
+  [body('verificationStatus').isIn(['APPROVED', 'REJECTED']), body('reason').optional()],
+  async (req, res) => {
     try {
-      if (isMongoObjectIdString(String(idTrim)) && isMongoObjectIdString(String(req.user.id))) {
-        const mongo = new MongoClient(process.env.DATABASE_URL);
-        await mongo.connect();
-        try {
-          const db = mongo.db();
-          const notificationsCol = db.collection('notifications');
-          const userNotificationsCol = db.collection('user_notifications');
-          const now = new Date();
-          const ownerName = (user && user.fullName) || (currentUser && currentUser.fullName) || 'Owner';
-          const title = verificationStatus === 'APPROVED'
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
+      if (!isUuid(userId)) {
+        return res.status(400).json({ error: 'Invalid user id' });
+      }
+
+      const { verificationStatus, reason } = req.body;
+
+      const owner = await prisma.user.findFirst({
+        where: { id: userId, role: 'OWNER', deletedAt: null },
+        include: { ownerProfile: true }
+      });
+
+      if (!owner || !owner.ownerProfile) {
+        return res.status(404).json({ error: 'Owner not found' });
+      }
+
+      if (owner.ownerProfile.verificationStatus !== 'PENDING') {
+        return res.status(400).json({ error: 'Only pending owner verifications can be reviewed' });
+      }
+
+      const latestVerification = await prisma.ownerVerification.findFirst({
+        where: { ownerId: userId, status: 'PENDING' },
+        orderBy: { submittedAt: 'desc' }
+      });
+
+      const now = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        await tx.ownerProfile.update({
+          where: { userId },
+          data: {
+            verificationStatus,
+            verifiedAt: verificationStatus === 'APPROVED' ? now : null
+          }
+        });
+
+        if (latestVerification) {
+          await tx.ownerVerification.update({
+            where: { id: latestVerification.id },
+            data: {
+              status: verificationStatus,
+              reviewedById: req.user.id,
+              reviewedAt: now,
+              rejectionReason: verificationStatus === 'REJECTED' ? (reason || null) : null
+            }
+          });
+        }
+      });
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { ownerProfile: true }
+      });
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        action: verificationStatus === 'APPROVED' ? 'APPROVE' : 'REJECT',
+        entityType: 'OwnerProfile',
+        entityId: userId,
+        metadata: { verificationStatus, reason: reason || null },
+        req
+      });
+
+      try {
+        const ownerName = user?.fullName || 'Owner';
+        const title =
+          verificationStatus === 'APPROVED'
             ? 'Owner verification approved'
             : 'Owner verification rejected';
-          const message = verificationStatus === 'APPROVED'
+        const message =
+          verificationStatus === 'APPROVED'
             ? `Hi ${ownerName}, your owner account has been verified. You can now fully use owner features.`
             : `Hi ${ownerName}, your owner verification was rejected.${reason ? ` Reason: ${String(reason)}` : ''}`;
 
-          const inserted = await notificationsCol.insertOne({
-            title,
-            message,
-            audience: 'private',
-            channels: ['in-app'],
-            target_user_id: new ObjectId(String(idTrim)),
-            sent_by_id: new ObjectId(String(req.user.id)),
-            created_at: now
-          });
-
-          await userNotificationsCol.insertOne({
-            user_id: new ObjectId(String(idTrim)),
-            notification_id: inserted.insertedId,
-            read_at: null,
-            created_at: now
-          });
-        } finally {
-          await mongo.close();
-        }
+        await createUserNotification({
+          title,
+          message,
+          type: 'VERIFICATION',
+          audience: 'PRIVATE',
+          targetUserId: userId,
+          sentById: req.user.id
+        });
+      } catch (notifyErr) {
+        console.warn('Could not notify owner after verification review:', notifyErr);
       }
-    } catch (notifyErr) {
-      console.warn('Could not notify owner after verification review:', notifyErr);
+
+      res.json({
+        message: 'Owner verification updated',
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          verificationStatus: user.ownerProfile?.verificationStatus || verificationStatus,
+          verifiedAt: user.ownerProfile?.verifiedAt || null
+        }
+      });
+    } catch (error) {
+      console.error('Verify owner error:', error);
+      res.status(500).json({ error: 'Failed to verify owner' });
     }
-
-    res.json({ message: 'Owner verification updated', user });
-  } catch (error) {
-    console.error('Verify owner error:', error);
-    res.status(500).json({ error: 'Failed to verify owner' });
   }
-});
+);
 
-// Get pending verifications
+// GET /verifications
 router.get('/verifications', async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
 
-    const [users, total] = await Promise.all([
+    const where = {
+      role: 'OWNER',
+      deletedAt: null,
+      OR: [
+        { ownerProfile: { verificationStatus: 'PENDING' } },
+        { verificationRequests: { some: { status: 'PENDING' } } }
+      ]
+    };
+
+    const [owners, total] = await Promise.all([
       prisma.user.findMany({
-        where: {
-          role: 'OWNER',
-          verificationStatus: 'PENDING'
-        },
+        where,
         skip,
-        take: parseInt(limit),
+        take: limit,
+        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           email: true,
           fullName: true,
           phone: true,
           location: true,
-          idFrontUrl: true,
-          idBackUrl: true,
-          verificationStatus: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.user.count({
-        where: {
-          role: 'OWNER',
-          verificationStatus: 'PENDING'
+          status: true,
+          createdAt: true,
+          ownerProfile: { select: { verificationStatus: true } },
+          verificationRequests: {
+            where: { status: 'PENDING' },
+            orderBy: { submittedAt: 'desc' },
+            take: 1,
+            include: { documents: true }
+          }
         }
-      })
+      }),
+      prisma.user.count({ where })
     ]);
+
+    const users = owners.map((owner) => {
+      const verification = owner.verificationRequests[0] || null;
+      const front = verification?.documents?.find((d) => d.type === 'ID_FRONT');
+      const back = verification?.documents?.find((d) => d.type === 'ID_BACK');
+
+      return {
+        id: owner.id,
+        email: owner.email,
+        fullName: owner.fullName,
+        phone: owner.phone,
+        location: owner.location,
+        status: owner.status,
+        verificationStatus: owner.ownerProfile?.verificationStatus || 'PENDING',
+        idFrontUrl: front?.storagePath || null,
+        idBackUrl: back?.storagePath || null,
+        createdAt: owner.createdAt
+      };
+    });
 
     res.json({
       users,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
@@ -276,274 +479,240 @@ router.get('/verifications', async (req, res) => {
   }
 });
 
-// Get notifications sent by admin (for Recent notifications)
-// Excludes Contact Us / Messages reply notifications - only shows broadcast notifications from Send notification
-// Excludes user-to-user chat alerts: those reuse the same collection with sentById = non-admin sender (see routes/messages.js)
-const REPLY_TITLE = 'Reply from MatchField Support';
+// GET /notifications
 router.get('/notifications', async (req, res) => {
   try {
-    const { limit = 20 } = req.query;
-    const take = parseInt(limit) || 20;
+    const take = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const admins = await prisma.user.findMany({
       where: { role: 'ADMIN' },
       select: { id: true }
     });
     const adminIds = admins.map((a) => a.id);
+
     const notifications = await prisma.notification.findMany({
       where: {
         title: { not: REPLY_TITLE },
-        OR: [{ sentById: null }, { sentById: { in: adminIds } }]
+        OR: [{ createdById: null }, { createdById: { in: adminIds } }]
       },
       orderBy: { createdAt: 'desc' },
-      take
+      take,
+      include: { channels: true }
     });
-    res.json({ notifications });
+
+    res.json({ notifications: notifications.map(serializeAdminNotification) });
   } catch (error) {
     console.error('Get admin notifications error:', error);
     res.status(500).json({ error: 'Failed to fetch notifications' });
   }
 });
 
-// Send notification to users (in-app; one-way, no reply)
-router.post('/notifications/send', [
-  body('title').trim().notEmpty(),
-  body('message').trim().notEmpty(),
-  body('audience').isIn(['all', 'players', 'owners', 'admins', 'private']),
-  body('channels').optional().isArray(),
-  body('targetUserId').optional().isString()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { title, message, audience, channels = ['in-app'], targetUserId } = req.body;
-
-    let userIds = [];
-
-    if (audience === 'private') {
-      if (!targetUserId) {
-        return res.status(400).json({ error: 'targetUserId is required for private notifications' });
+// POST /notifications/send
+router.post(
+  '/notifications/send',
+  [
+    body('title').trim().notEmpty(),
+    body('message').trim().notEmpty(),
+    body('audience').isIn(['all', 'players', 'owners', 'admins', 'private']),
+    body('channels').optional().isArray(),
+    body('targetUserId').optional().isString()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
-      const user = await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: { id: true }
-      });
-      if (!user) {
-        return res.status(404).json({ error: 'Target user not found' });
-      }
-      userIds = [user.id];
-    } else {
-      const roleMap = {
-        all: null,
-        players: 'PLAYER',
-        owners: 'OWNER',
-        admins: 'ADMIN'
-      };
-      const role = roleMap[audience];
-      const where = role ? { role } : {};
-      const users = await prisma.user.findMany({
-        where,
-        select: { id: true }
-      });
-      userIds = users.map((u) => u.id);
-    }
 
-    if (userIds.length === 0) {
-      return res.status(400).json({ error: 'No users found for the selected audience' });
-    }
+      const { title, message, audience, channels = ['in-app'], targetUserId } = req.body;
+      const audienceEnum = AUDIENCE_TO_ENUM[audience];
+      let userIds = [];
 
-    const channelsArray = Array.isArray(channels) ? channels : ['in-app'];
-    const useInApp = channelsArray.some((c) => String(c).toLowerCase() === 'in-app');
-
-    if (!useInApp) {
-      return res.status(400).json({
-        error: 'In-app notification is required. Email channel is not implemented.'
-      });
-    }
-
-    // Use native Mongo writes to avoid Prisma Mongo transaction/replica-set requirement (P2031)
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    const db = mongo.db();
-    const notificationsCol = db.collection('notifications');
-    const userNotificationsCol = db.collection('user_notifications');
-
-    const now = new Date();
-    const notificationDoc = {
-      title,
-      message,
-      audience,
-      channels: channelsArray,
-      target_user_id: audience === 'private' && targetUserId ? new ObjectId(String(targetUserId)) : null,
-      sent_by_id: req.user && req.user.id ? new ObjectId(String(req.user.id)) : null,
-      created_at: now
-    };
-
-    const inserted = await notificationsCol.insertOne(notificationDoc);
-    const notificationId = inserted.insertedId;
-
-    if (userIds.length > 0) {
-      const userNotificationDocs = userIds.map((userId) => ({
-        user_id: new ObjectId(String(userId)),
-        notification_id: notificationId,
-        read_at: null,
-        created_at: now
-      }));
-      await userNotificationsCol.insertMany(userNotificationDocs, { ordered: false });
-    }
-
-    await mongo.close();
-
-    res.status(201).json({
-      success: true,
-      notification: {
-        id: String(notificationId),
-        title,
-        message,
-        audience,
-        channels: channelsArray,
-        recipientCount: userIds.length
-      }
-    });
-  } catch (error) {
-    console.error('Send notification error:', error);
-    res.status(500).json({ error: 'Failed to send notification' });
-  }
-});
-
-// Invite a new admin (creates account + returns temporary password)
-router.post('/invite-admin', [
-  body('email').trim().isEmail(),
-  body('fullName').optional().trim().isLength({ min: 1, max: 200 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const email = String(req.body.email).trim().toLowerCase();
-    const fullName = (req.body.fullName && String(req.body.fullName).trim()) || 'Admin';
-
-    // Use native Mongo driver for create to avoid Prisma Mongo transaction/replica-set limitations
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    const db = mongo.db();
-    const usersCol = db.collection('users');
-
-    const existing = await usersCol.findOne({ email });
-    if (existing) {
-      await mongo.close();
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // 12 chars, no confusing chars, easy to type
-    const tempPassword = Array.from({ length: 12 }, () => {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-      return chars[Math.floor(Math.random() * chars.length)];
-    }).join('');
-
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
-
-    const now = new Date();
-    const insertResult = await usersCol.insertOne({
-      email,
-      password_hash: passwordHash,
-      full_name: fullName,
-      role: 'ADMIN',
-      status: 'ACTIVE',
-      verification_status: null,
-      created_at: now,
-      updated_at: now
-    });
-
-    const insertedId = insertResult.insertedId;
-    const createdDoc = await usersCol.findOne(
-      { _id: insertedId },
-      {
-        projection: {
-          _id: 1,
-          email: 1,
-          full_name: 1,
-          role: 1,
-          status: 1,
-          created_at: 1
+      if (audience === 'private') {
+        const targetId = typeof targetUserId === 'string' ? targetUserId.trim() : '';
+        if (!isUuid(targetId)) {
+          return res.status(400).json({ error: 'Valid targetUserId is required for private notifications' });
         }
+        const user = await prisma.user.findFirst({
+          where: { id: targetId, deletedAt: null },
+          select: { id: true }
+        });
+        if (!user) {
+          return res.status(404).json({ error: 'Target user not found' });
+        }
+        userIds = [user.id];
+      } else {
+        const roleMap = {
+          all: null,
+          players: 'PLAYER',
+          owners: 'OWNER',
+          admins: 'ADMIN'
+        };
+        const role = roleMap[audience];
+        const users = await prisma.user.findMany({
+          where: {
+            deletedAt: null,
+            ...(role ? { role } : {})
+          },
+          select: { id: true }
+        });
+        userIds = users.map((u) => u.id);
       }
-    );
 
-    await mongo.close();
+      if (userIds.length === 0) {
+        return res.status(400).json({ error: 'No users found for the selected audience' });
+      }
 
-    const user = {
-      id: String(createdDoc._id),
-      email: createdDoc.email,
-      fullName: createdDoc.full_name || fullName,
-      role: createdDoc.role || 'ADMIN',
-      status: createdDoc.status || 'ACTIVE',
-      createdAt: createdDoc.created_at || now
-    };
+      const channelsArray = Array.isArray(channels) ? channels : ['in-app'];
+      const useInApp = channelsArray.some((c) => String(c).toLowerCase().replace(/_/g, '-') === 'in-app');
 
-    res.status(201).json({
-      message: 'Admin account created',
-      user,
-      tempPassword
-    });
-  } catch (error) {
-    console.error('Invite admin error:', error);
-    res.status(500).json({ error: 'Failed to invite admin' });
+      if (!useInApp) {
+        return res.status(400).json({
+          error: 'In-app notification is required. Email channel is not implemented.'
+        });
+      }
+
+      const deliveryChannels = [...new Set(channelsArray.map((c) => CHANNEL_TO_ENUM[String(c).toLowerCase()] || 'IN_APP'))];
+      const now = new Date();
+
+      const notification = await prisma.$transaction(async (tx) => {
+        const created = await tx.notification.create({
+          data: {
+            type: 'SYSTEM',
+            audience: audienceEnum,
+            title: String(title).slice(0, 180),
+            message: String(message),
+            createdById: req.user.id,
+            channels: {
+              create: deliveryChannels.map((channel) => ({
+                channel,
+                status: 'DELIVERED',
+                attemptedAt: now,
+                deliveredAt: now
+              }))
+            },
+            recipients: {
+              create: userIds.map((userId) => ({ userId }))
+            }
+          },
+          include: { channels: true }
+        });
+        return created;
+      });
+
+      res.status(201).json({
+        success: true,
+        notification: {
+          ...serializeAdminNotification(notification),
+          recipientCount: userIds.length
+        }
+      });
+    } catch (error) {
+      console.error('Send notification error:', error);
+      res.status(500).json({ error: 'Failed to send notification' });
+    }
   }
-});
+);
 
-// ------------------------
-// Fields moderation (Admin)
-// ------------------------
+// POST /invite-admin
+router.post(
+  '/invite-admin',
+  [
+    body('email').trim().isEmail(),
+    body('fullName').optional().trim().isLength({ min: 1, max: 200 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-function normalizeFieldModerationStatusFromQuery(q) {
-  const s = String(q || '').toLowerCase().trim();
-  if (s === 'pending') return 'PENDING';
-  if (s === 'approved') return 'APPROVED';
-  if (s === 'rejected') return 'REJECTED';
-  return null;
-}
+      const email = String(req.body.email).trim().toLowerCase();
+      const fullName = (req.body.fullName && String(req.body.fullName).trim()) || 'Admin';
 
-// List fields (includes pending/approved/rejected)
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+
+      const tempPassword = Array.from({ length: 12 }, () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        return chars[Math.floor(Math.random() * chars.length)];
+      }).join('');
+
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      const username = await createUniqueUsername(prisma, email.split('@')[0] || fullName);
+      const playerCode = await createUniquePlayerCode();
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          username,
+          passwordHash,
+          fullName,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          playerCode
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          status: true,
+          createdAt: true
+        }
+      });
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        action: 'CREATE',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { role: 'ADMIN', invited: true },
+        req
+      });
+
+      res.status(201).json({
+        message: 'Admin account created',
+        user,
+        tempPassword
+      });
+    } catch (error) {
+      console.error('Invite admin error:', error);
+      res.status(500).json({ error: 'Failed to invite admin' });
+    }
+  }
+);
+
+// GET /fields
 router.get('/fields', async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, sport, search } = req.query;
-    const take = Math.min(200, Math.max(1, parseInt(limit) || 50));
-    const skip = (Math.max(1, parseInt(page) || 1) - 1) * take;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const skip = (page - 1) * take;
+    const { status, sport, search } = req.query;
 
-    const where = {};
+    const where = { deletedAt: null };
     const statusNorm = normalizeFieldModerationStatusFromQuery(status);
     if (statusNorm) {
-      // moderationStatus is optional; treat old data (null) as APPROVED if active
-      if (statusNorm === 'APPROVED') {
-        where.OR = [
-          { moderationStatus: 'APPROVED' },
-          { moderationStatus: null, isActive: true }
-        ];
-      } else if (statusNorm === 'PENDING') {
-        where.OR = [
-          { moderationStatus: 'PENDING' },
-          { moderationStatus: null, isActive: false }
-        ];
-      } else {
-        where.moderationStatus = statusNorm;
-      }
+      where.moderationStatus = statusNorm;
     }
-    if (sport) where.sport = String(sport);
+    if (sport) {
+      where.sport = String(sport);
+    }
     if (search) {
       const s = String(search);
-      where.AND = (where.AND || []).concat([{
-        OR: [
-          { name: { contains: s } },
-          { location: { contains: s } },
-          { owner: { fullName: { contains: s } } },
-          { owner: { email: { contains: s } } }
-        ]
-      }]);
+      where.AND = (where.AND || []).concat([
+        {
+          OR: [
+            { name: { contains: s, mode: 'insensitive' } },
+            { location: { contains: s, mode: 'insensitive' } },
+            { owner: { fullName: { contains: s, mode: 'insensitive' } } },
+            { owner: { email: { contains: s, mode: 'insensitive' } } }
+          ]
+        }
+      ]);
     }
 
     const [fields, total] = await Promise.all([
@@ -551,20 +720,16 @@ router.get('/fields', async (req, res) => {
         where,
         skip,
         take,
-        include: {
-          owner: {
-            select: { id: true, fullName: true, email: true, avatar: true }
-          }
-        },
+        include: fieldListInclude,
         orderBy: { createdAt: 'desc' }
       }),
       prisma.field.count({ where })
     ]);
 
     res.json({
-      fields,
+      fields: fields.map((field) => adminFieldSerializer(field)),
       pagination: {
-        page: Math.max(1, parseInt(page) || 1),
+        page,
         limit: take,
         total,
         pages: Math.ceil(total / take)
@@ -576,333 +741,149 @@ router.get('/fields', async (req, res) => {
   }
 });
 
-// Approve/reject a field
-router.put('/fields/:fieldId/moderation', [
-  body('status').isIn(['APPROVED', 'REJECTED']),
-  body('reason').optional().isString().isLength({ max: 500 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const fieldId = typeof req.params.fieldId === 'string' ? req.params.fieldId.trim() : '';
-    if (!isMongoObjectIdString(fieldId)) {
-      return res.status(400).json({ error: 'Invalid field id' });
-    }
-
-    const status = req.body.status;
-    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
-
-    const current = await mongoFieldGetByIdPublicDetail(fieldId);
-    if (!current) {
-      return res.status(404).json({ error: 'Field not found' });
-    }
-    const pendingChanges =
-      current.pendingChanges && typeof current.pendingChanges === 'object'
-        ? current.pendingChanges
-        : null;
-    const hasPendingChanges = !!(pendingChanges && Object.keys(pendingChanges).length > 0);
-
-    const apply = {
-      moderationStatus: status,
-      moderationReason: status === 'REJECTED' ? (reason || null) : null,
-      moderatedAt: new Date(),
-      moderatedById: req.user.id
-    };
-
-    if (status === 'APPROVED') {
-      if (hasPendingChanges) {
-        Object.assign(apply, pendingChanges);
-      }
-      apply.pendingChanges = null;
-      apply.pendingChangeRequestedAt = null;
-      apply.isActive = true;
-    } else if (status === 'REJECTED') {
-      apply.pendingChanges = null;
-      apply.pendingChangeRequestedAt = null;
-      // If this was an edit request on an already-live field, keep it active.
-      apply.isActive = hasPendingChanges ? current.isActive !== false : false;
-    }
-
-    const updateResult = await mongoFieldUpdateAndFetch(fieldId, apply);
-    if (!updateResult || !updateResult.matched || !updateResult.field) {
-      return res.status(404).json({ error: 'Field not found' });
-    }
-    const field = updateResult.field;
-
-    // Notify owner (native Mongo writes to avoid Prisma P2031 on standalone MongoDB)
+// PUT /fields/:fieldId/moderation
+router.put(
+  '/fields/:fieldId/moderation',
+  [
+    body('status').isIn(['APPROVED', 'REJECTED']),
+    body('reason').optional().isString().isLength({ max: 500 })
+  ],
+  async (req, res) => {
     try {
-      const title = status === 'APPROVED' ? 'Your field was approved' : 'Your field was rejected';
-      const message = status === 'APPROVED'
-        ? `Your field "${field.name}" is now visible to players.`
-        : `Your field "${field.name}" was rejected.${reason ? ` Reason: ${reason}` : ''}`;
-
-      if (isMongoObjectIdString(String(field.ownerId)) && isMongoObjectIdString(String(req.user.id))) {
-        const mongo = new MongoClient(process.env.DATABASE_URL);
-        await mongo.connect();
-        try {
-          const db = mongo.db();
-          const notificationsCol = db.collection('notifications');
-          const userNotificationsCol = db.collection('user_notifications');
-          const now = new Date();
-
-          const inserted = await notificationsCol.insertOne({
-            title,
-            message,
-            audience: 'private',
-            channels: ['in-app'],
-            target_user_id: new ObjectId(String(field.ownerId)),
-            sent_by_id: new ObjectId(String(req.user.id)),
-            created_at: now
-          });
-
-          await userNotificationsCol.insertOne({
-            user_id: new ObjectId(String(field.ownerId)),
-            notification_id: inserted.insertedId,
-            read_at: null,
-            created_at: now
-          });
-        } finally {
-          await mongo.close();
-        }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
-    } catch (e) {
-      console.warn('Could not notify field owner:', e);
-    }
 
-    res.json({ message: 'Field moderation updated', field });
-  } catch (error) {
-    console.error('Admin moderate field error:', error);
-    res.status(500).json({ error: 'Failed to update field status' });
-  }
-});
+      const fieldId = typeof req.params.fieldId === 'string' ? req.params.fieldId.trim() : '';
+      if (!isUuid(fieldId)) {
+        return res.status(400).json({ error: 'Invalid field id' });
+      }
 
-// ------------------------
-// Support inbox (Admin team)
-// ------------------------
+      const status = req.body.status;
+      const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+      const now = new Date();
 
-async function notifyInAppSupportRecipient(conv, adminId, content) {
-  const recipients = [String(conv.user1Id), String(conv.user2Id)].filter((id) => id !== String(adminId));
-  const recipientId = recipients[0];
-  if (!recipientId) return;
-  try {
-    await mongoCreateUserNotification({
-      title: 'Reply from MatchField Support',
-      message: content,
-      targetUserId: recipientId,
-      sentById: adminId
-    });
-  } catch (e) {
-    console.warn('Admin support notify error:', e);
-  }
-}
-
-async function mongoFindOrCreateSupportConversation(userId, adminId) {
-  const userIdStr = String(userId || '').trim();
-  const adminIdStr = String(adminId || '').trim();
-  if (!isMongoObjectIdString(userIdStr) || !isMongoObjectIdString(adminIdStr)) {
-    throw new Error('Invalid user or admin id');
-  }
-
-  const userOid = new ObjectId(userIdStr);
-  const adminOid = new ObjectId(adminIdStr);
-  const mongo = new MongoClient(process.env.DATABASE_URL);
-  await mongo.connect();
-  try {
-    const db = mongo.db();
-    const conversations = db.collection('conversations');
-    const now = new Date();
-    let doc = await conversations.findOne({
-      $or: [
-        { user1_id: userOid, user2_id: adminOid },
-        { user1_id: adminOid, user2_id: userOid }
-      ]
-    });
-
-    if (!doc) {
-      const inserted = await conversations.insertOne({
-        user1_id: userOid,
-        user2_id: adminOid,
-        is_support_thread: true,
-        created_at: now,
-        updated_at: now,
-        blocked_at: null,
-        starred_at: null
+      const current = await prisma.field.findFirst({
+        where: { id: fieldId, deletedAt: null },
+        select: { id: true, name: true, ownerId: true, moderationStatus: true, isActive: true }
       });
-      doc = await conversations.findOne({ _id: inserted.insertedId });
-    } else if (doc.is_support_thread !== true) {
-      await conversations.updateOne(
-        { _id: doc._id },
-        { $set: { is_support_thread: true, updated_at: now } }
-      );
-      doc = await conversations.findOne({ _id: doc._id });
+
+      if (!current) {
+        return res.status(404).json({ error: 'Field not found' });
+      }
+
+      const field = await prisma.field.update({
+        where: { id: fieldId },
+        data: {
+          moderationStatus: status,
+          moderationReason: status === 'REJECTED' ? reason || null : null,
+          moderatedAt: now,
+          moderatedById: req.user.id,
+          isActive: status === 'APPROVED' ? true : false
+        },
+        include: fieldListInclude
+      });
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        action: status === 'APPROVED' ? 'APPROVE' : 'REJECT',
+        entityType: 'Field',
+        entityId: fieldId,
+        metadata: { status, reason: reason || null },
+        req
+      });
+
+      try {
+        const title = status === 'APPROVED' ? 'Your field was approved' : 'Your field was rejected';
+        const notifyMessage =
+          status === 'APPROVED'
+            ? `Your field "${field.name}" is now visible to players.`
+            : `Your field "${field.name}" was rejected.${reason ? ` Reason: ${reason}` : ''}`;
+
+        await createUserNotification({
+          title,
+          message: notifyMessage,
+          type: 'FIELD_MODERATION',
+          audience: 'PRIVATE',
+          targetUserId: field.ownerId,
+          sentById: req.user.id
+        });
+      } catch (notifyErr) {
+        console.warn('Could not notify field owner:', notifyErr);
+      }
+
+      res.json({
+        message: 'Field moderation updated',
+        field: adminFieldSerializer(field)
+      });
+    } catch (error) {
+      console.error('Admin moderate field error:', error);
+      res.status(500).json({ error: 'Failed to update field status' });
     }
-
-    return {
-      id: String(doc._id),
-      user1Id: String(doc.user1_id),
-      user2Id: String(doc.user2_id),
-      isSupportThread: doc.is_support_thread === true
-    };
-  } finally {
-    await mongo.close();
   }
-}
+);
 
-async function mongoMessageCountForConversation(conversationId) {
-  const id = String(conversationId || '').trim();
-  if (!isMongoObjectIdString(id)) throw new Error('Invalid conversation id');
-  const mongo = new MongoClient(process.env.DATABASE_URL);
-  await mongo.connect();
-  try {
-    return await mongo.db().collection('messages').countDocuments({
-      conversation_id: new ObjectId(id)
-    });
-  } finally {
-    await mongo.close();
-  }
-}
+// ------------------------
+// Support inbox (SupportTicket)
+// ------------------------
 
-// List support conversations (shared inbox) + Contact form rows not yet linked to a thread
+// GET /support/conversations
 router.get('/support/conversations', async (req, res) => {
   try {
     const legacyLimit = parseInt(req.query.limit, 10);
-    const convTake = Math.min(
-      300,
-      Math.max(1, parseInt(req.query.conversationTake, 10) || (Number.isFinite(legacyLimit) ? legacyLimit : 80))
+    const subTake = Math.min(
+      200,
+      Math.max(
+        1,
+        parseInt(req.query.submissionTake, 10) ||
+          (Number.isFinite(legacyLimit) ? legacyLimit : 80)
+      )
     );
-    const subTake = Math.min(200, Math.max(1, parseInt(req.query.submissionTake, 10) || 80));
 
-    const conversations = await prisma.conversation.findMany({
-      where: { isSupportThread: true },
-      take: convTake,
+    const tickets = await prisma.supportTicket.findMany({
+      where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      take: subTake,
+      orderBy: { createdAt: 'desc' },
       include: {
-        user1: { select: { id: true, fullName: true, email: true, avatar: true, role: true } },
-        user2: { select: { id: true, fullName: true, email: true, avatar: true, role: true } },
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            readAt: true,
-            sender: { select: { id: true, fullName: true, avatar: true, role: true } }
-          }
-        }
-      },
-      orderBy: { updatedAt: 'desc' }
-    });
-
-    const admin = await prisma.user.findFirst({
-      where: { role: 'ADMIN' },
-      select: { id: true }
-    });
-
-    let submissionBacklog = [];
-    try {
-      const mongo = new MongoClient(process.env.DATABASE_URL);
-      await mongo.connect();
-      try {
-        const col = mongo.db().collection('support_contact_submissions');
-        const docs = await col
-          .find({
-            $or: [{ prisma_conversation_id: null }, { prisma_conversation_id: { $exists: false } }]
-          })
-          .sort({ created_at: -1 })
-          .limit(subTake)
-          .toArray();
-
-        const maxRepair = 40;
-        let repaired = 0;
-        for (const d of docs) {
-          let skipPush = false;
-          const userIdStr = d.user_id ? String(d.user_id) : null;
-          if (userIdStr && admin && repaired < maxRepair) {
-            const conv = await prisma.conversation.findFirst({
-              where: {
-                isSupportThread: true,
-                OR: [
-                  { user1Id: userIdStr, user2Id: admin.id },
-                  { user1Id: admin.id, user2Id: userIdStr }
-                ]
-              }
-            });
-            if (conv) {
-              const n = await prisma.message.count({ where: { conversationId: conv.id } });
-              if (n > 0) {
-                const existingContactMessage = await mongo.db().collection('messages').findOne({
-                  conversation_id: new ObjectId(String(conv.id)),
-                  sender_id: new ObjectId(userIdStr),
-                  content: { $regex: String(d.message || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
-                });
-                if (!existingContactMessage) {
-                  const contentParts = [];
-                  if (d.topic) contentParts.push(`Topic: ${d.topic}`);
-                  contentParts.push(String(d.message || ''));
-                  if (d.phone) contentParts.push(`Phone: ${d.phone}`);
-                  contentParts.push(`From: ${d.full_name} <${d.email}> (via Contact form)`);
-                  await mongoCreateMessageAndTouchConversation(conv.id, userIdStr, contentParts.join('\n\n'));
-                }
-                await col.updateOne(
-                  { _id: d._id },
-                  { $set: { prisma_conversation_id: String(conv.id) } }
-                );
-                skipPush = true;
-                repaired += 1;
-              }
-            }
-          }
-          if (skipPush) continue;
-
-          submissionBacklog.push({
-            id: String(d._id),
-            fullName: d.full_name,
-            email: d.email,
-            phone: d.phone || null,
-            topic: d.topic || null,
-            message: d.message,
-            userId: userIdStr,
-            createdAt: d.created_at || null,
-            adminSeenAt: d.admin_seen_at || null
-          });
-        }
-      } finally {
-        await mongo.close();
+        requester: { select: { id: true, fullName: true, email: true } }
       }
-    } catch (e) {
-      console.warn('Admin support: submission backlog load failed:', e);
-    }
+    });
 
-    res.json({ conversations, submissionBacklog });
+    res.json({
+      conversations: [],
+      submissionBacklog: tickets.map(mapTicketToSubmissionBacklog)
+    });
   } catch (error) {
     console.error('Admin support conversations error:', error);
     res.status(500).json({ error: 'Failed to fetch support conversations' });
   }
 });
 
-// Mark a Contact form backlog row as seen (no reply required)
+// PATCH /support/submission/:submissionId/seen
 router.patch('/support/submission/:submissionId/seen', async (req, res) => {
   try {
-    const { submissionId } = req.params;
-    if (!ObjectId.isValid(submissionId)) {
+    const submissionId =
+      typeof req.params.submissionId === 'string' ? req.params.submissionId.trim() : '';
+    if (!isUuid(submissionId)) {
       return res.status(400).json({ error: 'Invalid submission id' });
     }
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    try {
-      const r = await mongo.db().collection('support_contact_submissions').updateOne(
-        { _id: new ObjectId(submissionId) },
-        { $set: { admin_seen_at: new Date() } }
-      );
-      if (r.matchedCount === 0) {
-        return res.status(404).json({ error: 'Submission not found' });
-      }
-    } finally {
-      await mongo.close();
+
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: submissionId } });
+    if (!ticket) {
+      return res.status(404).json({ error: 'Submission not found' });
     }
+
+    if (ticket.status === 'OPEN') {
+      await prisma.supportTicket.update({
+        where: { id: submissionId },
+        data: {
+          status: 'IN_PROGRESS',
+          assignedToId: req.user.id
+        }
+      });
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Admin support submission seen error:', error);
@@ -910,34 +891,43 @@ router.patch('/support/submission/:submissionId/seen', async (req, res) => {
   }
 });
 
-// Get messages for a support conversation
+// GET /support/conversation/:conversationId/messages
 router.get('/support/conversation/:conversationId/messages', async (req, res) => {
   try {
-    const { conversationId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
-    const take = Math.min(200, Math.max(1, parseInt(limit) || 50));
-    const skip = (Math.max(1, parseInt(page) || 1) - 1) * take;
+    const conversationId =
+      typeof req.params.conversationId === 'string' ? req.params.conversationId.trim() : '';
+    if (!isUuid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
+    }
 
-    const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    if (!conv || !conv.isSupportThread) {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const take = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const skip = (page - 1) * take;
+
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: conversationId } });
+    if (!ticket) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
     const [messages, total] = await Promise.all([
-      prisma.message.findMany({
-        where: { conversationId },
+      prisma.supportMessage.findMany({
+        where: { ticketId: conversationId, isInternal: false },
         skip,
         take,
-        include: { sender: { select: { id: true, fullName: true, avatar: true, role: true } } },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'asc' },
+        include: {
+          sender: { select: { id: true, fullName: true, avatarUrl: true, role: true } }
+        }
       }),
-      prisma.message.count({ where: { conversationId } })
+      prisma.supportMessage.count({
+        where: { ticketId: conversationId, isInternal: false }
+      })
     ]);
 
     res.json({
-      messages: messages.reverse(),
+      messages: messages.map(serializeSupportMessage),
       pagination: {
-        page: Math.max(1, parseInt(page) || 1),
+        page,
         limit: take,
         total,
         pages: Math.ceil(total / take)
@@ -949,229 +939,107 @@ router.get('/support/conversation/:conversationId/messages', async (req, res) =>
   }
 });
 
-// Send reply in support conversation
-router.post('/support/conversation/:conversationId/messages', [
-  body('content').trim().notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { conversationId } = req.params;
-    const { content } = req.body;
-
-    const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    if (!conv || !conv.isSupportThread) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    const message = await mongoCreateMessageAndTouchConversation(conversationId, req.user.id, content);
-
-    await notifyInAppSupportRecipient(conv, req.user.id, content);
-
-    res.status(201).json({ message: 'Message sent', messageObj: message });
-  } catch (error) {
-    console.error('Admin support send message error:', error);
-    res.status(500).json({ error: 'Failed to send message' });
-  }
-});
-
-// First reply on a Contact form row that never reached Prisma (still in admin backlog)
-router.post('/support/submission/:submissionId/reply', [
-  body('content').trim().notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { submissionId } = req.params;
-    const { content } = req.body;
-
-    if (!ObjectId.isValid(submissionId)) {
-      return res.status(400).json({ error: 'Invalid submission id' });
-    }
-
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    let doc;
+// POST /support/conversation/:conversationId/messages
+router.post(
+  '/support/conversation/:conversationId/messages',
+  [body('content').trim().notEmpty()],
+  async (req, res) => {
     try {
-      doc = await mongo.db().collection('support_contact_submissions').findOne({ _id: new ObjectId(submissionId) });
-    } finally {
-      await mongo.close();
-    }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-    if (!doc) {
-      return res.status(404).json({ error: 'Submission not found' });
-    }
+      const conversationId =
+        typeof req.params.conversationId === 'string' ? req.params.conversationId.trim() : '';
+      if (!isUuid(conversationId)) {
+        return res.status(400).json({ error: 'Invalid conversation id' });
+      }
 
-    if (doc.prisma_conversation_id) {
-      const convId = String(doc.prisma_conversation_id);
-      const conv = await prisma.conversation.findUnique({ where: { id: convId } });
-      if (!conv || !conv.isSupportThread) {
+      const { content } = req.body;
+      const messageObj = await createAdminSupportReply(conversationId, req.user.id, content);
+      if (!messageObj) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
-      const message = await mongoCreateMessageAndTouchConversation(convId, req.user.id, content);
-      await notifyInAppSupportRecipient(conv, req.user.id, content);
-      return res.status(201).json({ message: 'Message sent', conversationId: convId, messageObj: message });
-    }
 
-    const userId = doc.user_id ? String(doc.user_id) : null;
-    if (!userId) {
-      return res.status(400).json({
-        error:
-          'This contact was not linked to a logged-in account, so a chat thread cannot be started. Use email or phone from the submission.'
+      res.status(201).json({ message: 'Message sent', messageObj });
+    } catch (error) {
+      console.error('Admin support send message error:', error);
+      res.status(500).json({ error: 'Failed to send message' });
+    }
+  }
+);
+
+// POST /support/submission/:submissionId/reply
+router.post(
+  '/support/submission/:submissionId/reply',
+  [body('content').trim().notEmpty()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const submissionId =
+        typeof req.params.submissionId === 'string' ? req.params.submissionId.trim() : '';
+      if (!isUuid(submissionId)) {
+        return res.status(400).json({ error: 'Invalid submission id' });
+      }
+
+      const { content } = req.body;
+      const messageObj = await createAdminSupportReply(submissionId, req.user.id, content);
+      if (!messageObj) {
+        return res.status(404).json({ error: 'Submission not found' });
+      }
+
+      res.status(201).json({
+        message: 'Reply sent',
+        conversationId: submissionId,
+        messageObj
       });
+    } catch (error) {
+      console.error('Admin support submission reply error:', error);
+      res.status(500).json({ error: 'Failed to send reply' });
     }
-
-    const adminId = req.user.id;
-
-    const conversation = await mongoFindOrCreateSupportConversation(userId, adminId);
-
-    const msgCount = await mongoMessageCountForConversation(conversation.id);
-    if (msgCount === 0) {
-      const contentParts = [];
-      if (doc.topic) contentParts.push(`Topic: ${doc.topic}`);
-      contentParts.push(String(doc.message));
-      if (doc.phone) contentParts.push(`Phone: ${doc.phone}`);
-      contentParts.push(`From: ${doc.full_name} <${doc.email}> (via Contact form)`);
-      await mongoCreateMessageAndTouchConversation(conversation.id, userId, contentParts.join('\n\n'));
-    }
-
-    const adminMsg = await mongoCreateMessageAndTouchConversation(conversation.id, adminId, content);
-
-    const mongo2 = new MongoClient(process.env.DATABASE_URL);
-    await mongo2.connect();
-    try {
-      await mongo2.db().collection('support_contact_submissions').updateOne(
-        { _id: new ObjectId(submissionId) },
-        { $set: { prisma_conversation_id: String(conversation.id) } }
-      );
-    } finally {
-      await mongo2.close();
-    }
-
-    await notifyInAppSupportRecipient(conversation, adminId, content);
-
-    res.status(201).json({
-      message: 'Reply sent',
-      conversationId: conversation.id,
-      messageObj: adminMsg
-    });
-  } catch (error) {
-    console.error('Admin support submission reply error:', error);
-    res.status(500).json({ error: 'Failed to send reply' });
   }
-});
+);
 
-// Mark a message read (native Mongo only — Prisma reads/writes can throw P2031 on standalone MongoDB)
+// PUT /support/conversation/:conversationId/messages/:messageId/read
 router.put('/support/conversation/:conversationId/messages/:messageId/read', async (req, res) => {
-  try {
-    const { conversationId, messageId } = req.params;
-    if (!ObjectId.isValid(conversationId) || !ObjectId.isValid(messageId)) {
-      return res.status(400).json({ error: 'Invalid conversation or message id' });
-    }
-
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    try {
-      const convDoc = await mongo.db().collection('conversations').findOne(
-        { _id: new ObjectId(conversationId) },
-        { projection: { is_support_thread: 1 } }
-      );
-      if (!convDoc || convDoc.is_support_thread === false) {
-        return res.status(404).json({ error: 'Conversation not found' });
-      }
-    } finally {
-      await mongo.close();
-    }
-
-    const result = await mongoMarkMessageRead(messageId, conversationId, req.user.id);
-    if (!result.ok && result.reason === 'not_found') {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-    if (!result.ok) {
-      return res.status(400).json({ error: 'Invalid message or conversation' });
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Admin support mark read error:', error);
-    res.status(500).json({ error: 'Failed to mark as read' });
-  }
+  res.json({ success: true });
 });
 
-// Star/unstar support conversation
+// PATCH /support/conversation/:conversationId/star
 router.patch('/support/conversation/:conversationId/star', async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const { starred } = req.body;
-    if (!ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ error: 'Invalid conversation id' });
-    }
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    try {
-      const result = await mongo.db().collection('conversations').updateOne(
-        { _id: new ObjectId(conversationId), is_support_thread: true },
-        { $set: { starred_at: starred ? new Date() : null, updated_at: new Date() } }
-      );
-      if (result.matchedCount === 0) return res.status(404).json({ error: 'Conversation not found' });
-    } finally {
-      await mongo.close();
-    }
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Admin support star error:', error);
-    res.status(500).json({ error: 'Failed to update star status' });
-  }
+  res.json({ success: true });
 });
 
-// Block/unblock support conversation (native Mongo write — Prisma updates need a replica set on MongoDB; see P2031)
+// PATCH /support/conversation/:conversationId/block
 router.patch('/support/conversation/:conversationId/block', async (req, res) => {
   try {
-    const { conversationId } = req.params;
-    const { blocked } = req.body;
-    if (!ObjectId.isValid(conversationId)) {
+    const conversationId =
+      typeof req.params.conversationId === 'string' ? req.params.conversationId.trim() : '';
+    if (!isUuid(conversationId)) {
       return res.status(400).json({ error: 'Invalid conversation id' });
     }
 
-    const existing = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { user1Id: true, user2Id: true, isSupportThread: true }
-    });
-    if (!existing || !existing.isSupportThread) {
+    const blocked = req.body.blocked !== false;
+    if (!blocked) {
+      return res.json({ success: true });
+    }
+
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: conversationId } });
+    if (!ticket) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    const mongo = new MongoClient(process.env.DATABASE_URL);
-    await mongo.connect();
-    try {
-      const result = await mongo.db().collection('conversations').updateOne(
-        { _id: new ObjectId(conversationId) },
-        {
-          $set: {
-            blocked_at: blocked ? new Date() : null,
-            updated_at: new Date(),
-            is_support_thread: true
-          }
-        }
-      );
-      if (result.matchedCount === 0) {
-        return res.status(404).json({ error: 'Conversation not found' });
+    await prisma.supportTicket.update({
+      where: { id: conversationId },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date()
       }
-    } finally {
-      await mongo.close();
-    }
-
-    const { emitConversationUpdate } = require('../lib/chatEvents');
-    emitConversationUpdate([existing.user1Id, existing.user2Id], {
-      conversationId,
-      type: 'support-blocked',
-      blocked: !!blocked
     });
 
     res.json({ success: true });
@@ -1182,4 +1050,3 @@ router.patch('/support/conversation/:conversationId/block', async (req, res) => 
 });
 
 module.exports = router;
-

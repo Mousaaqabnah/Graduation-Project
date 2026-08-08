@@ -3,6 +3,7 @@ node_modules/
 
 # Local uploads (chat attachments)
 uploads/
+storage/private/
 
 # Environment
 .env

@@ -18,12 +18,21 @@ const ALLOWED_MIME = new Set([
   'image/webp',
   'application/pdf'
 ]);
-const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+const MAX_SIZE = 8 * 1024 * 1024;
+
+const MIME_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf'
+};
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '') || '';
+    const mt = String(file.mimetype || '').toLowerCase();
+    const ext = MIME_EXT[mt] || '.bin';
     const safe = `${Date.now()}_${Math.random().toString(36).slice(2, 12)}${ext}`;
     cb(null, safe);
   }
@@ -55,8 +64,7 @@ router.post('/attachment', authenticate, (req, res) => {
 
   upload.single('file')(req, res, (err) => {
     if (err) {
-      const msg = err.message || 'Upload failed';
-      return res.status(400).json({ error: msg });
+      return res.status(400).json({ error: err.message || 'Upload failed' });
     }
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -65,6 +73,7 @@ router.post('/attachment', authenticate, (req, res) => {
     const publicUrl = `/uploads/chat/${req.file.filename}`;
     res.status(201).json({
       url: publicUrl,
+      storagePath: publicUrl,
       mimeType: req.file.mimetype,
       originalName: req.file.originalname || req.file.filename,
       size: req.file.size

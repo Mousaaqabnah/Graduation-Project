@@ -1,37 +1,53 @@
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../lib/prisma');
 
-const prisma = new PrismaClient();
+async function loadUser(userId, { allowSuspended = false } = {}) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      fullName: true,
+      role: true,
+      status: true,
+      avatarUrl: true,
+      playerCode: true,
+      deletedAt: true,
+      ownerProfile: {
+        select: { verificationStatus: true, verifiedAt: true }
+      }
+    }
+  });
 
-// Middleware to verify JWT token
+  if (!user || user.deletedAt) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    status: user.status,
+    avatar: user.avatarUrl,
+    avatarUrl: user.avatarUrl,
+    playerCode: user.playerCode,
+    verificationStatus: user.ownerProfile?.verificationStatus || null
+  };
+}
+
 const authenticate = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1]; // Bearer <token>
-    
+    const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Fetch user from database
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        status: true,
-        avatar: true,
-        verificationStatus: true
-      }
-    });
-
+    const user = await loadUser(decoded.userId);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
-
     if (user.status !== 'ACTIVE') {
       return res.status(403).json({ error: 'Account is suspended' });
     }
@@ -49,7 +65,6 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// Same as authenticate but allows suspended users (used for session read such as GET /auth/me).
 const authenticateAllowSuspended = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -57,10 +72,7 @@ const authenticateAllowSuspended = async (req, res, next) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, email: true, fullName: true, role: true, status: true, avatar: true }
-    });
+    const user = await loadUser(decoded.userId, { allowSuspended: true });
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
@@ -77,44 +89,32 @@ const authenticateAllowSuspended = async (req, res, next) => {
   }
 };
 
-// Middleware to check if user has specific role
 const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-
     const userRole = String(req.user.role || '').toUpperCase();
     const allowedRoles = roles.map((r) => String(r || '').toUpperCase());
-
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-
     next();
   };
 };
 
-// Middleware to check if user owns a resource or is admin
 const requireOwnerOrAdmin = async (req, res, next) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-
-    if (req.user.role === 'ADMIN') {
-      return next();
-    }
-
-    // Check if user owns the resource (this will be customized per route)
-    // For now, just pass through - individual routes will handle ownership checks
+    if (req.user.role === 'ADMIN') return next();
     next();
   } catch (error) {
     res.status(500).json({ error: 'Authorization error' });
   }
 };
 
-// If current user is OWNER, require approved verification to access protected actions.
 const requireVerifiedOwner = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required' });
@@ -130,11 +130,28 @@ const requireVerifiedOwner = (req, res, next) => {
   return next();
 };
 
+/** Attach req.user when a valid Bearer token is present; otherwise continue anonymously. */
+const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return next();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await loadUser(decoded.userId);
+    if (user && user.status === 'ACTIVE') {
+      req.user = user;
+    }
+    next();
+  } catch {
+    next();
+  }
+};
+
 module.exports = {
   authenticate,
   authenticateAllowSuspended,
+  optionalAuthenticate,
   requireRole,
   requireOwnerOrAdmin,
-  requireVerifiedOwner
+  requireVerifiedOwner,
+  loadUser
 };
-

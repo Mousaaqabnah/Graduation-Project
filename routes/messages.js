@@ -1,19 +1,20 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { mongoGetOrCreateConversation } = require('../lib/mongoConversation');
+const { isUuid } = require('../lib/ids');
 const {
-  mongoCreateMessageAndTouchConversation,
-  mongoUnreadCount,
-  mongoMarkMessageRead,
-  mongoMarkAllUnreadAsRead,
-  mongoConversationViewerMeta,
-  mongoConversationGlobalBlockActive,
-  mongoConversationSetStarred,
-  mongoConversationSetBlocked
-} = require('../lib/mongoMessageWrite');
-const { mongoCreateUserNotification } = require('../lib/mongoNotificationWrite');
+  getOrCreateDirectConversation,
+  mapConversationLegacy,
+  mapMessageLegacy,
+  createMessage,
+  unreadCount,
+  markAllRead,
+  setStarred,
+  setBlockedGlobal,
+  viewerMeta,
+  isParticipant
+} = require('../lib/chatService');
+const { createUserNotification } = require('../lib/notifications');
 const {
   emitMessageNew,
   emitConversationUpdate,
@@ -22,7 +23,6 @@ const {
 } = require('../lib/chatEvents');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function denyChatForUnverifiedOwner(req, res) {
   if (!req.user) return false;
@@ -35,74 +35,55 @@ function denyChatForUnverifiedOwner(req, res) {
   return false;
 }
 
-async function enrichConversationsWithUnread(conversations, viewerId) {
+async function enrichConversations(conversations, viewerId) {
   const out = [];
   for (const c of conversations) {
-    const [unreadCount, viewerMeta] = await Promise.all([
-      mongoUnreadCount(c.id, viewerId),
-      mongoConversationViewerMeta(c.id, viewerId)
+    const [count, meta] = await Promise.all([
+      unreadCount(c.id, viewerId),
+      viewerMeta(c.id, viewerId)
     ]);
     out.push({
       ...c,
-      unreadCount,
-      starredAt: viewerMeta.starredAt || null,
-      blockedAt: viewerMeta.blockedAt || null
+      unreadCount: count,
+      starredAt: meta.starredAt || null,
+      blockedAt: c.blockedAt || null
     });
   }
   return out;
 }
 
-// Get user's conversations
 router.get('/conversations', authenticate, async (req, res) => {
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
-    const conversations = await prisma.conversation.findMany({
+
+    const rows = await prisma.conversation.findMany({
       where: {
-        OR: [{ user1Id: req.user.id }, { user2Id: req.user.id }]
+        participants: { some: { userId: req.user.id, leftAt: null } }
       },
       take: 500,
+      orderBy: { updatedAt: 'desc' },
       include: {
-        user1: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            avatar: true,
-            role: true
-          }
-        },
-        user2: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            avatar: true,
-            role: true
+        participants: {
+          include: {
+            user: {
+              select: { id: true, fullName: true, email: true, avatarUrl: true, role: true }
+            }
           }
         },
         messages: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: {
-            id: true,
-            content: true,
-            attachments: true,
-            createdAt: true,
-            readAt: true,
-            sender: {
-              select: {
-                id: true,
-                fullName: true,
-                avatar: true
-              }
-            }
+          include: {
+            sender: { select: { id: true, fullName: true, avatarUrl: true } },
+            attachments: true
           }
         }
-      },
-      orderBy: { updatedAt: 'desc' }
+      }
     });
 
-    const enriched = await enrichConversationsWithUnread(conversations, req.user.id);
+    const mapped = rows.map((c) => mapConversationLegacy(c, req.user.id));
+    const enriched = await enrichConversations(mapped, req.user.id);
     res.json({ conversations: enriched });
   } catch (error) {
     console.error('Get conversations error:', error);
@@ -114,30 +95,19 @@ router.get('/conversation/:userId', authenticate, async (req, res) => {
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const otherId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
-    const meId = String(req.user.id);
-
-    let result;
-    try {
-      result = await mongoGetOrCreateConversation(meId, otherId);
-    } catch (err) {
-      console.error('Get conversation error:', err);
-      return res.status(500).json({ error: 'Failed to get conversation' });
-    }
-
+    const result = await getOrCreateDirectConversation(req.user.id, otherId);
     if (!result.ok) {
       return res.status(result.status || 500).json({ error: result.error || 'Failed to get conversation' });
     }
-
-    const [unreadCount, viewerMeta] = await Promise.all([
-      mongoUnreadCount(result.conversation.id, meId),
-      mongoConversationViewerMeta(result.conversation.id, meId)
+    const [count, meta] = await Promise.all([
+      unreadCount(result.conversation.id, req.user.id),
+      viewerMeta(result.conversation.id, req.user.id)
     ]);
     res.json({
       conversation: {
         ...result.conversation,
-        unreadCount,
-        starredAt: viewerMeta.starredAt || null,
-        blockedAt: viewerMeta.blockedAt || null
+        unreadCount: count,
+        starredAt: meta.starredAt || null
       }
     });
   } catch (error) {
@@ -150,25 +120,20 @@ router.get('/conversation/:conversationId/messages', authenticate, async (req, r
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
-    const { page = 1, limit = 50, before } = req.query;
-    const take = Math.min(parseInt(limit, 10) || 50, 100);
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+    if (!isUuid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
     }
-
-    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+    if (!(await isParticipant(conversationId, req.user.id))) {
       return res.status(403).json({ error: 'Access denied' });
     }
+
+    const { page = 1, limit = 50, before } = req.query;
+    const take = Math.min(parseInt(limit, 10) || 50, 100);
 
     let messages;
     let total;
 
-    if (before && typeof before === 'string' && before.length === 24) {
+    if (before && isUuid(before)) {
       const cursorMsg = await prisma.message.findFirst({
         where: { id: before, conversationId }
       });
@@ -178,37 +143,28 @@ router.get('/conversation/:conversationId/messages', authenticate, async (req, r
       messages = await prisma.message.findMany({
         where: {
           conversationId,
+          deletedAt: null,
           createdAt: { lt: cursorMsg.createdAt }
         },
         take,
         include: {
-          sender: {
-            select: {
-              id: true,
-              fullName: true,
-              avatar: true
-            }
-          }
+          sender: { select: { id: true, fullName: true, avatarUrl: true } },
+          attachments: true
         },
         orderBy: { createdAt: 'desc' }
       });
       messages.reverse();
-      total = await prisma.message.count({ where: { conversationId } });
+      total = await prisma.message.count({ where: { conversationId, deletedAt: null } });
     } else {
       const skip = (parseInt(page, 10) - 1) * take;
-      total = await prisma.message.count({ where: { conversationId } });
+      total = await prisma.message.count({ where: { conversationId, deletedAt: null } });
       messages = await prisma.message.findMany({
-        where: { conversationId },
+        where: { conversationId, deletedAt: null },
         skip,
         take,
         include: {
-          sender: {
-            select: {
-              id: true,
-              fullName: true,
-              avatar: true
-            }
-          }
+          sender: { select: { id: true, fullName: true, avatarUrl: true } },
+          attachments: true
         },
         orderBy: { createdAt: 'desc' }
       });
@@ -216,7 +172,7 @@ router.get('/conversation/:conversationId/messages', authenticate, async (req, r
     }
 
     res.json({
-      messages,
+      messages: messages.map(mapMessageLegacy),
       pagination: {
         page: before ? null : parseInt(page, 10),
         limit: take,
@@ -235,40 +191,31 @@ router.post('/conversation/:conversationId/messages', authenticate, async (req, 
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
+    if (!isUuid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
+    }
+
     const content = req.body.content != null ? String(req.body.content).trim() : '';
     const attachments = Array.isArray(req.body.attachments) ? req.body.attachments : null;
-
-    if (!content && (!attachments || attachments.length === 0)) {
+    if (!content && (!attachments || !attachments.length)) {
       return res.status(400).json({ error: 'Message text or attachments required' });
     }
 
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+    if (!(await isParticipant(conversationId, req.user.id))) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const roleUpper = String(req.user.role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN') {
-      const prismaBlocked = !!conversation.blockedAt;
-      const mongoGlobalBlocked = await mongoConversationGlobalBlockActive(conversationId);
-      if (prismaBlocked || mongoGlobalBlocked) {
-        return res.status(403).json({
-          error:
-            'This conversation has been restricted by support. You cannot send new messages here.'
-        });
-      }
-    }
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { participants: true }
+    });
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
 
-    const viewerMeta = await mongoConversationViewerMeta(conversationId, req.user.id);
-    if (viewerMeta && viewerMeta.blockedAt) {
-      return res.status(403).json({ error: 'This conversation is blocked' });
+    if (String(req.user.role || '').toUpperCase() !== 'ADMIN' && conversation.blockedAt) {
+      return res.status(403).json({
+        error:
+          'This conversation has been restricted by support. You cannot send new messages here.'
+      });
     }
 
     const sanitizedAttachments =
@@ -283,44 +230,42 @@ router.post('/conversation/:conversationId/messages', authenticate, async (req, 
         }))
         .filter((a) => a.url.startsWith('/uploads/'));
 
-    const message = await mongoCreateMessageAndTouchConversation(
+    const message = await createMessage({
       conversationId,
-      req.user.id,
+      senderId: req.user.id,
       content,
-      sanitizedAttachments && sanitizedAttachments.length ? sanitizedAttachments : null
-    );
+      attachments: sanitizedAttachments
+    });
 
-    const recipientId =
-      conversation.user1Id === req.user.id ? conversation.user2Id : conversation.user1Id;
-    const previewText = content || (sanitizedAttachments && sanitizedAttachments.length ? '📎 Attachment' : '');
+    const recipientIds = conversation.participants
+      .map((p) => p.userId)
+      .filter((id) => String(id) !== String(req.user.id));
 
-    const recipientMeta = await mongoConversationViewerMeta(conversationId, recipientId);
-    const recipientHasBlocked = !!(recipientMeta && recipientMeta.blockedAt);
+    const previewText =
+      content || (sanitizedAttachments && sanitizedAttachments.length ? 'Attachment' : '');
 
-    if (!recipientHasBlocked) {
+    for (const recipientId of recipientIds) {
       try {
-        await mongoCreateUserNotification({
+        await createUserNotification({
           title: `New message from ${req.user.fullName || 'MatchField'}`,
           message: previewText.slice(0, 500),
+          type: 'MESSAGE',
           targetUserId: recipientId,
           sentById: req.user.id
         });
       } catch (notifErr) {
         console.warn('Could not create in-app notification for reply:', notifErr);
       }
+      emitToUser(recipientId, 'message:new', { conversationId, message });
     }
 
     const payload = { conversationId, message };
-    if (!recipientHasBlocked) {
-      emitMessageNew(conversationId, payload);
-      emitToUser(recipientId, 'message:new', payload);
-    }
+    emitMessageNew(conversationId, payload);
     emitToUser(req.user.id, 'message:new', payload);
-    emitConversationUpdate(recipientHasBlocked ? [req.user.id] : [conversation.user1Id, conversation.user2Id], {
-      conversationId,
-      type: 'message',
-      message
-    });
+    emitConversationUpdate(
+      conversation.participants.map((p) => p.userId),
+      { conversationId, type: 'message', message }
+    );
 
     res.status(201).json({ message });
   } catch (error) {
@@ -333,28 +278,15 @@ router.patch('/conversation/:conversationId/star', authenticate, async (req, res
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
-    const { starred } = req.body;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+    if (!isUuid(conversationId) || !(await isParticipant(conversationId, req.user.id))) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
-    await mongoConversationSetStarred(conversationId, req.user.id, !!starred);
-
+    await setStarred(conversationId, req.user.id, !!req.body.starred);
     emitToUser(req.user.id, 'conversation:update', {
       conversationId,
       type: 'starred',
-      starred: !!starred
+      starred: !!req.body.starred
     });
-
     res.json({ success: true });
   } catch (error) {
     console.error('Star conversation error:', error);
@@ -366,28 +298,24 @@ router.patch('/conversation/:conversationId/block', authenticate, async (req, re
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
-    const { blocked } = req.body;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+    if (!isUuid(conversationId) || !(await isParticipant(conversationId, req.user.id))) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
-    await mongoConversationSetBlocked(conversationId, req.user.id, !!blocked);
-
+    // User-level mute via mutedUntil; global block for admins uses blockedAt
+    await prisma.conversationParticipant.update({
+      where: {
+        conversationId_userId: { conversationId, userId: req.user.id }
+      },
+      data: { mutedUntil: req.body.blocked ? new Date('2099-01-01') : null }
+    });
+    if (req.user.role === 'ADMIN') {
+      await setBlockedGlobal(conversationId, !!req.body.blocked);
+    }
     emitToUser(req.user.id, 'conversation:update', {
       conversationId,
       type: 'blocked',
-      blocked: !!blocked
+      blocked: !!req.body.blocked
     });
-
     res.json({ success: true });
   } catch (error) {
     console.error('Block conversation error:', error);
@@ -399,39 +327,16 @@ router.put('/conversation/:conversationId/messages/read-all', authenticate, asyn
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    if (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id) {
+    if (!isUuid(conversationId) || !(await isParticipant(conversationId, req.user.id))) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
-    const modified = await mongoMarkAllUnreadAsRead(conversationId, req.user.id);
-
+    const modified = await markAllRead(conversationId, req.user.id);
     emitMessageRead(conversationId, {
       conversationId,
       readerId: req.user.id,
       all: true,
       modified
     });
-    const readAtAll = new Date().toISOString();
-    emitToUser(
-      conversation.user1Id === req.user.id ? conversation.user2Id : conversation.user1Id,
-      'message:read',
-      {
-        conversationId,
-        readerId: req.user.id,
-        all: true,
-        readAt: readAtAll
-      }
-    );
-
     res.json({ success: true, modified });
   } catch (error) {
     console.error('Mark all read error:', error);
@@ -439,52 +344,33 @@ router.put('/conversation/:conversationId/messages/read-all', authenticate, asyn
   }
 });
 
-router.put('/conversation/:conversationId/messages/:messageId/read', authenticate, async (req, res) => {
-  try {
-    if (denyChatForUnverifiedOwner(req, res)) return;
-    const { conversationId, messageId } = req.params;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId }
-    });
-
-    if (!conversation || (conversation.user1Id !== req.user.id && conversation.user2Id !== req.user.id)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const result = await mongoMarkMessageRead(messageId, conversationId, req.user.id);
-    if (!result.ok && result.reason === 'not_found') {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    const readAt = new Date().toISOString();
-    emitMessageRead(conversationId, {
-      conversationId,
-      messageId,
-      readAt,
-      readerId: req.user.id
-    });
-
-    if (result.ok && !result.skipped) {
-      const msgRow = await prisma.message.findUnique({
-        where: { id: messageId },
-        select: { senderId: true }
-      });
-      if (msgRow && msgRow.senderId !== req.user.id) {
-        emitToUser(msgRow.senderId, 'message:read', {
-          conversationId,
-          messageId,
-          readAt,
-          readerId: req.user.id
-        });
+router.put(
+  '/conversation/:conversationId/messages/:messageId/read',
+  authenticate,
+  async (req, res) => {
+    try {
+      if (denyChatForUnverifiedOwner(req, res)) return;
+      const { conversationId, messageId } = req.params;
+      if (!isUuid(conversationId) || !isUuid(messageId)) {
+        return res.status(400).json({ error: 'Invalid id' });
       }
+      if (!(await isParticipant(conversationId, req.user.id))) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      await markAllRead(conversationId, req.user.id);
+      const readAt = new Date().toISOString();
+      emitMessageRead(conversationId, {
+        conversationId,
+        messageId,
+        readAt,
+        readerId: req.user.id
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark message read error:', error);
+      res.status(500).json({ error: 'Failed to mark message as read' });
     }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Mark message read error:', error);
-    res.status(500).json({ error: 'Failed to mark message as read' });
   }
-});
+);
 
 module.exports = router;
