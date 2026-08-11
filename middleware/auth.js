@@ -49,7 +49,7 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (decoded.typ && decoded.typ !== 'access') {
       return res.status(401).json({ error: 'Invalid token' });
     }
@@ -84,7 +84,7 @@ const authenticateAllowSuspended = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     const user = await loadUser(decoded.userId);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -110,7 +110,7 @@ const optionalAuthenticate = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return next();
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     const user = await loadUser(decoded.userId);
     if (
       user &&

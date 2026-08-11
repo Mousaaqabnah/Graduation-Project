@@ -15,9 +15,17 @@ const {
   isInstantBookingField
 } = require('../lib/bookingPayment');
 const { buildPaymentSharesForCreate, equalSplitAmounts } = require('../lib/bookingShares');
+const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
 router.use(authenticate);
+
+const settleLimiter = createRateLimiter({
+  bucket: 'manual-settle',
+  windowMs: Number(process.env.RATE_LIMIT_SETTLE_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_SETTLE_MAX) || 40,
+  message: 'Too many payment settlement attempts. Please try again later.'
+});
 
 function ymdFromDateLike(value) {
   const d = new Date(value);
@@ -654,6 +662,7 @@ router.put(
  */
 router.post(
   '/:id/payments/manual-settle',
+  settleLimiter,
   [body('userId').optional().isString()],
   async (req, res) => {
     try {

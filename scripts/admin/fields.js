@@ -233,48 +233,49 @@ function buildAdminFieldDocumentsSection(field) {
         );
     }
     let inner = '';
-    if (own) {
-        const ownIsData = isDataUrl(own);
-        const ownExt = getDataUrlExtension(own);
-        inner +=
+    function docLink(label, url, defaultName) {
+        const isData = isDataUrl(url);
+        const isApi = String(url).indexOf('/api/') === 0;
+        const ext = isData ? getDataUrlExtension(url) : 'pdf';
+        const filename = defaultName + '.' + ext;
+        if (isData) {
+            return (
+                '<div class="admin-doc-row">' +
+                '<span class="admin-doc-name">' +
+                label +
+                '</span>' +
+                '<a class="admin-doc-link" href="#" data-doc-url="' +
+                escapeAttr(url) +
+                '" data-doc-filename="' +
+                escapeAttr(filename) +
+                '">Download file</a></div>'
+            );
+        }
+        if (isApi) {
+            return (
+                '<div class="admin-doc-row">' +
+                '<span class="admin-doc-name">' +
+                label +
+                '</span>' +
+                '<a class="admin-doc-link admin-doc-auth" href="#" data-doc-api="' +
+                escapeAttr(url) +
+                '" data-doc-filename="' +
+                escapeAttr(filename) +
+                '">Open file</a></div>'
+            );
+        }
+        return (
             '<div class="admin-doc-row">' +
-            '<span class="admin-doc-name">Ownership / rental</span>' +
+            '<span class="admin-doc-name">' +
+            label +
+            '</span>' +
             '<a class="admin-doc-link" href="' +
-            (ownIsData ? '#' : escapeAttr(own)) +
-            '" ' +
-            (ownIsData
-                ? 'data-doc-url="' +
-                  escapeAttr(own) +
-                  '" data-doc-filename="ownership-document.' +
-                  ownExt +
-                  '"'
-                : 'target="_blank" rel="noopener noreferrer"') +
-            '>' +
-            (ownIsData ? 'Download file' : 'Open file') +
-            '</a>' +
-            '</div>';
+            escapeAttr(url) +
+            '" target="_blank" rel="noopener noreferrer">Open file</a></div>'
+        );
     }
-    if (lic) {
-        const licIsData = isDataUrl(lic);
-        const licExt = getDataUrlExtension(lic);
-        inner +=
-            '<div class="admin-doc-row">' +
-            '<span class="admin-doc-name">Licenses / permits</span>' +
-            '<a class="admin-doc-link" href="' +
-            (licIsData ? '#' : escapeAttr(lic)) +
-            '" ' +
-            (licIsData
-                ? 'data-doc-url="' +
-                  escapeAttr(lic) +
-                  '" data-doc-filename="license-document.' +
-                  licExt +
-                  '"'
-                : 'target="_blank" rel="noopener noreferrer"') +
-            '>' +
-            (licIsData ? 'Download file' : 'Open file') +
-            '</a>' +
-            '</div>';
-    }
+    if (own) inner += docLink('Ownership / rental', own, 'ownership-document');
+    if (lic) inner += docLink('Licenses / permits', lic, 'license-document');
     return (
         '<div class="field-info-item">' +
         '<div class="field-info-label">Ownership &amp; license documents</div>' +
@@ -928,6 +929,22 @@ if (closeFieldInfoModal && fieldInfoModal) {
 
 if (fieldInfoContent) {
     fieldInfoContent.addEventListener('click', (e) => {
+        const authLink =
+            e.target && e.target.closest ? e.target.closest('.admin-doc-link[data-doc-api]') : null;
+        if (authLink) {
+            e.preventDefault();
+            const apiPath = authLink.getAttribute('data-doc-api') || '';
+            if (!apiPath || typeof API === 'undefined' || !API.authFetchBlobUrl) return;
+            API.authFetchBlobUrl(apiPath)
+                .then((blobUrl) => {
+                    window.open(blobUrl, '_blank', 'noopener,noreferrer');
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+                })
+                .catch(() => {
+                    alert('Could not open document. Please try again.');
+                });
+            return;
+        }
         const link = e.target && e.target.closest ? e.target.closest('.admin-doc-link[data-doc-url]') : null;
         if (!link) return;
         e.preventDefault();

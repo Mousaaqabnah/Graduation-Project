@@ -13,8 +13,16 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { serializeUser } = require('../lib/serializers');
 const { writeAuditLog } = require('../lib/audit');
 const { persistIncomingFile, isStoredDataUrl } = require('../lib/secureStorage');
+const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
+
+const userSearchLimiter = createRateLimiter({
+  bucket: 'user-search',
+  windowMs: Number(process.env.RATE_LIMIT_SEARCH_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_SEARCH_MAX) || 60,
+  message: 'Too many search requests. Please try again later.'
+});
 
 router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
@@ -60,25 +68,32 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
   }
 });
 
-router.get('/search/users', authenticate, async (req, res) => {
+router.get('/search/users', authenticate, userSearchLimiter, async (req, res) => {
   try {
     const { q, playersOnly } = req.query;
     const restrictToPlayers = playersOnly === '1' || String(playersOnly || '').toLowerCase() === 'true';
     const qTrim = typeof q === 'string' ? normalizePlayerCodeQuery(q) : '';
-    const minLen = getSearchMinLength(qTrim);
+    const minLen = Math.max(2, getSearchMinLength(qTrim));
     if (!qTrim || qTrim.length < minLen) {
       return res.json({ users: [] });
+    }
+    if (qTrim.length > 80) {
+      return res.status(400).json({ error: 'Search query too long' });
     }
 
     if (restrictToPlayers) {
       await backfillMissingPlayerCodes();
     }
 
+    // Do not search/return email for players/owners — admins may use email for support tools
+    const isAdmin = req.user.role === 'ADMIN';
     const orFilters = [
       { fullName: { contains: qTrim, mode: 'insensitive' } },
-      { email: { contains: qTrim, mode: 'insensitive' } },
       { username: { contains: qTrim, mode: 'insensitive' } }
     ];
+    if (isAdmin) {
+      orFilters.push({ email: { contains: qTrim, mode: 'insensitive' } });
+    }
 
     if (isPlayerCodeQuery(qTrim)) {
       orFilters.push({ playerCode: { equals: qTrim, mode: 'insensitive' } });
@@ -93,32 +108,39 @@ router.get('/search/users', authenticate, async (req, res) => {
       orFilters.push({ id: qTrim });
     }
 
+    const take = Math.min(20, Math.max(1, parseInt(req.query.limit, 10) || 10));
+
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
+        status: 'ACTIVE',
         OR: orFilters,
         ...(restrictToPlayers ? { role: 'PLAYER' } : {})
       },
-      take: 10,
+      take,
       select: {
         id: true,
-        email: true,
         fullName: true,
         avatarUrl: true,
         role: true,
-        playerCode: true
+        playerCode: true,
+        ...(isAdmin ? { email: true } : {})
       }
     });
 
     res.json({
-      users: users.map((u) => ({
-        id: u.id,
-        email: u.email,
-        fullName: u.fullName,
-        avatar: u.avatarUrl,
-        role: u.role,
-        playerCode: u.playerCode
-      }))
+      users: users.map((u) => {
+        const row = {
+          id: u.id,
+          fullName: u.fullName,
+          avatar: u.avatarUrl,
+          avatarUrl: u.avatarUrl,
+          role: u.role,
+          playerCode: u.playerCode
+        };
+        if (isAdmin) row.email = u.email;
+        return row;
+      })
     });
   } catch (error) {
     console.error('Search users error:', error);

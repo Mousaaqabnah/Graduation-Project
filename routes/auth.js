@@ -10,6 +10,9 @@ const { createUniqueUsername } = require('../lib/username');
 const { serializeUser } = require('../lib/serializers');
 const { writeAuditLog } = require('../lib/audit');
 const { invalidateUserSessions, revokeAllRefreshTokens } = require('../lib/session');
+const { createRateLimiter } = require('../lib/security/rateLimit');
+const { setNoStore } = require('../lib/security/errors');
+const { strongPassword, strongNewPassword } = require('../lib/security/validate');
 
 const router = express.Router();
 
@@ -17,12 +20,26 @@ const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_TTL || '1h';
 const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS) || 30 * 24 * 60 * 60 * 1000;
 const RESET_TOKEN_BYTES = 32;
 const RESET_EXPIRY_MS = 60 * 60 * 1000;
+const BCRYPT_ROUNDS = Math.min(15, Math.max(10, Number(process.env.BCRYPT_ROUNDS) || 12));
+
+const authStrictLimiter = createRateLimiter({
+  bucket: 'auth-strict',
+  windowMs: Number(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_AUTH_MAX) || 80,
+  message: 'Too many authentication attempts. Please try again later.'
+});
+const authRefreshLimiter = createRateLimiter({
+  bucket: 'auth-refresh',
+  windowMs: Number(process.env.RATE_LIMIT_REFRESH_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_REFRESH_MAX) || 60,
+  message: 'Too many refresh attempts. Please try again later.'
+});
 
 function generateAccessToken(userId, sessionVersion = 0) {
   return jwt.sign(
     { userId, typ: 'access', sv: Number(sessionVersion) || 0 },
     process.env.JWT_SECRET,
-    { expiresIn: ACCESS_TOKEN_TTL }
+    { expiresIn: ACCESS_TOKEN_TTL, algorithm: 'HS256' }
   );
 }
 
@@ -62,26 +79,33 @@ async function userPayload(userId) {
   return serializeUser(user, { includePrivate: true });
 }
 
-// Register
+// Register — public registration can never create ADMIN
 router.post(
   '/register',
+  authStrictLimiter,
   [
-    body('email').trim().isEmail(),
-    body('password').isLength({ min: 8 }),
-    body('fullName').trim().notEmpty(),
-    body('role').isIn(['PLAYER', 'OWNER']).optional(),
+    body('email').trim().isEmail().isLength({ max: 254 }),
+    strongPassword,
+    body('fullName').trim().notEmpty().isLength({ max: 120 }),
+    body('role').optional().isIn(['PLAYER', 'OWNER']),
     body('username').optional().trim().isLength({ min: 3, max: 40 })
   ],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
       }
 
+      const requestedRole = String(req.body.role || '').toUpperCase();
+      if (requestedRole === 'ADMIN') {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+
       const email = String(req.body.email).trim().toLowerCase();
       const { password, fullName, phone, dateOfBirth, gender, location } = req.body;
-      const role = req.body.role === 'OWNER' ? 'OWNER' : 'PLAYER';
+      const role = requestedRole === 'OWNER' ? 'OWNER' : 'PLAYER';
 
       const genderMap = {
         male: 'MALE',
@@ -106,7 +130,7 @@ router.post(
         return res.status(400).json({ error: 'Email already registered' });
       }
 
-      const passwordHash = await bcrypt.hash(password, 10);
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       const usernameSeed = req.body.username || email.split('@')[0] || fullName;
       const username = await createUniqueUsername(prisma, usernameSeed);
       const playerCode = await createUniquePlayerCode();
@@ -164,9 +188,11 @@ router.post(
 // Login
 router.post(
   '/login',
-  [body('email').trim().isEmail(), body('password').notEmpty()],
+  authStrictLimiter,
+  [body('email').trim().isEmail(), body('password').notEmpty().isLength({ max: 128 })],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -237,9 +263,11 @@ router.post(
 // Refresh access token
 router.post(
   '/refresh',
-  [body('refreshToken').trim().notEmpty()],
+  authRefreshLimiter,
+  [body('refreshToken').trim().notEmpty().isLength({ max: 512 })],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -333,9 +361,11 @@ router.post('/logout-all', authenticate, async (req, res) => {
 
 router.post(
   '/forgot-password',
-  [body('email').trim().isEmail()],
+  authStrictLimiter,
+  [body('email').trim().isEmail().isLength({ max: 254 })],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -390,9 +420,11 @@ router.post(
 
 router.post(
   '/reset-password',
-  [body('token').trim().isLength({ min: 32 }), body('newPassword').isLength({ min: 8 })],
+  authStrictLimiter,
+  [body('token').trim().isLength({ min: 32, max: 256 }), strongNewPassword],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -415,7 +447,7 @@ router.post(
         });
       }
 
-      const passwordHash = await bcrypt.hash(newPassword, 10);
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
       await prisma.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: user.id },
@@ -456,9 +488,10 @@ router.get('/me', authenticateAllowSuspended, async (req, res) => {
 router.put(
   '/password',
   authenticate,
-  [body('currentPassword').notEmpty(), body('newPassword').isLength({ min: 8 })],
+  [body('currentPassword').notEmpty().isLength({ max: 128 }), strongNewPassword],
   async (req, res) => {
     try {
+      setNoStore(res);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -481,7 +514,7 @@ router.put(
         return res.status(401).json({ error: 'Current password is incorrect' });
       }
 
-      const passwordHash = await bcrypt.hash(newPassword, 10);
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
       await prisma.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: user.id },

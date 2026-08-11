@@ -236,7 +236,15 @@ async function main() {
     expect(r2.status, [200], 'GET /api/bookings/:id admin');
   }
   {
+    // Malformed / Mongo ObjectId-era id → 400 (UUID validation)
     const r = await req('GET', '/api/bookings/507f1f77bcf86cd799439011', { token: playerT });
+    expect(r.status, [400], 'GET /api/bookings/:id invalid id');
+  }
+  {
+    // Well-formed UUID that does not exist → 404
+    const r = await req('GET', '/api/bookings/00000000-0000-4000-8000-000000000000', {
+      token: playerT
+    });
     expect(r.status, [404], 'GET /api/bookings/:id not found');
   }
   {
@@ -261,7 +269,17 @@ async function main() {
     expect(r.status, [400], 'POST /api/bookings/:id/participants validation');
   }
   {
-    const r = await req('DELETE', '/api/bookings/507f1f77bcf86cd799439011/participants/me', { token: playerT });
+    const r = await req('DELETE', '/api/bookings/507f1f77bcf86cd799439011/participants/me', {
+      token: playerT
+    });
+    expect(r.status, [400], 'DELETE /api/bookings/:id/participants/me invalid id');
+  }
+  {
+    const r = await req(
+      'DELETE',
+      '/api/bookings/00000000-0000-4000-8000-000000000000/participants/me',
+      { token: playerT }
+    );
     expect(r.status, [404], 'DELETE /api/bookings/:id/participants/me booking not found');
   }
 
@@ -526,7 +544,20 @@ async function main() {
     expect(r.status, [200], 'GET /api/admin/support/conversation/:id/messages');
   }
   {
-    const r = await req('PATCH', '/api/admin/support/submission/000000000000000000000000/seen', { token: adminT, body: {} });
+    // Malformed / ObjectId-era id → 400
+    const r = await req('PATCH', '/api/admin/support/submission/000000000000000000000000/seen', {
+      token: adminT,
+      body: {}
+    });
+    expect(r.status, [400], 'PATCH /api/admin/support/submission/:id/seen invalid id');
+  }
+  {
+    // Well-formed UUID missing → 404
+    const r = await req(
+      'PATCH',
+      '/api/admin/support/submission/00000000-0000-4000-8000-000000000000/seen',
+      { token: adminT, body: {} }
+    );
     expect(r.status, [404], 'PATCH /api/admin/support/submission/:id/seen not found');
   }
   {
@@ -589,6 +620,14 @@ async function main() {
       body: { starred: false }
     });
     expect(r.status, [400], 'PATCH /api/admin/support/conversation/:id/star invalid id');
+  }
+  {
+    const r = await req(
+      'PATCH',
+      '/api/admin/support/conversation/00000000-0000-4000-8000-000000000000/star',
+      { token: adminT, body: { starred: false } }
+    );
+    expect(r.status, [404], 'PATCH /api/admin/support/conversation/:id/star not found');
   }
 
   // --- Summary ---

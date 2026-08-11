@@ -14,6 +14,7 @@
     "test:api": "node scripts/api-smoke-full.js",
     "test:critical": "node scripts/test-critical-c1-c4.js",
     "test:high": "node scripts/test-high-h1-h8.js",
+    "test:security": "node scripts/test-security.js",
     "migrate:base64-docs": "node scripts/migrate-base64-documents.js --dry-run"
   },
   "devDependencies": {
@@ -26,10 +27,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.6.2",
     "express-validator": "^7.0.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.10.1",
     "socket.io": "^4.8.1"
   }
 }

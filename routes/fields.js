@@ -22,8 +22,6 @@ const {
   resolvePrivateAbsolutePath,
   isStoredDataUrl
 } = require('../lib/secureStorage');
-const jwt = require('jsonwebtoken');
-const { loadUser } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -201,23 +199,13 @@ function composeFieldScore(field, metrics, requestLat, requestLng, maxPopularity
   };
 }
 
-function accessTokenFromRequest(req) {
-  const header = req.headers.authorization?.split(' ')[1];
-  if (header) return header;
-  if (typeof req.query.access_token === 'string' && req.query.access_token.trim()) {
-    return req.query.access_token.trim();
-  }
-  return null;
-}
-
 function serializeFieldForViewer(field, req) {
-  const token = accessTokenFromRequest(req);
   const user = req.user;
   if (user?.role === 'ADMIN') {
-    return adminFieldSerializer(field, { accessToken: token });
+    return adminFieldSerializer(field);
   }
   if (user && String(field.ownerId) === String(user.id)) {
-    return ownerFieldSerializer(field, { accessToken: token });
+    return ownerFieldSerializer(field);
   }
   return publicFieldSerializer(field);
 }
@@ -1164,7 +1152,7 @@ router.get('/:id/availability', async (req, res) => {
   }
 });
 
-router.get('/:id/documents/:docType', optionalAuthenticate, async (req, res) => {
+router.get('/:id/documents/:docType', authenticate, async (req, res) => {
   try {
     const idTrim = typeof req.params.id === 'string' ? req.params.id.trim() : '';
     const docType = String(req.params.docType || '').toUpperCase();
@@ -1175,20 +1163,7 @@ router.get('/:id/documents/:docType', optionalAuthenticate, async (req, res) => 
       return res.status(400).json({ error: 'Invalid document type' });
     }
 
-    // Support access_token query for <img>/<iframe> embedding
-    if (!req.user) {
-      const token = accessTokenFromRequest(req);
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          const user = await loadUser(decoded.userId);
-          if (user && user.status === 'ACTIVE') req.user = user;
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-
+    // Auth via Authorization header only — never accept tokens in query strings
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }

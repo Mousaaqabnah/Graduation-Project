@@ -7,8 +7,16 @@ const { authenticate } = require('../middleware/auth');
 const { isUuid } = require('../lib/ids');
 const { isParticipant } = require('../lib/chatService');
 const { sniffMime } = require('../lib/secureStorage');
+const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
+
+const chatUploadLimiter = createRateLimiter({
+  bucket: 'chat-upload',
+  windowMs: Number(process.env.RATE_LIMIT_UPLOAD_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_UPLOAD_MAX) || 40,
+  message: 'Too many uploads. Please try again later.'
+});
 
 const UPLOAD_ROOT = path.join(__dirname, '..', 'storage', 'private', 'chat');
 try {
@@ -66,7 +74,7 @@ function denyChatForUnverifiedOwner(req, res) {
   return false;
 }
 
-router.post('/attachment', authenticate, (req, res) => {
+router.post('/attachment', authenticate, chatUploadLimiter, (req, res) => {
   if (denyChatForUnverifiedOwner(req, res)) return;
 
   upload.single('file')(req, res, async (err) => {

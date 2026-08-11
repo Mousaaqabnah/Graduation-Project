@@ -494,7 +494,8 @@ async function main() {
     record(
       'C3 owning owner gets document download URL',
       typeof of.ownershipDocumentUrl === 'string' &&
-        of.ownershipDocumentUrl.includes('/documents/OWNERSHIP_DOCUMENT'),
+        of.ownershipDocumentUrl.includes('/documents/OWNERSHIP_DOCUMENT') &&
+        !String(of.ownershipDocumentUrl).includes('access_token'),
       of.ownershipDocumentUrl
     );
 

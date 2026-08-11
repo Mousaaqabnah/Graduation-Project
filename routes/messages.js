@@ -23,8 +23,22 @@ const {
   emitMessageRead,
   emitToUser
 } = require('../lib/chatEvents');
+const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
+
+const chatWriteLimiter = createRateLimiter({
+  bucket: 'chat-write',
+  windowMs: Number(process.env.RATE_LIMIT_CHAT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_CHAT_MAX) || 120,
+  message: 'Too many chat messages. Please slow down.'
+});
+const chatCreateLimiter = createRateLimiter({
+  bucket: 'chat-create',
+  windowMs: Number(process.env.RATE_LIMIT_CHAT_CREATE_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_CHAT_CREATE_MAX) || 30,
+  message: 'Too many conversation create attempts. Please try again later.'
+});
 
 function denyChatForUnverifiedOwner(req, res) {
   if (!req.user) return false;
@@ -126,7 +140,7 @@ router.get('/conversations', authenticate, async (req, res) => {
   }
 });
 
-router.get('/conversation/:userId', authenticate, async (req, res) => {
+router.get('/conversation/:userId', authenticate, chatCreateLimiter, async (req, res) => {
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const otherId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
@@ -222,7 +236,7 @@ router.get('/conversation/:conversationId/messages', authenticate, async (req, r
   }
 });
 
-router.post('/conversation/:conversationId/messages', authenticate, async (req, res) => {
+router.post('/conversation/:conversationId/messages', authenticate, chatWriteLimiter, async (req, res) => {
   try {
     if (denyChatForUnverifiedOwner(req, res)) return;
     const { conversationId } = req.params;
@@ -232,6 +246,9 @@ router.post('/conversation/:conversationId/messages', authenticate, async (req, 
 
     const content = req.body.content != null ? String(req.body.content).trim() : '';
     const attachments = Array.isArray(req.body.attachments) ? req.body.attachments : null;
+    if (content.length > 4000) {
+      return res.status(400).json({ error: 'Message too long' });
+    }
     if (!content && (!attachments || !attachments.length)) {
       return res.status(400).json({ error: 'Message text or attachments required' });
     }

@@ -1,4 +1,23 @@
 // Venue data (should match home-player.js)
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeUrlAttr(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(https?:|\/|data:image\/)/i.test(raw) && !/^javascript:/i.test(raw)) {
+    return escapeHtml(raw);
+  }
+  return '';
+}
+
 const venuesData = {
   popular: [
       {
@@ -505,7 +524,7 @@ function renderFieldInfo(venue) {
   }
 
   const fieldFeatureTagsHTML = fieldFeatureTags.map(tag => `
-      <span class="field-feature-tag">${tag}</span>
+      <span class="field-feature-tag">${escapeHtml(tag)}</span>
   `).join('');
 
   const featuresList = Array.isArray(venue.features) ? venue.features : [];
@@ -514,24 +533,24 @@ function renderFieldInfo(venue) {
           <div class="field-feature-icon">
               <i class="fi fi-rr-check"></i>
           </div>
-          <span class="field-feature-text">${feature}</span>
+          <span class="field-feature-text">${escapeHtml(feature)}</span>
       </div>
   `).join('');
 
   // Get images array or use single image (ensure at least one for gallery)
   const images = (venue.images && venue.images.length) ? venue.images : (venue.image ? [venue.image] : ['https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop']);
   const imagesHTML = images.map((img, index) => `
-      <img src="${img}" alt="${(venue.name || 'Field')} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport || 'Sport')}%3C/text%3E%3C/svg%3E'">
+      <img src="${safeUrlAttr(img)}" alt="${escapeHtml(venue.name || 'Field')} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport || 'Sport')}%3C/text%3E%3C/svg%3E'">
   `).join('');
 
   const ownerAvatar = venue.owner && venue.owner.avatar
-    ? '<img src="' + venue.owner.avatar + '" alt="' + ((venue.owner && venue.owner.fullName) || 'Venue Manager') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
-    : ((venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N'));
+    ? '<img src="' + safeUrlAttr(venue.owner.avatar) + '" alt="' + escapeHtml((venue.owner && venue.owner.fullName) || 'Venue Manager') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+    : escapeHtml(venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N');
   const html = `
       <!-- Field Title and Metadata -->
       <div class="field-header-top">
           <div class="field-title-row">
-              <h1 class="field-title">${venue.name}</h1>
+              <h1 class="field-title">${escapeHtml(venue.name)}</h1>
               <div class="field-actions-top">
                   <button class="action-btn share-btn" onclick="handleShare()">
                       <i class="fi fi-rr-share"></i>
@@ -545,14 +564,14 @@ function renderFieldInfo(venue) {
           </div>
           <div class="field-meta-line">
               <i class="fi fi-rr-marker field-meta-icon"></i>
-              <span>${venue.location}</span>
+              <span>${escapeHtml(venue.location)}</span>
               <span class="field-meta-separator">•</span>
-              <span>${venue.distance}</span>
+              <span>${escapeHtml(venue.distance)}</span>
               <span class="field-meta-separator">•</span>
               <span class="field-star-yellow">★</span>
-              <span>${venue.rating} (${venue.reviews})</span>
+              <span>${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)})</span>
               <span class="field-meta-separator">•</span>
-              <span>${venue.sport}</span>
+              <span>${escapeHtml(venue.sport)}</span>
           </div>
       </div>
 
@@ -580,13 +599,13 @@ function renderFieldInfo(venue) {
           <!-- Booking Card -->
           <div class="field-booking-card">
               <div class="booking-price-section">
-                  <div class="booking-price">₺${venue.price}<span class="booking-price-unit">/h</span></div>
+                  <div class="booking-price">₺${escapeHtml(venue.price)}<span class="booking-price-unit">/h</span></div>
                   <div class="booking-price-note">Per hour • Taxes included</div>
               </div>
               
               <div class="booking-location-section">
                   <h3 class="booking-section-title">Location</h3>
-                  <p class="booking-location-text">Istanbul, ${venue.location} • Approx. ${venue.distance} from your current location.</p>
+                  <p class="booking-location-text">Istanbul, ${escapeHtml(venue.location)} • Approx. ${escapeHtml(venue.distance)} from your current location.</p>
                   <div class="booking-map-placeholder" id="bookingFieldMap"></div>
               </div>
 
@@ -604,8 +623,8 @@ function renderFieldInfo(venue) {
           <div class="field-content-left">
               <!-- Description -->
               <div class="field-description-section">
-                  <h2 class="section-title">${venue.name}</h2>
-                  <p class="field-description">${venue.description || 'A premium sports facility with excellent amenities and professional-grade equipment.'}</p>
+                  <h2 class="section-title">${escapeHtml(venue.name)}</h2>
+                  <p class="field-description">${escapeHtml(venue.description || 'A premium sports facility with excellent amenities and professional-grade equipment.')}</p>
               </div>
 
               <!-- Amenities -->
@@ -613,7 +632,8 @@ function renderFieldInfo(venue) {
                   <h3 class="section-title">Amenities</h3>
                   <div class="amenities-grid" id="amenitiesGrid">
                       ${(venue.features && venue.features.length ? venue.features : ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi']).map(function(f) {
-                        return '<div class="amenity-item"><i class="fi fi-rr-check amenity-icon"></i><span>' + (typeof f === 'string' ? f : (f.name || f)) + '</span></div>';
+                        var label = typeof f === 'string' ? f : (f.name || f);
+                        return '<div class="amenity-item"><i class="fi fi-rr-check amenity-icon"></i><span>' + escapeHtml(label) + '</span></div>';
                       }).join('')}
                   </div>
               </div>
@@ -625,7 +645,7 @@ function renderFieldInfo(venue) {
                       <div class="reviews-summary-toggle">
                           <div class="reviews-summary">
                               <span class="field-star-yellow">★</span>
-                              <span><span id="reviewsSummaryRating">${venue.rating}</span> • <span id="reviewsSummaryCount">${venue.reviews} total reviews</span></span>
+                              <span><span id="reviewsSummaryRating">${escapeHtml(venue.rating)}</span> • <span id="reviewsSummaryCount">${escapeHtml(venue.reviews)} total reviews</span></span>
                           </div>
                           <button class="toggle-reviews-btn" id="toggleReviewsBtn" onclick="toggleReviews()">
                               <span class="toggle-text">View reviews</span>
@@ -699,8 +719,8 @@ function renderFieldInfo(venue) {
                   <div class="venue-contact-info">
                       <div class="venue-avatar">${ownerAvatar}</div>
                       <div class="venue-details">
-                          <div class="venue-name">${(venue.owner && venue.owner.fullName) || 'Venue Manager'}</div>
-                          <div class="venue-response">${venue.venueResponse ? venue.venueResponse : 'Responds within a few hours'}</div>
+                          <div class="venue-name">${escapeHtml((venue.owner && venue.owner.fullName) || 'Venue Manager')}</div>
+                          <div class="venue-response">${escapeHtml(venue.venueResponse ? venue.venueResponse : 'Responds within a few hours')}</div>
                       </div>
                   </div>
                   <button class="venue-message-btn" id="messageVenueBtn">Message venue</button>
@@ -1036,10 +1056,10 @@ function displayReviews(venueId, preloadedApiReviews) {
       ? reviewsToShow.map(function(r) {
           var rev = normalizeReviewItem(r);
           if (!rev) return '';
-          var avatarHtml = rev.reviewerAvatar
-            ? ('<img src="' + rev.reviewerAvatar + '" alt="' + (rev.reviewerName || 'User') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">')
-            : (rev.reviewerInitial || '?');
-          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + avatarHtml + '</div><div><div class="reviewer-name">' + (rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + ((rev.context || '') + (rev.dateLabel ? ' · ' + rev.dateLabel : '')) + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div>' + (rev.reviewText ? ('<div class="review-text">' + rev.reviewText + '</div>') : '') + '</div>';
+          var avatarHtml = rev.reviewerAvatar && safeUrlAttr(rev.reviewerAvatar)
+            ? ('<img src="' + safeUrlAttr(rev.reviewerAvatar) + '" alt="' + escapeHtml(rev.reviewerName || 'User') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">')
+            : escapeHtml(rev.reviewerInitial || '?');
+          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + avatarHtml + '</div><div><div class="reviewer-name">' + escapeHtml(rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + escapeHtml((rev.context || '') + (rev.dateLabel ? ' · ' + rev.dateLabel : '')) + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div>' + (rev.reviewText ? ('<div class="review-text">' + escapeHtml(rev.reviewText) + '</div>') : '') + '</div>';
         }).join('')
       : emptyMsg;
     updateReviewsSummaryUI(reviewsToShow, fallbackRating);

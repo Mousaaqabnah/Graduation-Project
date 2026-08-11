@@ -1022,8 +1022,28 @@ router.put('/support/conversation/:conversationId/messages/:messageId/read', asy
 });
 
 // PATCH /support/conversation/:conversationId/star
+// Compatibility no-op (tickets do not persist per-admin star). Still validate IDs.
 router.patch('/support/conversation/:conversationId/star', async (req, res) => {
-  res.json({ success: true });
+  try {
+    const conversationId =
+      typeof req.params.conversationId === 'string' ? req.params.conversationId.trim() : '';
+    if (!isUuid(conversationId)) {
+      return res.status(400).json({ error: 'Invalid conversation id' });
+    }
+
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: conversationId },
+      select: { id: true }
+    });
+    if (!ticket) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Admin support star error:', error);
+    res.status(500).json({ error: 'Failed to update star status' });
+  }
 });
 
 // PATCH /support/conversation/:conversationId/block

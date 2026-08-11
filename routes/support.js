@@ -2,8 +2,16 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../lib/prisma');
+const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
+
+const supportContactLimiter = createRateLimiter({
+  bucket: 'support-contact',
+  windowMs: Number(process.env.RATE_LIMIT_SUPPORT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_SUPPORT_MAX) || 10,
+  message: 'Too many contact submissions. Please try again later.'
+});
 
 router.get('/contact-info', (_req, res) => {
   res.json({
@@ -19,7 +27,7 @@ async function getUserFromToken(req) {
     if (!authHeader) return null;
     const token = authHeader.split(' ')[1];
     if (!token) return null;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (!decoded?.userId) return null;
     return prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -32,6 +40,7 @@ async function getUserFromToken(req) {
 
 router.post(
   '/contact',
+  supportContactLimiter,
   [
     body('fullName').trim().notEmpty(),
     body('email').trim().isEmail(),

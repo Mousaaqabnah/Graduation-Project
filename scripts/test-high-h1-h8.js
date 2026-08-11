@@ -11,6 +11,7 @@ const { createUniqueUsername } = require('../lib/username');
 const { createUniquePlayerCode } = require('../lib/playerCode');
 const { equalSplitAmounts } = require('../lib/bookingShares');
 const { toMajor } = require('../lib/money');
+const { SETTLE_TX_OPTIONS } = require('../lib/bookingPayment');
 
 const BASE = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:3000';
 const USERS = {
@@ -200,13 +201,29 @@ async function main() {
           token: player.token,
           body: {}
         });
-        record('H2 full payment', s1.status === 200 && s1.body.fullyPaid === true, s1.status);
+        record(
+          'H2 full payment',
+          s1.status === 200 && s1.body.fullyPaid === true && s1.status !== 500,
+          s1.status === 500
+            ? `500 (possible Prisma P2028 tx timeout); body=${JSON.stringify(s1.body).slice(0, 120)}`
+            : s1.status
+        );
 
         const s2 = await req('POST', `/api/bookings/${id}/payments/manual-settle`, {
           token: player.token,
           body: {}
         });
-        record('H2 duplicate settlement idempotent', s2.status === 200 && s2.body.idempotent === true, s2.status);
+        record(
+          'H2 duplicate settlement idempotent',
+          s2.status === 200 && s2.body.idempotent === true,
+          `status=${s2.status} idempotent=${s2.body.idempotent}`
+        );
+
+        record(
+          'H2 settle tx timeout exceeds Prisma 5s default (P2028 regression)',
+          Number(SETTLE_TX_OPTIONS.timeout) > 5000,
+          SETTLE_TX_OPTIONS.timeout
+        );
 
         const [c1, c2] = await Promise.all([
           req('POST', `/api/bookings/${id}/payments/manual-settle`, { token: player.token, body: {} }),

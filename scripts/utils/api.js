@@ -1100,6 +1100,35 @@ window.API = {
   removeAuthToken,
   getCurrentUser,
   setCurrentUser,
-  removeCurrentUser
+  removeCurrentUser,
+  escapeHtml(value) {
+    if (value == null) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+  /** Fetch private resource with Authorization header; returns blob object URL (revoke when done). */
+  async authFetchBlobUrl(apiPath) {
+    const token = getAuthToken();
+    if (!token) throw new Error('Not authenticated');
+    const base = getApiBaseUrl();
+    const url = String(apiPath || '').startsWith('http')
+      ? apiPath
+      : `${base}${String(apiPath).startsWith('/') ? '' : '/'}${apiPath}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'same-origin'
+    });
+    if (!res.ok) {
+      const err = new Error('Failed to load protected resource');
+      err.status = res.status;
+      throw err;
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }
 };
 

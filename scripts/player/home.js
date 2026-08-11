@@ -14,6 +14,25 @@ let currentPageBySection = { nearby: 1, popular: 1 };
 let lastApiFavoriteIdsForHome = [];
 const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeUrlAttr(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(https?:|\/|data:image\/)/i.test(raw) && !/^javascript:/i.test(raw)) {
+    return escapeHtml(raw);
+  }
+  return '';
+}
+
 function getFavoriteIdsSet() {
   try {
     const saved = localStorage.getItem('favoriteVenues');
@@ -396,9 +415,9 @@ function createVenueCard(venue) {
   
   card.innerHTML = `
       <div class="venue-image-container">
-          <img src="${venue.image}" alt="${venue.name}" class="venue-image" loading="lazy" onerror="window.handleImageError(this, '${venue.sport}');">
-          <div class="sport-badge">${venue.sport}</div>
-          <button class="favorite-btn ${venue.isFavorite ? 'active' : ''}" data-venue-id="${venue.id}">
+          <img src="${safeUrlAttr(venue.image)}" alt="${escapeHtml(venue.name)}" class="venue-image" loading="lazy" onerror="window.handleImageError(this, '${escapeHtml(venue.sport)}');">
+          <div class="sport-badge">${escapeHtml(venue.sport)}</div>
+          <button class="favorite-btn ${venue.isFavorite ? 'active' : ''}" data-venue-id="${escapeHtml(venue.id)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
               </svg>
@@ -406,15 +425,15 @@ function createVenueCard(venue) {
       </div>
       <div class="venue-card-content">
           <div class="venue-header">
-              <h3 class="venue-name">${venue.name}</h3>
-              <span class="venue-price">₺${venue.price}/h</span>
+              <h3 class="venue-name">${escapeHtml(venue.name)}</h3>
+              <span class="venue-price">₺${escapeHtml(venue.price)}/h</span>
           </div>
           <div class="venue-rating">
               <span class="star">★</span>
-              <span>${venue.rating} (${venue.reviews}) . ${venue.location} . ${venue.distance}</span>
+              <span>${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)}) . ${escapeHtml(venue.location)} . ${escapeHtml(venue.distance)}</span>
           </div>
           <div class="venue-footer-row">
-              <span class="venue-type">${venue.type}</span>
+              <span class="venue-type">${escapeHtml(venue.type)}</span>
               <button class="book-btn">Book</button>
           </div>
       </div>
@@ -572,16 +591,16 @@ function populateFieldDetails(venue) {
 
   container.innerHTML = `
     <div class="field-preview-card">
-      <img src="${venue.image}" alt="${venue.name}" class="field-preview-image">
+      <img src="${safeUrlAttr(venue.image)}" alt="${escapeHtml(venue.name)}" class="field-preview-image">
       <div class="field-preview-info">
-        <h4>${venue.name}</h4>
+        <h4>${escapeHtml(venue.name)}</h4>
         <div class="field-preview-meta">
-          <span><i class="fi fi-rr-marker"></i> ${venue.location}</span>
-          <span><i class="fi fi-rs-star"></i> ${venue.rating} (${venue.reviews})</span>
-          <span><i class="fi fi-rr-tag"></i> ${venue.sport}</span>
+          <span><i class="fi fi-rr-marker"></i> ${escapeHtml(venue.location)}</span>
+          <span><i class="fi fi-rs-star"></i> ${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)})</span>
+          <span><i class="fi fi-rr-tag"></i> ${escapeHtml(venue.sport)}</span>
         </div>
         <div class="field-preview-price">
-          <span>Price: <strong>₺${venue.price}/hour</strong></span>
+          <span>Price: <strong>₺${escapeHtml(venue.price)}/hour</strong></span>
         </div>
       </div>
     </div>
@@ -736,8 +755,8 @@ function loadPaymentStep() {
           </div>
         ` : ''}
         <div class="payment-details">
-          <p><strong>${bookingState.field.name}</strong></p>
-          <p>${formatDate(bookingState.selectedDate)}</p>
+          <p><strong>${escapeHtml(bookingState.field.name)}</strong></p>
+          <p>${escapeHtml(formatDate(bookingState.selectedDate))}</p>
           <p>${bookingState.selectedTimeSlots.map(slot => {
             const hour = parseInt(slot.split(':')[0]);
             return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
@@ -1080,15 +1099,15 @@ function showBookingSummary() {
       <h4>Field Information</h4>
       <div class="summary-item">
         <span>Field:</span>
-        <span><strong>${bookingState.field.name}</strong></span>
+        <span><strong>${escapeHtml(bookingState.field.name)}</strong></span>
       </div>
       <div class="summary-item">
         <span>Location:</span>
-        <span>${bookingState.field.location}</span>
+        <span>${escapeHtml(bookingState.field.location)}</span>
       </div>
       <div class="summary-item">
         <span>Sport:</span>
-        <span>${bookingState.field.sport}</span>
+        <span>${escapeHtml(bookingState.field.sport)}</span>
       </div>
     </div>
     <div class="summary-section">
@@ -1615,17 +1634,17 @@ async function searchUsers(query) {
     }
     
     resultsContainer.innerHTML = filteredUsers.map(user => `
-      <div class="search-result-item" data-user='${JSON.stringify(user).replace(/'/g, "&#39;")}' 
+      <div class="search-result-item" data-user-id="${escapeHtml(user.id)}"
            style="display: flex; align-items: center; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;"
            onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">
         <div style="width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; margin-right: 10px; overflow: hidden;">
-          ${user.avatar 
-            ? `<img src="${user.avatar}" style="width: 100%; height: 100%; object-fit: cover;">` 
+          ${user.avatar && safeUrlAttr(user.avatar)
+            ? `<img src="${safeUrlAttr(user.avatar)}" alt="" style="width: 100%; height: 100%; object-fit: cover;">`
             : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
         </div>
         <div style="flex: 1;">
-          <div style="font-weight: 500; color: #333;">${user.fullName}</div>
-          <div style="font-size: 12px; color: #666;">${user.playerCode || user.id}</div>
+          <div style="font-weight: 500; color: #333;">${escapeHtml(user.fullName)}</div>
+          <div style="font-size: 12px; color: #666;">${escapeHtml(user.playerCode || user.id)}</div>
         </div>
         <i class="fi fi-rr-plus" style="color: #007bff;"></i>
       </div>
@@ -1634,7 +1653,9 @@ async function searchUsers(query) {
     // Add click handlers to results
     resultsContainer.querySelectorAll('.search-result-item').forEach(item => {
       item.addEventListener('click', function() {
-        const userData = JSON.parse(this.dataset.user);
+        const id = this.getAttribute('data-user-id');
+        const userData = filteredUsers.find((u) => String(u.id) === String(id));
+        if (!userData) return;
         addPlayerFromSearch(userData);
         resultsContainer.style.display = 'none';
         document.getElementById('playerSearchInput').value = '';
@@ -2406,7 +2427,7 @@ function openPaymentModal(options) {
         </div>
         ${paymentState.booking ? `
           <div class="payment-details">
-            <p><strong>${(paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || 'Field'}</strong></p>
+            <p><strong>${escapeHtml((paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || 'Field')}</strong></p>
             <p>${formatDate(paymentState.booking.date)}</p>
             <p>${(paymentState.booking.timeSlots && paymentState.booking.timeSlots.length
               ? paymentState.booking.timeSlots.map(slot => {
