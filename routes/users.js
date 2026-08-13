@@ -12,7 +12,8 @@ const {
 const { authenticate, requireRole } = require('../middleware/auth');
 const { serializeUser } = require('../lib/serializers');
 const { writeAuditLog } = require('../lib/audit');
-const { persistIncomingFile, isStoredDataUrl } = require('../lib/secureStorage');
+const { isStoredDataUrl } = require('../lib/secureStorage');
+const { putIncomingFile, resolvePublicUrl, removeManagedObject } = require('../lib/storage');
 const { createRateLimiter } = require('../lib/security/rateLimit');
 
 const router = express.Router();
@@ -175,8 +176,16 @@ router.post(
         return res.status(400).json({ error: 'Account is already verified' });
       }
 
-      const frontSaved = persistIncomingFile(idFrontUrl, { kind: 'verification' });
-      const backSaved = persistIncomingFile(idBackUrl, { kind: 'verification' });
+      const frontSaved = await putIncomingFile(idFrontUrl, {
+        kind: 'verification',
+        ownerId: req.user.id,
+        docSubtype: 'ID_FRONT'
+      });
+      const backSaved = await putIncomingFile(idBackUrl, {
+        kind: 'verification',
+        ownerId: req.user.id,
+        docSubtype: 'ID_BACK'
+      });
       if (
         !frontSaved ||
         !backSaved ||
@@ -494,11 +503,28 @@ router.put('/:id/avatar', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Image data is too large; use a smaller photo' });
     }
 
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: { avatarUrl: true }
+    });
+    const saved = await putIncomingFile(avatar, {
+      kind: 'public-image',
+      userId: id,
+      purpose: 'avatar'
+    });
+    if (!saved || isStoredDataUrl(saved.storagePath)) {
+      return res.status(400).json({ error: 'Invalid avatar image' });
+    }
+    const stored = saved.publicUrl || resolvePublicUrl(saved.storagePath) || saved.storagePath;
+
     const user = await prisma.user.update({
       where: { id },
-      data: { avatarUrl: avatar },
+      data: { avatarUrl: stored },
       include: { ownerProfile: true }
     });
+    if (existing && existing.avatarUrl && existing.avatarUrl !== stored) {
+      await removeManagedObject(existing.avatarUrl);
+    }
 
     res.json({
       message: 'Avatar updated successfully',
@@ -547,7 +573,21 @@ router.put(
       }
       if (gender !== undefined) data.gender = gender || null;
       if (location !== undefined) data.location = location ? String(location).trim() : null;
-      if (avatar !== undefined && typeof avatar === 'string') data.avatarUrl = avatar;
+      if (avatar !== undefined && typeof avatar === 'string') {
+        if (avatar.startsWith('data:image/')) {
+          const saved = await putIncomingFile(avatar, {
+            kind: 'public-image',
+            userId: idTrim,
+            purpose: 'avatar'
+          });
+          if (!saved || isStoredDataUrl(saved.storagePath)) {
+            return res.status(400).json({ error: 'Invalid avatar image' });
+          }
+          data.avatarUrl = saved.publicUrl || resolvePublicUrl(saved.storagePath) || saved.storagePath;
+        } else if (/^https?:\/\//i.test(avatar) && avatar.length < 2000) {
+          data.avatarUrl = avatar;
+        }
+      }
 
       if (!Object.keys(data).length) {
         return res.status(400).json({ error: 'No fields to update' });

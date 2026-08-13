@@ -1,5 +1,5 @@
 const express = require('express');
-const fs = require('fs');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { prisma } = require('../lib/prisma');
 const { authenticate, requireRole, optionalAuthenticate } = require('../middleware/auth');
@@ -17,11 +17,8 @@ const {
 } = require('../lib/serializers');
 const { writeAuditLog } = require('../lib/audit');
 const { earliestAllowedSlotStartMinutesForYmd } = require('../lib/bookingSameDayRules');
-const {
-  persistIncomingFile,
-  resolvePrivateAbsolutePath,
-  isStoredDataUrl
-} = require('../lib/secureStorage');
+const { isStoredDataUrl } = require('../lib/secureStorage');
+const { putIncomingFile, openPrivateObject, removeManagedObject, resolvePublicUrl } = require('../lib/storage');
 
 const router = express.Router();
 
@@ -276,9 +273,12 @@ function optionalDocumentUrl(v) {
   return t;
 }
 
-function documentCreateData(url, type) {
-  // Persist data URLs to disk; store only path metadata in Postgres.
-  const saved = persistIncomingFile(url, { kind: 'field-doc' });
+async function documentCreateData(url, type, ctx) {
+  const saved = await putIncomingFile(url, {
+    kind: 'field-doc',
+    fieldId: ctx && ctx.fieldId,
+    docType: type
+  });
   if (!saved) {
     const err = new Error('Invalid document');
     err.status = 400;
@@ -297,11 +297,19 @@ function documentCreateData(url, type) {
   };
 }
 
-function persistPublicImageUrl(url) {
+async function persistPublicImage(url, ctx) {
   if (url == null || url === '') return null;
-  const saved = persistIncomingFile(url, { kind: 'public-image' });
+  const saved = await putIncomingFile(url, {
+    kind: 'public-image',
+    fieldId: ctx && ctx.fieldId,
+    purpose: 'gallery'
+  });
   if (!saved) return null;
-  return saved.publicUrl || `/${saved.storagePath}`;
+  const publicUrl = saved.publicUrl || resolvePublicUrl(saved.storagePath);
+  return {
+    storagePath: saved.storagePath,
+    publicUrl
+  };
 }
 
 async function isOwnerVerified(userId) {
@@ -457,22 +465,31 @@ async function buildFieldMetrics(fieldIds, fieldById) {
 }
 
 async function replaceFieldImages(tx, fieldId, urls) {
-  await tx.fieldImage.deleteMany({ where: { fieldId } });
-  if (!urls.length) return;
+  const previous = await tx.fieldImage.findMany({
+    where: { fieldId },
+    select: { storagePath: true }
+  });
   const rows = [];
-  for (let i = 0; i < urls.length; i += 1) {
-    const publicUrl = persistPublicImageUrl(urls[i]);
-    if (!publicUrl) continue;
+  for (let i = 0; i < (urls || []).length; i += 1) {
+    const saved = await persistPublicImage(urls[i], { fieldId });
+    if (!saved) continue;
     rows.push({
       fieldId,
-      storagePath: publicUrl.startsWith('/') ? publicUrl.slice(1) : publicUrl,
-      publicUrl,
+      storagePath: saved.storagePath,
+      publicUrl: saved.publicUrl,
       displayOrder: i,
       isPrimary: i === 0
     });
   }
+  await tx.fieldImage.deleteMany({ where: { fieldId } });
   if (rows.length) {
     await tx.fieldImage.createMany({ data: rows });
+  }
+  const keep = new Set(rows.map((r) => r.storagePath));
+  for (const old of previous) {
+    if (old.storagePath && !keep.has(old.storagePath)) {
+      await removeManagedObject(old.storagePath);
+    }
   }
 }
 
@@ -502,11 +519,23 @@ async function replaceFieldOpeningHours(tx, fieldId, schedule) {
 }
 
 async function upsertFieldDocument(tx, fieldId, type, url) {
-  await tx.fieldDocument.deleteMany({ where: { fieldId, type } });
-  if (!url) return;
-  await tx.fieldDocument.create({
-    data: { fieldId, ...documentCreateData(url, type) }
+  const previous = await tx.fieldDocument.findFirst({
+    where: { fieldId, type },
+    select: { storagePath: true }
   });
+  if (!url) {
+    await tx.fieldDocument.deleteMany({ where: { fieldId, type } });
+    if (previous && previous.storagePath) await removeManagedObject(previous.storagePath);
+    return;
+  }
+  const created = await documentCreateData(url, type, { fieldId });
+  await tx.fieldDocument.deleteMany({ where: { fieldId, type } });
+  await tx.fieldDocument.create({
+    data: { fieldId, ...created }
+  });
+  if (previous && previous.storagePath && previous.storagePath !== created.storagePath) {
+    await removeManagedObject(previous.storagePath);
+  }
 }
 
 async function deleteFieldCascade(fieldId) {
@@ -1192,15 +1221,15 @@ router.get('/:id/documents/:docType', authenticate, async (req, res) => {
       });
     }
 
-    const abs = resolvePrivateAbsolutePath(doc.storagePath);
-    if (!abs) {
+    const opened = await openPrivateObject(doc.storagePath);
+    if (!opened || !opened.stream) {
       return res.status(404).json({ error: 'Document file missing' });
     }
 
-    res.setHeader('Content-Type', doc.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', doc.mimeType || opened.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${docType.toLowerCase()}"`);
     res.setHeader('Cache-Control', 'private, no-store');
-    fs.createReadStream(abs).pipe(res);
+    opened.stream.pipe(res);
   } catch (error) {
     console.error('Get field document error:', error);
     res.status(500).json({ error: 'Failed to fetch document' });
@@ -1335,10 +1364,33 @@ router.post(
       const openingHourRows = openingHoursFromSchedule(scheduleObj);
       const ownDoc = optionalDocumentUrl(ownershipDocumentUrl);
       const licDoc = optionalDocumentUrl(licensesDocumentUrl);
+      const fieldId = crypto.randomUUID();
 
-      const field = await prisma.$transaction(async (tx) => {
+      const imageRows = [];
+      for (let i = 0; i < imageUrls.length; i += 1) {
+        try {
+          const saved = await persistPublicImage(imageUrls[i], { fieldId });
+          if (!saved) continue;
+          imageRows.push({
+            storagePath: saved.storagePath,
+            publicUrl: saved.publicUrl,
+            displayOrder: i,
+            isPrimary: i === 0
+          });
+        } catch {
+          /* skip invalid gallery item */
+        }
+      }
+      const documentRows = [];
+      if (ownDoc) documentRows.push(await documentCreateData(ownDoc, 'OWNERSHIP_DOCUMENT', { fieldId }));
+      if (licDoc) documentRows.push(await documentCreateData(licDoc, 'BUSINESS_LICENSE', { fieldId }));
+
+      let field;
+      try {
+      field = await prisma.$transaction(async (tx) => {
         return tx.field.create({
           data: {
+            id: fieldId,
             ownerId: req.user.id,
             name,
             sport,
@@ -1363,22 +1415,7 @@ router.post(
             moderatedById: isAdmin ? req.user.id : null,
             isActive,
             images: {
-              create: imageUrls
-                .map((url, i) => {
-                  try {
-                    const publicUrl = persistPublicImageUrl(url);
-                    if (!publicUrl) return null;
-                    return {
-                      storagePath: publicUrl.startsWith('/') ? publicUrl.slice(1) : publicUrl,
-                      publicUrl,
-                      displayOrder: i,
-                      isPrimary: i === 0
-                    };
-                  } catch {
-                    return null;
-                  }
-                })
-                .filter(Boolean)
+              create: imageRows
             },
             amenities: {
               create: amenityNames.map((n) => ({ name: n }))
@@ -1390,15 +1427,21 @@ router.post(
               create: openingHourRows
             },
             documents: {
-              create: [
-                ...(ownDoc ? [documentCreateData(ownDoc, 'OWNERSHIP_DOCUMENT')] : []),
-                ...(licDoc ? [documentCreateData(licDoc, 'BUSINESS_LICENSE')] : [])
-              ]
+              create: documentRows
             }
           },
           include: fieldDetailInclude
         });
       });
+      } catch (createErr) {
+        for (const row of imageRows) {
+          if (row.storagePath) await removeManagedObject(row.storagePath);
+        }
+        for (const row of documentRows) {
+          if (row.storagePath) await removeManagedObject(row.storagePath);
+        }
+        throw createErr;
+      }
 
       await writeAuditLog({
         actorId: req.user.id,

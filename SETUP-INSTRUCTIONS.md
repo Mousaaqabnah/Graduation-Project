@@ -221,6 +221,44 @@ Before deploying to production:
 6. Configure HTTPS
 7. Set up database backups
 
+## File storage (local vs Supabase)
+
+MatchField stores files through `lib/storage` — routes never call Supabase directly.
+
+| Provider | When | Behavior |
+|----------|------|----------|
+| `local` | Default in development | Writes under `storage/private/` and `uploads/public/` |
+| `supabase` | Default in production | Uploads to `matchfield-public` / `matchfield-private` |
+
+Production does **not** silently fall back to disk if Supabase is misconfigured. The process exits.
+
+Required for `STORAGE_PROVIDER=supabase` (backend `.env` only — never frontend):
+
+```
+STORAGE_PROVIDER=supabase
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_PUBLIC_BUCKET=matchfield-public
+SUPABASE_PRIVATE_BUCKET=matchfield-private
+```
+
+Create two buckets in the Supabase dashboard:
+
+1. `matchfield-public` — public read (gallery + avatars)
+2. `matchfield-private` — **not** publicly readable (KYC, ownership, licenses)
+
+Private documents are still downloaded only via authenticated API routes (`GET /api/fields/:id/documents/:docType`). Object keys are stored in Postgres (`storage_path`), never signed URLs.
+
+Migrate existing local files (dry-run first):
+
+```bash
+npm run migrate:storage
+# after review:
+node scripts/migrate-storage-to-supabase.js --apply
+```
+
+`--apply` uploads and updates DB refs. It does **not** delete local source files.
+
 ---
 
 **You're all set!** Start the server and begin testing your application. 🚀

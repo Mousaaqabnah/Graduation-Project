@@ -233,13 +233,13 @@ function showVerificationModal(userId) {
                     <div class="verification-image-section">
                         <label class="verification-image-label">ID Front</label>
                         <div class="verification-image-container">
-                            <img src="${user.idFrontUrl}" alt="ID Front" class="verification-image" onclick="openImageModal('${escapeHtml(user.idFrontUrl)}')">
+                            <img data-doc-src="${escapeHtml(user.idFrontUrl)}" alt="ID Front" class="verification-image js-kyc-image">
                         </div>
                     </div>
                     <div class="verification-image-section">
                         <label class="verification-image-label">ID Back</label>
                         <div class="verification-image-container">
-                            <img src="${user.idBackUrl}" alt="ID Back" class="verification-image" onclick="openImageModal('${escapeHtml(user.idBackUrl)}')">
+                            <img data-doc-src="${escapeHtml(user.idBackUrl)}" alt="ID Back" class="verification-image js-kyc-image">
                         </div>
                     </div>
                 </div>
@@ -259,6 +259,18 @@ function showVerificationModal(userId) {
                 </button>
             </div>
         `;
+        if (hasIdImages && window.API && typeof API.authFetchBlobUrl === 'function') {
+            verificationContent.querySelectorAll('.js-kyc-image').forEach(function (img) {
+                var apiPath = img.getAttribute('data-doc-src');
+                if (!apiPath) return;
+                API.authFetchBlobUrl(apiPath).then(function (blobUrl) {
+                    img.src = blobUrl;
+                    img.onclick = function () { openImageModal(blobUrl); };
+                }).catch(function () {
+                    img.alt = 'Unable to load document';
+                });
+            });
+        }
     }
     
     if (verificationModal) {

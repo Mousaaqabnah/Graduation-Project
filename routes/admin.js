@@ -11,6 +11,8 @@ const { toMajor } = require('../lib/money');
 const { createUniqueUsername } = require('../lib/username');
 const { createUniquePlayerCode } = require('../lib/playerCode');
 const { buildBookingRegionStats } = require('../lib/bookingRegionStats');
+const { openPrivateObject } = require('../lib/storage');
+const { isStoredDataUrl } = require('../lib/secureStorage');
 
 const router = express.Router();
 
@@ -466,8 +468,12 @@ router.get('/verifications', async (req, res) => {
         location: owner.location,
         status: owner.status,
         verificationStatus: owner.ownerProfile?.verificationStatus || 'PENDING',
-        idFrontUrl: front?.storagePath || null,
-        idBackUrl: back?.storagePath || null,
+        idFrontUrl: front
+          ? `/api/admin/verifications/${owner.id}/documents/ID_FRONT`
+          : null,
+        idBackUrl: back
+          ? `/api/admin/verifications/${owner.id}/documents/ID_BACK`
+          : null,
         createdAt: owner.createdAt
       };
     });
@@ -484,6 +490,40 @@ router.get('/verifications', async (req, res) => {
   } catch (error) {
     console.error('Get verifications error:', error);
     res.status(500).json({ error: 'Failed to fetch verifications' });
+  }
+});
+
+router.get('/verifications/:userId/documents/:docType', async (req, res) => {
+  try {
+    const userId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
+    const docType = String(req.params.docType || '').toUpperCase();
+    if (!isUuid(userId)) return res.status(400).json({ error: 'Invalid user id' });
+    if (!['ID_FRONT', 'ID_BACK'].includes(docType)) {
+      return res.status(400).json({ error: 'Invalid document type' });
+    }
+
+    const verification = await prisma.ownerVerification.findFirst({
+      where: { ownerId: userId },
+      orderBy: { submittedAt: 'desc' },
+      include: { documents: true }
+    });
+    const doc = verification?.documents?.find((d) => d.type === docType);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (isStoredDataUrl(doc.storagePath)) {
+      return res.status(409).json({ error: 'Document is still stored as legacy base64' });
+    }
+
+    const opened = await openPrivateObject(doc.storagePath);
+    if (!opened || !opened.stream) {
+      return res.status(404).json({ error: 'Document file missing' });
+    }
+    res.setHeader('Content-Type', doc.mimeType || opened.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${docType.toLowerCase()}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    opened.stream.pipe(res);
+  } catch (error) {
+    console.error('Get verification document error:', error);
+    res.status(500).json({ error: 'Failed to fetch document' });
   }
 });
 
