@@ -4,14 +4,10 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const dotenv = require('dotenv');
-const { Server } = require('socket.io');
 const { prisma } = require('./lib/prisma');
-const { setChatIo } = require('./lib/chatEvents');
-const { attachSocketChat } = require('./lib/socketChat');
 const {
   validateEnvOrExit,
   corsOriginDelegate,
-  socketIoCorsConfig,
   isProduction
 } = require('./lib/security/env');
 const { safeErrorHandler } = require('./lib/security/errors');
@@ -66,8 +62,6 @@ app.use(
         imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
         connectSrc: [
           "'self'",
-          'ws:',
-          'wss:',
           'https://unpkg.com',
           'https://cdn.jsdelivr.net',
           'https://*.tile.openstreetmap.org'
@@ -173,8 +167,6 @@ app.use('/api/fields', require('./routes/fields'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/favorites', require('./routes/favorites'));
-app.use('/api/messages', require('./routes/chatUpload'));
-app.use('/api/messages', require('./routes/messages'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/owner', require('./routes/owner'));
@@ -191,18 +183,10 @@ app.use((req, res) => {
 
 const httpServer = http.createServer(app);
 
-const io = new Server(httpServer, {
-  cors: socketIoCorsConfig()
-});
-
-setChatIo(io);
-attachSocketChat(io);
-
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT} (and http://127.0.0.1:${PORT})`);
   console.log(`API available at http://localhost:${PORT}/api`);
   console.log(`Open app: http://localhost:${PORT}/pages/auth/login.html`);
-  console.log('Socket.IO enabled');
 });
 
 process.on('SIGTERM', async () => {

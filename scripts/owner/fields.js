@@ -314,8 +314,33 @@ let fieldImages = [];
 let unavailableDates = [];
 let addFieldMapPicker = null;
 let manageFieldMapPicker = null;
-let lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
-let lastValidManageFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+function mfMapPos() {
+    if (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.PALESTINE_CENTER) {
+        return { lat: MatchFieldGeo.PALESTINE_CENTER.lat, lng: MatchFieldGeo.PALESTINE_CENTER.lng };
+    }
+    return { lat: 31.9038, lng: 35.2034 };
+}
+function mfMapCenter() {
+    if (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair) {
+        return MatchFieldGeo.mapCenterPair();
+    }
+    return [31.9038, 35.2034];
+}
+function mfCurrencySymbol() {
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.currencySymbol) {
+        return MatchFieldPrefs.currencySymbol();
+    }
+    return '₪';
+}
+function syncPriceCurrencyLabels() {
+    const sym = mfCurrencySymbol();
+    document.querySelectorAll('[data-price-currency-symbol]').forEach(function (el) {
+        el.textContent = sym;
+    });
+}
+
+let lastValidAddFieldMapPosition = mfMapPos();
+let lastValidManageFieldMapPosition = mfMapPos();
 
 if (addFieldBtn) {
     addFieldBtn.addEventListener('click', () => {
@@ -355,7 +380,7 @@ function resetAddFieldForm() {
     document.getElementById('unavailableDatesList').innerHTML = '';
     document.getElementById('latitude').textContent = '-';
     document.getElementById('longitude').textContent = '-';
-    lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+    lastValidAddFieldMapPosition = mfMapPos();
     updateStepButtons();
     if (addFieldMapPicker && typeof addFieldMapPicker.destroy === 'function') {
         addFieldMapPicker.destroy();
@@ -665,8 +690,8 @@ function initializeAddFieldMap() {
     if (addFieldMapPicker || typeof MapPickerService === 'undefined') return;
     addFieldMapPicker = MapPickerService.create({
         containerId: 'locationMap',
-        initialCenter: [41.0082, 28.9784],
-        initialZoom: 12,
+        initialCenter: mfMapCenter(),
+        initialZoom: (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM) || 10,
         draggable: true,
         onPositionChange: async function(position, source) {
             if (source === 'revert') return;
@@ -1913,8 +1938,8 @@ function initializeManageMap() {
     if (manageFieldMapPicker || typeof MapPickerService === 'undefined') return;
     manageFieldMapPicker = MapPickerService.create({
         containerId: 'manageLocationMap',
-        initialCenter: [41.0082, 28.9784],
-        initialZoom: 12,
+        initialCenter: mfMapCenter(),
+        initialZoom: (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM) || 10,
         draggable: true,
         onPositionChange: async function(position, source) {
             if (source === 'revert') return;
@@ -2188,6 +2213,7 @@ function updateRadioLabels() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
+    syncPriceCurrencyLabels();
     loadOwnerFieldsFromApi();
     selectedDate = new Date();
     initializeDaySchedules();

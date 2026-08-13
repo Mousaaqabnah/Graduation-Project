@@ -1,0 +1,92 @@
+/**
+ * RTL layout support when documentElement.dir = rtl (Arabic).
+ * Prefer logical adjustments over mirroring every icon.
+ */
+
+[dir="rtl"] body {
+  text-align: right;
+}
+
+[dir="rtl"] .settings-item {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .settings-item-info {
+  text-align: right;
+}
+
+[dir="rtl"] .settings-card-title {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .settings-card-title h2,
+[dir="rtl"] .settings-section-title {
+  text-align: right;
+}
+
+[dir="rtl"] .back-btn,
+[dir="rtl"] .settings-back,
+[dir="rtl"] a.back-link {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .back-btn i,
+[dir="rtl"] .back-btn .fi-rr-arrow-small-left,
+[dir="rtl"] .settings-back i {
+  transform: scaleX(-1);
+}
+
+[dir="rtl"] .sidebar,
+[dir="rtl"] .settings-sidebar {
+  text-align: right;
+  left: auto;
+  right: 15px;
+}
+
+[dir="rtl"] .nav-item {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .main-content {
+  margin-left: 0;
+  margin-right: 280px;
+}
+
+@media (max-width: 768px) {
+  [dir="rtl"] .main-content {
+    margin-right: 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  [dir="rtl"] .main-content {
+    margin-right: 0;
+  }
+
+  [dir="rtl"] .sidebar {
+    right: auto;
+    transform: translateX(100%);
+  }
+
+  [dir="rtl"] .sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+[dir="rtl"] .settings-select {
+  text-align: right;
+  direction: rtl;
+}
+
+[dir="rtl"] .toggle-switch {
+  margin-left: 0;
+}
+
+[dir="rtl"] .profile-popup,
+[dir="rtl"] .notification-popup {
+  text-align: right;
+}
+
+[dir="rtl"] .settings-item-description {
+  text-align: right;
+}

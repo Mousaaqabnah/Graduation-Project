@@ -3,10 +3,12 @@ const venues = { popular: [], nearby: [] };
 const HOME_SECTION_PREVIEW_LIMIT = 6;
 /** Match routes/fields.js parsePositiveIntOr max for list endpoints */
 const HOME_SECTION_FETCH_LIMIT = 48;
-const DEFAULT_LOCATION = { name: 'Istanbul', lat: 41.0082, lng: 28.9784, source: 'default' };
+const DEFAULT_LOCATION = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_LOCATION)
+  ? Object.assign({}, MatchFieldGeo.DEFAULT_LOCATION)
+  : { name: 'Ramallah', lat: 31.9038, lng: 35.2034, source: 'default' };
 const LOCATION_STORAGE_KEY = 'playerSelectedLocation';
 const LOCATION_OPTIONS = [
-  { name: 'Istanbul', lat: 41.0082, lng: 28.9784 }
+  { name: DEFAULT_LOCATION.name, lat: DEFAULT_LOCATION.lat, lng: DEFAULT_LOCATION.lng }
 ];
 let activeLocation = null;
 let currentPageBySection = { nearby: 1, popular: 1 };
@@ -22,6 +24,21 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Display-only money formatting from user currency preference (no FX conversion). */
+function mfMoney(amount) {
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+    return MatchFieldPrefs.formatMoney(amount);
+  }
+  return '₪' + String(amount == null ? 0 : amount);
+}
+
+function mfCurrencySymbol() {
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.currencySymbol) {
+    return MatchFieldPrefs.currencySymbol();
+  }
+  return '₪';
 }
 
 function safeUrlAttr(value) {
@@ -426,7 +443,7 @@ function createVenueCard(venue) {
       <div class="venue-card-content">
           <div class="venue-header">
               <h3 class="venue-name">${escapeHtml(venue.name)}</h3>
-              <span class="venue-price">₺${escapeHtml(venue.price)}/h</span>
+              <span class="venue-price">${escapeHtml(mfMoney(venue.price))}/h</span>
           </div>
           <div class="venue-rating">
               <span class="star">★</span>
@@ -600,7 +617,7 @@ function populateFieldDetails(venue) {
           <span><i class="fi fi-rr-tag"></i> ${escapeHtml(venue.sport)}</span>
         </div>
         <div class="field-preview-price">
-          <span>Price: <strong>₺${escapeHtml(venue.price)}/hour</strong></span>
+          <span>Price: <strong>${escapeHtml(mfMoney(venue.price))}/hour</strong></span>
         </div>
       </div>
     </div>
@@ -734,7 +751,7 @@ function loadPaymentStep() {
     // Validate mixed payment distribution
     const totalAssigned = Object.values(bookingState.mixedPaymentDistribution).reduce((sum, amount) => sum + amount, 0);
     if (Math.abs(totalAssigned - bookingState.totalCost) > 0.01) {
-      alert(`Please ensure the total payment distribution equals ₺${bookingState.totalCost}. Currently assigned: ₺${totalAssigned.toFixed(2)}`);
+      alert(`Please ensure the total payment distribution equals ${mfMoney(bookingState.totalCost)}. Currently assigned: ${mfMoney(totalAssigned.toFixed(2))}`);
       return;
     }
   }
@@ -746,7 +763,7 @@ function loadPaymentStep() {
       <div class="payment-summary">
         <div class="payment-amount">
           <span class="amount-label">${paymentLabel} to Pay</span>
-          <span class="amount-value">₺${paymentAmount}</span>
+          <span class="amount-value">${escapeHtml(mfMoney(paymentAmount))}</span>
         </div>
         ${bookingState.paymentMethod === 'split' ? `
           <div class="payment-note">
@@ -959,9 +976,9 @@ function updateCostSplit() {
   const totalPlayers = bookingState.players.length + 1; // +1 for organizer
   const costPerPlayer = totalPlayers > 0 ? Math.round(bookingState.totalCost / totalPlayers) : bookingState.totalCost;
 
-  if (totalCostEl) totalCostEl.textContent = `₺${bookingState.totalCost}`;
+  if (totalCostEl) totalCostEl.textContent = mfMoney(bookingState.totalCost);
   if (playerCountEl) playerCountEl.textContent = totalPlayers;
-  if (costPerPlayerEl) costPerPlayerEl.textContent = `₺${costPerPlayer}`;
+  if (costPerPlayerEl) costPerPlayerEl.textContent = mfMoney(costPerPlayer);
   
   // Update mixed payment if active
   if (bookingState.paymentMethod === 'mixed') {
@@ -1014,7 +1031,7 @@ function createMixedPaymentItem(id, name, amount, isOrganizer) {
       </div>
     </div>
     <div class="mixed-payment-item-input">
-      <span class="currency-symbol">₺</span>
+      <span class="currency-symbol">${escapeHtml(mfCurrencySymbol())}</span>
       <input 
         type="number" 
         class="mixed-payment-amount-input" 
@@ -1067,13 +1084,17 @@ function updateMixedPaymentSummary() {
   
   const remaining = bookingState.totalCost - totalAssigned;
   
-  assignedEl.textContent = `₺${totalAssigned.toFixed(2)}`;
-  remainingEl.textContent = `₺${remaining.toFixed(2)}`;
+  assignedEl.textContent = mfMoney(Number(totalAssigned.toFixed(2)));
+  remainingEl.textContent = mfMoney(Number(remaining.toFixed(2)));
   
   // Update color based on validation
   if (Math.abs(remaining) < 0.01) {
     remainingEl.style.color = '#10B981';
-    remainingEl.innerHTML = `₺${remaining.toFixed(2)} <i class="fi fi-rr-check"></i>`;
+    remainingEl.textContent = '';
+    remainingEl.appendChild(document.createTextNode(mfMoney(Number(remaining.toFixed(2))) + ' '));
+    var checkIcon = document.createElement('i');
+    checkIcon.className = 'fi fi-rr-check';
+    remainingEl.appendChild(checkIcon);
   } else if (remaining < 0) {
     remainingEl.style.color = '#DC2626';
   } else {
@@ -1148,11 +1169,11 @@ function showBookingSummary() {
       <h4>Payment</h4>
       <div class="summary-item">
         <span>Total Cost:</span>
-        <span><strong>₺${bookingState.totalCost}</strong></span>
+        <span><strong>${escapeHtml(mfMoney(bookingState.totalCost))}</strong></span>
       </div>
       <div class="summary-item">
         <span>Cost per Player:</span>
-        <span><strong>₺${costPerPlayer}</strong></span>
+        <span><strong>${escapeHtml(mfMoney(costPerPlayer))}</strong></span>
       </div>
       <div class="summary-item">
         <span>Payment Method:</span>
@@ -1161,28 +1182,28 @@ function showBookingSummary() {
       ${bookingState.paymentData ? `
         <div class="summary-item">
           <span>Your Payment:</span>
-          <span><strong style="color: #10B981;">✓ Paid (₺${bookingState.paymentAmount || bookingState.totalCost})</strong></span>
+          <span><strong style="color: #10B981;">✓ Paid (${escapeHtml(mfMoney(bookingState.paymentAmount || bookingState.totalCost))})</strong></span>
         </div>
       ` : bookingState.paymentMethod === 'split' ? `
         <div class="summary-item">
           <span>Your Payment:</span>
-          <span><strong style="color: #F59E0B;">Pending (₺${Math.round(bookingState.totalCost / (bookingState.players.length + 1))})</strong></span>
+          <span><strong style="color: #F59E0B;">Pending (${escapeHtml(mfMoney(Math.round(bookingState.totalCost / (bookingState.players.length + 1))))})</strong></span>
         </div>
       ` : bookingState.paymentMethod === 'mixed' ? `
         <div class="summary-item">
           <span>Your Payment:</span>
-          <span><strong style="color: ${bookingState.paymentData ? '#10B981' : '#F59E0B'};">${bookingState.paymentData ? '✓ Paid' : 'Pending'} (₺${bookingState.mixedPaymentDistribution['organizer'] || 0})</strong></span>
+          <span><strong style="color: ${bookingState.paymentData ? '#10B981' : '#F59E0B'};">${bookingState.paymentData ? '✓ Paid' : 'Pending'} (${escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0))})</strong></span>
         </div>
         <div class="summary-section" style="margin-top: 12px; padding: 12px;">
           <h5 style="font-size: 14px; font-weight: 600; margin: 0 0 8px 0; color: #212529;">Payment Distribution:</h5>
           <div class="summary-item" style="padding: 4px 0;">
             <span>You:</span>
-            <span>₺${bookingState.mixedPaymentDistribution['organizer'] || 0}</span>
+            <span>${escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0))}</span>
           </div>
           ${bookingState.players.map(p => `
             <div class="summary-item" style="padding: 4px 0;">
-              <span>${p.name}:</span>
-              <span>₺${bookingState.mixedPaymentDistribution[p.id] || 0}</span>
+              <span>${escapeHtml(p.name)}:</span>
+              <span>${escapeHtml(mfMoney(bookingState.mixedPaymentDistribution[p.id] || 0))}</span>
             </div>
           `).join('')}
         </div>
@@ -1430,7 +1451,7 @@ function validateCurrentStep() {
       if (bookingState.paymentMethod === 'mixed') {
         const totalAssigned = Object.values(bookingState.mixedPaymentDistribution).reduce((sum, amount) => sum + amount, 0);
         if (Math.abs(totalAssigned - bookingState.totalCost) > 0.01) {
-          alert(`Please ensure the total payment distribution equals ₺${bookingState.totalCost}. Currently assigned: ₺${totalAssigned.toFixed(2)}`);
+          alert(`Please ensure the total payment distribution equals ${mfMoney(bookingState.totalCost)}. Currently assigned: ${mfMoney(totalAssigned.toFixed(2))}`);
           return false;
         }
       }
@@ -1943,7 +1964,7 @@ function createPaymentNotifications(booking, players) {
       fieldName: fieldName,
       fieldImage: fieldImage,
       title: 'Payment Required',
-      message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ₺${amount}.`,
+      message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ${mfMoney(amount)}.`,
       date: bookingState.selectedDate,
       time: bookingState.selectedTimeSlots.join(', '),
       paymentAmount: amount,
@@ -2236,7 +2257,7 @@ function showBookingConfirmation(booking, isFullyPaid) {
         </div>
         <div class="confirmation-detail-item">
           <i class="fi fi-rr-money"></i>
-          <span>₺${booking.totalCost}</span>
+          <span>${escapeHtml(mfMoney(booking.totalCost))}</span>
         </div>
       </div>
       <p class="confirmation-note">
@@ -2320,7 +2341,7 @@ function notifyOrganizerOfPayment(booking, payerData, amount) {
     playerId: organizerId,
     bookingId: booking.id,
     title: 'Player Paid Their Share',
-    message: payerName + ' has paid ₺' + amount + ' for your booking at ' + fieldName + '.',
+    message: payerName + ' has paid ' + mfMoney(amount) + ' for your booking at ' + fieldName + '.',
     date: booking.date,
     status: 'unread',
     createdAt: new Date().toISOString()
@@ -2423,7 +2444,7 @@ function openPaymentModal(options) {
       <div class="payment-summary">
         <div class="payment-amount">
           <span class="amount-label">Amount to Pay</span>
-          <span class="amount-value">₺${paymentState.amount}</span>
+          <span class="amount-value">${escapeHtml(mfMoney(paymentState.amount))}</span>
         </div>
         ${paymentState.booking ? `
           <div class="payment-details">

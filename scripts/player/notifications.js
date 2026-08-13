@@ -203,6 +203,13 @@ document.addEventListener('DOMContentLoaded', function () {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  function mfMoney(amount) {
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+      return MatchFieldPrefs.formatMoney(amount);
+    }
+    return '₪' + String(amount == null ? 0 : amount);
+  }
+
   function formatTime(isoOrStr) {
     if (!isoOrStr) return '';
     const d = new Date(isoOrStr);
@@ -353,7 +360,7 @@ document.addEventListener('DOMContentLoaded', function () {
       fieldImage: fieldImage,
       title: 'Payment Required',
       message: (currentUser.fullName || currentUser.name || 'The organizer') +
-        ' invited you to replace a player at ' + fieldName + '. Your share is ₺' + amount + '.',
+        ' invited you to replace a player at ' + fieldName + '. Your share is ' + mfMoney(amount) + '.',
       date: dateValue,
       time: timeValue,
       paymentAmount: amount,
@@ -419,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderPlayerLeftActions(notification) {
     const bookingId = getNotificationBookingId(notification);
     if (!bookingId) return '';
-    const amountText = Number(notification.paymentAmount) > 0 ? ' (₺' + Number(notification.paymentAmount) + ')' : '';
+    const amountText = Number(notification.paymentAmount) > 0 ? ' (' + mfMoney(Number(notification.paymentAmount)) + ')' : '';
     return `
       <button type="button" class="notification-action-btn primary" data-notification-action="add-player">
         Add Another Player

@@ -38,8 +38,12 @@ This folder contains the Prisma schema for the MatchField sports venue booking p
 | **Booking** | A booking slot (field, date, time, organizer, payment method, status). |
 | **BookingParticipant** | Participants in a booking with per-user payment status. |
 | **Favorite** | User's favorite fields. |
-| **Conversation** | Chat conversation between two users. |
-| **Message** | Messages within a conversation. |
+| **Notification** | In-app notifications (booking, payment, support, system). |
+| **UserNotification** | Per-user notification delivery / read state. |
+| **SupportTicket** | Contact Us / admin support inbox tickets. |
+| **SupportMessage** | Messages on a support ticket (not user↔user chat). |
+
+> Internal user↔user Chat (`Conversation` / `Message`) was removed in product Phase 3.
 
 ## Scripts
 

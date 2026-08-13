@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-straight/css/uicons-regular-straight.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
     <link rel="stylesheet" href="../../styles/admin/verification.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -26,7 +27,7 @@
             <nav class="sidebar-nav">
                 <a href="dashboard.html" class="nav-item">
                     <i class="fi fi-rr-apps nav-icon"></i>
-                    <span>Dashboard</span>
+                    <span data-i18n="nav.dashboard">Dashboard</span>
                 </a>
                 <a href="users.html" class="nav-item">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -35,11 +36,11 @@
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
                         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                     </svg>
-                    <span>Users</span>
+                    <span data-i18n="nav.users">Users</span>
                 </a>
                 <a href="verification.html" class="nav-item active">
                     <i class="fi fi-rr-badge-check nav-icon"></i>
-                    <span>Verification</span>
+                    <span data-i18n="nav.verification">Verification</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -47,11 +48,11 @@
                         <line x1="9" y1="9" x2="15" y2="9"></line>
                         <line x1="9" y1="15" x2="15" y2="15"></line>
                     </svg>
-                    <span>Fields</span>
+                    <span data-i18n="nav.fields">Fields</span>
                 </a>
                 <a href="messages.html" class="nav-item">
                     <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Messages</span>
+                    <span data-i18n="nav.messages">Messages</span>
                 </a>
             </nav>
             
@@ -62,7 +63,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -135,7 +136,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -237,6 +238,8 @@
     
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>
     <script src="../../scripts/admin/header-user.js"></script>

@@ -27,7 +27,10 @@ function ownerStatusLabel(status) {
 
 function formatOwnerTry(amount) {
     const n = Number(amount) || 0;
-    return '₺' + n.toLocaleString('tr-TR');
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+        return MatchFieldPrefs.formatMoney(n);
+    }
+    return '₪' + n.toLocaleString('en-IL');
 }
 
 function dashboardLocationLine(field) {
@@ -39,8 +42,33 @@ let ownerDashboardFieldsById = new Map();
 let addFieldMapPicker = null;
 let manageFieldMapPicker = null;
 /** Last accepted land pin (revert sea clicks). */
-let lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
-let lastValidManageFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+function mfMapPos() {
+    if (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.PALESTINE_CENTER) {
+        return { lat: MatchFieldGeo.PALESTINE_CENTER.lat, lng: MatchFieldGeo.PALESTINE_CENTER.lng };
+    }
+    return { lat: 31.9038, lng: 35.2034 };
+}
+function mfMapCenter() {
+    if (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair) {
+        return MatchFieldGeo.mapCenterPair();
+    }
+    return [31.9038, 35.2034];
+}
+function mfCurrencySymbol() {
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.currencySymbol) {
+        return MatchFieldPrefs.currencySymbol();
+    }
+    return '₪';
+}
+function syncPriceCurrencyLabels() {
+    const sym = mfCurrencySymbol();
+    document.querySelectorAll('[data-price-currency-symbol]').forEach(function (el) {
+        el.textContent = sym;
+    });
+}
+
+let lastValidAddFieldMapPosition = mfMapPos();
+let lastValidManageFieldMapPosition = mfMapPos();
 
 function ownerFieldModerationUi(f) {
     const mod = String((f && f.moderationStatus) || '').toUpperCase();
@@ -591,6 +619,7 @@ function updateGreeting() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    syncPriceCurrencyLabels();
     updateGreeting();
     if (typeof API !== 'undefined' && API.owner && API.owner.getStats) {
         loadOwnerDashboard();
@@ -601,7 +630,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Format currency helper
 function formatCurrency(amount) {
-    return `₺${amount.toLocaleString('tr-TR')}`;
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+        return MatchFieldPrefs.formatMoney(amount);
+    }
+    return '₪' + Number(amount || 0).toLocaleString('en-IL');
 }
 
 // Export functions for use in other scripts if needed
@@ -925,7 +957,7 @@ function resetAddFieldForm() {
     const unavailableDatesList = document.getElementById('unavailableDatesList');
     if (imagesGrid) imagesGrid.innerHTML = '';
     if (unavailableDatesList) unavailableDatesList.innerHTML = '';
-    lastValidAddFieldMapPosition = { lat: 41.0082, lng: 28.9784 };
+    lastValidAddFieldMapPosition = mfMapPos();
     const latEl = document.getElementById('latitude');
     const lngEl = document.getElementById('longitude');
     if (latEl) latEl.textContent = '-';
@@ -1349,8 +1381,8 @@ function initializeAddFieldMap() {
     if (addFieldMapPicker || typeof MapPickerService === 'undefined') return;
     addFieldMapPicker = MapPickerService.create({
         containerId: 'locationMap',
-        initialCenter: [41.0082, 28.9784],
-        initialZoom: 12,
+        initialCenter: mfMapCenter(),
+        initialZoom: (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM) || 10,
         draggable: true,
         onPositionChange: async function(position, source) {
             if (source === 'revert') return;
@@ -1641,8 +1673,8 @@ function initializeManageMap() {
     if (manageFieldMapPicker || typeof MapPickerService === 'undefined') return;
     manageFieldMapPicker = MapPickerService.create({
         containerId: 'manageLocationMap',
-        initialCenter: [41.0082, 28.9784],
-        initialZoom: 12,
+        initialCenter: mfMapCenter(),
+        initialZoom: (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM) || 10,
         draggable: true,
         onPositionChange: async function(position, source) {
             if (source === 'revert') return;

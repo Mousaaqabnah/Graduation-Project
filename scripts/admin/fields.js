@@ -115,10 +115,13 @@ function formatScheduleForAdmin(schedule) {
     return rows.join('\n');
 }
 
-/** Same unit as owner forms: whole TRY per hour (not kuruş). */
-function formatPriceTry(pricePerHour) {
+/** Display-only hourly price from user currency preference (no FX). */
+function formatPricePerHour(pricePerHour) {
     const n = Number(pricePerHour || 0);
-    return '\u20BA' + n.toLocaleString('tr-TR') + '/h';
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+        return MatchFieldPrefs.formatMoney(n) + '/h';
+    }
+    return '₪' + n.toLocaleString('en-IL') + '/h';
 }
 
 function escapeAttr(s) {
@@ -186,7 +189,7 @@ function mergeAdminFieldRowWithDetail(row, detail) {
         latitude: detail.latitude,
         longitude: detail.longitude,
         pricePerHour: pph,
-        price: formatPriceTry(pph),
+        price: formatPricePerHour(pph),
         ownershipDocumentUrl:
             detail.ownershipDocumentUrl ||
             (detail.pendingChanges && detail.pendingChanges.ownershipDocumentUrl) ||
@@ -641,7 +644,7 @@ function mapField(f) {
         ownerEmail: (f.owner && f.owner.email) ? f.owner.email : '',
         sport: String(f.sport || '').toLowerCase(),
         pricePerHour: f.pricePerHour || 0,
-        price: formatPriceTry(f.pricePerHour),
+        price: formatPricePerHour(f.pricePerHour),
         status: displayStatus(f),
         isActive: !!f.isActive,
         moderationStatus: f.moderationStatus || null,

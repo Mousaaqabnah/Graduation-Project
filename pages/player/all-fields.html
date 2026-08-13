@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="../../styles/player/all-fields.css">
     <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -29,27 +30,23 @@
             <nav class="sidebar-nav">
                 <a href="home.html" class="nav-item">
                     <i class="fi fi-rr-home nav-icon"></i>
-                    <span>Home Page</span>
+                    <span data-i18n="nav.home">Home Page</span>
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span>My Booking</span>
+                    <span data-i18n="nav.bookings">My Booking</span>
                 </a>
-                <a href="chat.html" class="nav-item">
-                    <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Chat</span>
-                </a>
-                <a href="map.html" class="nav-item">
+<a href="map.html" class="nav-item">
                     <i class="fi fi-rr-map-marker nav-icon"></i>
-                    <span>Map</span>
+                    <span data-i18n="nav.map">Map</span>
                 </a>
                 <a href="../shared/contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span>Contact Us</span>
+                    <span data-i18n="nav.contact">Contact Us</span>
                 </a>
                 <a href="../shared/about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
-                    <span>About Us</span>
+                    <span data-i18n="nav.about">About Us</span>
                 </a>
             </nav>
             
@@ -60,7 +57,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -125,9 +122,9 @@
                                 <label class="filter-label">Price Range</label>
                                 <div class="filter-options">
                                     <button class="filter-option" data-filter="price" data-value="all">All</button>
-                                    <button class="filter-option" data-filter="price" data-value="0-1000">₺0 - ₺1000</button>
-                                    <button class="filter-option" data-filter="price" data-value="1000-2000">₺1000 - ₺2000</button>
-                                    <button class="filter-option" data-filter="price" data-value="2000+">₺2000+</button>
+                                    <button class="filter-option" data-filter="price" data-value="0-1000">₪0 - ₪1000</button>
+                                    <button class="filter-option" data-filter="price" data-value="1000-2000">₪1000 - ₪2000</button>
+                                    <button class="filter-option" data-filter="price" data-value="2000+">₪2000+</button>
                                 </div>
                             </div>
                             
@@ -256,7 +253,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -374,7 +371,7 @@
                         <div class="cost-summary">
                             <div class="cost-item">
                                 <span>Total Cost:</span>
-                                <span class="cost-value" id="totalCost">₺0</span>
+                                <span class="cost-value" id="totalCost">₪0</span>
                             </div>
                             <div class="cost-item">
                                 <span>Number of Players:</span>
@@ -382,7 +379,7 @@
                             </div>
                             <div class="cost-item total">
                                 <span>Cost per Player:</span>
-                                <span class="cost-value" id="costPerPlayer">₺0</span>
+                                <span class="cost-value" id="costPerPlayer">₪0</span>
                             </div>
                         </div>
                         <div class="payment-options">
@@ -414,7 +411,7 @@
                         <div class="mixed-payment-config" id="mixedPaymentConfig" style="display: none;">
                             <div class="mixed-payment-header">
                                 <h4>Custom Payment Distribution</h4>
-                                <p class="mixed-payment-note">Set custom payment amounts for each player. The total must equal ₺<span id="mixedPaymentTotal">0</span>.</p>
+                                <p class="mixed-payment-note">Set custom payment amounts for each player. The total must equal ₪<span id="mixedPaymentTotal">0</span>.</p>
                             </div>
                             
                             <div class="mixed-payment-list" id="mixedPaymentList">
@@ -424,11 +421,11 @@
                             <div class="mixed-payment-summary">
                                 <div class="mixed-payment-total-row">
                                     <span>Total Assigned:</span>
-                                    <span id="mixedPaymentAssigned">₺0</span>
+                                    <span id="mixedPaymentAssigned">₪0</span>
                                 </div>
                                 <div class="mixed-payment-remaining-row">
                                     <span>Remaining:</span>
-                                    <span id="mixedPaymentRemaining">₺0</span>
+                                    <span id="mixedPaymentRemaining">₪0</span>
                                 </div>
                             </div>
                         </div>
@@ -537,7 +534,7 @@
                                             type="text" 
                                             id="billingCity" 
                                             name="billingCity" 
-                                            placeholder="Istanbul"
+                                            placeholder="Ramallah"
                                             required
                                             autocomplete="address-level2"
                                         >
@@ -565,7 +562,7 @@
                                         autocomplete="country"
                                     >
                                         <option value="">Select Country</option>
-                                        <option value="TR" selected>Turkey</option>
+                                        <option value="PS" selected>Palestine</option>
                                         <option value="US">United States</option>
                                         <option value="GB">United Kingdom</option>
                                         <option value="DE">Germany</option>
@@ -633,6 +630,9 @@
 
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/geoDefaults.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/player/header-user.js"></script>

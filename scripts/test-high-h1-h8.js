@@ -1,10 +1,10 @@
 /**
  * HIGH priority H1–H8 regression suite.
  * Run: npm run test:high   (server must be up; seed users available)
+ *
+ * H6 asserts internal chat routes are gone (404) after Phase 3 chat removal.
  */
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcryptjs');
 const { prisma } = require('../lib/prisma');
 const { createUniqueUsername } = require('../lib/username');
@@ -75,10 +75,6 @@ async function pickSlot(token, fieldId) {
     }
   }
   return null;
-}
-
-function tinyJpeg() {
-  return Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 }
 
 async function main() {
@@ -485,80 +481,23 @@ async function main() {
     await prisma.user.delete({ where: { id: temp.id } }).catch(() => {});
   }
 
-  // ---------- H6 chat ----------
+  // ---------- H6 chat feature removed ----------
+  // H6 historically covered chat DM auth + uploads; feature removed by product decision Phase 3.
   {
-    const cold = await req('GET', `/api/messages/conversation/${player.user.id}`, {
-      token: await login('player').then((p) => p.token)
-    });
-    // player messaging self already 400; player-player cold DM:
-    const otherPlayer = await prisma.user.create({
-      data: {
-        email: `dm.${Date.now()}@matchfield.test`,
-        username: await createUniqueUsername(prisma, 'dmplayer'),
-        passwordHash: await bcrypt.hash('TempPlayer123!', 10),
-        fullName: 'DM Player',
-        role: 'PLAYER',
-        status: 'ACTIVE',
-        playerCode: await createUniquePlayerCode()
-      }
-    });
-    const dm = await req('GET', `/api/messages/conversation/${otherPlayer.id}`, {
+    const someUuid = '00000000-0000-4000-8000-000000000001';
+    const list = await req('GET', '/api/messages/conversations', { token: player.token });
+    record('H6 GET /api/messages/conversations returns 404', list.status === 404, list.status);
+
+    const conv = await req('GET', `/api/messages/conversation/${someUuid}`, {
       token: player.token
     });
-    record('H6 unauthorized cold player-player DM blocked', dm.status === 403, dm.status);
+    record('H6 GET /api/messages/conversation/:id returns 404', conv.status === 404, conv.status);
 
-    const ownerDm = await req('GET', `/api/messages/conversation/${owner.user.id}`, {
-      token: player.token
+    const attach = await req('POST', '/api/messages/attachment', {
+      token: player.token,
+      body: {}
     });
-    record('H6 player-owner DM allowed', ownerDm.status === 200, ownerDm.status);
-    const convId = ownerDm.body.conversation && ownerDm.body.conversation.id;
-
-    // malicious upload without conversation
-    const form = new FormData();
-    form.append('file', new Blob([tinyJpeg()], { type: 'image/jpeg' }), 'x.jpg');
-    const up1 = await fetch(`${BASE}/api/messages/attachment`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${player.token}` },
-      body: form
-    });
-    record('H6 upload requires conversationId', up1.status === 400, up1.status);
-
-    if (convId) {
-      const form2 = new FormData();
-      form2.append('conversationId', convId);
-      form2.append('file', new Blob(['<script>alert(1)</script>'], { type: 'text/html' }), 'x.html');
-      const up2 = await fetch(`${BASE}/api/messages/attachment`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${player.token}` },
-        body: form2
-      });
-      record('H6 malicious HTML upload rejected', up2.status === 400, up2.status);
-
-      const form3 = new FormData();
-      form3.append('conversationId', convId);
-      form3.append('file', new Blob([tinyJpeg()], { type: 'image/jpeg' }), 'ok.jpg');
-      const up3 = await fetch(`${BASE}/api/messages/attachment`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${player.token}` },
-        body: form3
-      });
-      const up3Body = await up3.json().catch(() => ({}));
-      record('H6 valid chat upload', up3.status === 201, up3.status);
-
-      const foreign = await req(
-        'GET',
-        `/api/messages/files/${path.basename(String(up3Body.url || '').split('?')[0].split('/').pop() || 'x')}?conversationId=${convId}`,
-        { token: (await login('admin')).token }
-      );
-      // admin may not be participant — should 403
-      record(
-        'H6 unauthorized file access blocked',
-        foreign.status === 403 || foreign.status === 400 || foreign.status === 404,
-        foreign.status
-      );
-    }
-
-    await prisma.user.delete({ where: { id: otherPlayer.id } }).catch(() => {});
+    record('H6 POST /api/messages/attachment returns 404', attach.status === 404, attach.status);
   }
 
   // ---------- H7 reviews ----------

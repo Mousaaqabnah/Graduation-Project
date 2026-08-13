@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <link rel="stylesheet" href="../../styles/owner/dashboard.css">
     <link rel="stylesheet" href="../../styles/owner/fields.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -28,31 +29,27 @@
             <nav class="sidebar-nav">
                 <a href="dashboard.html" class="nav-item">
                     <i class="fi fi-rr-apps nav-icon"></i>
-                    <span>Dashboard</span>
+                    <span data-i18n="nav.dashboard">Dashboard</span>
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span>Bookings</span>
+                    <span data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item active">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
-                    <span>My Fields</span>
+                    <span data-i18n="nav.my_fields">My Fields</span>
                 </a>
-                <a href="chat.html" class="nav-item">
-                    <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Chat</span>
-                </a>
-                <a href="map.html" class="nav-item">
+<a href="map.html" class="nav-item">
                     <i class="fi fi-rr-map-marker nav-icon"></i>
-                    <span>Map</span>
+                    <span data-i18n="nav.map">Map</span>
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span>Contact Us</span>
+                    <span data-i18n="nav.contact">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
-                    <span>About Us</span>
+                    <span data-i18n="nav.about">About Us</span>
                 </a>
             </nav>
             
@@ -63,7 +60,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -157,7 +154,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -558,7 +555,7 @@
                     <div class="form-step-content">
                         <div class="form-step-section">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label>Price per Hour (₺) <span class="required">*</span></label>
+                                <label>Price per Hour (<span data-price-currency-symbol>₪</span>) <span class="required">*</span></label>
                                 <input type="number" id="managePricePerHour" value="1600" required min="0" placeholder="e.g. 1600">
                             </div>
                         </div>
@@ -579,17 +576,17 @@
                         <div class="form-step-section">
                             <div class="form-group">
                                 <label>Address <span class="required">*</span></label>
-                                <input type="text" id="manageFieldAddress" value="Üsküdar, Umraniye" required>
+                                <input type="text" id="manageFieldAddress" value="Ramallah, Al-Bireh" required>
                             </div>
                             
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>City <span class="required">*</span></label>
-                                    <input type="text" id="manageFieldCity" value="Istanbul" required>
+                                    <input type="text" id="manageFieldCity" value="Ramallah" required>
                                 </div>
                                 <div class="form-group">
                                     <label>District</label>
-                                    <input type="text" id="manageFieldDistrict" value="Üsküdar">
+                                    <input type="text" id="manageFieldDistrict" value="Al-Bireh">
                                 </div>
                             </div>
                             
@@ -605,8 +602,8 @@
                                         <div class="map-pin" id="manageMapPin">📍</div>
                                     </div>
                                     <div class="coordinates-display">
-                                        <span>Latitude: <span id="manageLatitude">41.0082</span></span>
-                                        <span>Longitude: <span id="manageLongitude">28.9784</span></span>
+                                        <span>Latitude: <span id="manageLatitude">31.9038</span></span>
+                                        <span>Longitude: <span id="manageLongitude">35.2034</span></span>
                                     </div>
                                 </div>
                             </div>
@@ -782,7 +779,7 @@
                     <!-- Field Info Card -->
                     <div class="view-field-info-card">
                         <div class="view-field-price-section">
-                            <div class="view-field-price" id="viewFieldPrice">₺0<span class="view-field-price-unit">/h</span></div>
+                            <div class="view-field-price" id="viewFieldPrice">₪0<span class="view-field-price-unit">/h</span></div>
                             <div class="view-field-price-note">Per hour • Taxes included</div>
                         </div>
                         
@@ -1096,17 +1093,17 @@
                         <div class="form-step-section">
                             <div class="form-group">
                                 <label>Address <span class="required">*</span></label>
-                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="e.g. Barbaros Mah. Begonya Sok. No:8">
+                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="e.g. Al-Irsal St., Ramallah">
                             </div>
                             
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>City <span class="required">*</span></label>
-                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Istanbul (auto-filled from map)">
+                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Ramallah (auto-filled from map)">
                                 </div>
                                 <div class="form-group">
                                     <label>District</label>
-                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Uskudar (auto-filled from map)">
+                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Al-Bireh (auto-filled from map)">
                                 </div>
                             </div>
                             
@@ -1139,7 +1136,7 @@
                     <div class="form-step-content">
                         <div class="form-step-section">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label>Price per Hour (₺) <span class="required">*</span></label>
+                                <label>Price per Hour (<span data-price-currency-symbol>₪</span>) <span class="required">*</span></label>
                                 <input type="number" id="pricePerHour" name="pricePerHour" required min="0" placeholder="e.g. 1600">
                             </div>
                         </div>
@@ -1319,6 +1316,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
+    <script src="../../scripts/utils/geoDefaults.js"></script>
     <script src="../../scripts/utils/geocodingService.js"></script>
     <script src="../../scripts/utils/mapPickerService.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>

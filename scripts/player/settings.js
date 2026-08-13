@@ -1,11 +1,6 @@
 // Settings Page JavaScript
 
 var savePrefsTimer = null;
-var FIXED_PLAYER_PREFS = {
-    language: 'en',
-    currency: 'TRY',
-    timezone: 'Europe/Istanbul'
-};
 var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
 var accountSettingsState = {
     emailNotifications: true,
@@ -25,6 +20,33 @@ var notificationPrefsState = {
     marketingEmails: false,
     isSaving: false
 };
+
+function readLocaleFromDom() {
+    var languageEl = document.getElementById('language');
+    var currencyEl = document.getElementById('currency');
+    var timezoneEl = document.getElementById('timezone');
+    var Prefs = window.MatchFieldPrefs;
+    return {
+        language: Prefs
+            ? Prefs.normalizeLanguage(languageEl && languageEl.value)
+            : (languageEl && languageEl.value) || 'en',
+        currency: Prefs
+            ? Prefs.normalizeCurrency(currencyEl && currencyEl.value)
+            : (currencyEl && currencyEl.value) || 'ILS',
+        timezone: Prefs
+            ? Prefs.normalizeTimezone(timezoneEl && timezoneEl.value)
+            : (timezoneEl && timezoneEl.value) || 'Asia/Jerusalem'
+    };
+}
+
+function applyLocaleUi() {
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.applyDocumentLocale(MatchFieldPrefs.getLanguage());
+    }
+    if (window.MatchFieldI18n) {
+        MatchFieldI18n.applyTranslations(document);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Get popup elements (notification handled by notifications.js)
@@ -231,14 +253,29 @@ async function loadSettings() {
     } catch (err) {
         console.warn('Player settings: could not load from API', err);
     }
-    const settings = {
-        ...local,
-        ...remote,
-        language: FIXED_PLAYER_PREFS.language,
-        currency: FIXED_PLAYER_PREFS.currency,
-        timezone: FIXED_PLAYER_PREFS.timezone
-    };
+    var locale = window.MatchFieldPrefs
+        ? MatchFieldPrefs.normalizeLocalePrefs(Object.assign({}, local, remote))
+        : Object.assign(
+            { language: 'en', currency: 'ILS', timezone: 'Asia/Jerusalem' },
+            local,
+            remote
+          );
+    const settings = Object.assign({}, local, remote, {
+        language: locale.language,
+        currency: locale.currency,
+        timezone: locale.timezone
+    });
     localStorage.setItem('playerSettings', JSON.stringify(settings));
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.setLocalePrefs(
+            {
+                language: settings.language,
+                currency: settings.currency,
+                timezone: settings.timezone
+            },
+            'PLAYER'
+        );
+    }
 
     if (settings.emailNotifications !== undefined) {
         document.getElementById('emailNotifications').checked = settings.emailNotifications;
@@ -258,13 +295,13 @@ async function loadSettings() {
     if (settings.marketingEmails !== undefined) {
         document.getElementById('marketingEmails').checked = settings.marketingEmails;
     }
-    if (settings.language) {
+    if (document.getElementById('language')) {
         document.getElementById('language').value = settings.language;
     }
-    if (settings.currency) {
+    if (document.getElementById('currency')) {
         document.getElementById('currency').value = settings.currency;
     }
-    if (settings.timezone) {
+    if (document.getElementById('timezone')) {
         document.getElementById('timezone').value = settings.timezone;
     }
 
@@ -287,10 +324,13 @@ async function loadSettings() {
     notificationPrefsState.marketingEmails = document.getElementById('marketingEmails')
         ? Boolean(document.getElementById('marketingEmails').checked)
         : false;
+
+    applyLocaleUi();
 }
 
 function saveSettings(options) {
     var opts = options || {};
+    var locale = readLocaleFromDom();
     const settings = {
         emailNotifications: document.getElementById('emailNotifications').checked,
         twoFactorAuth: document.getElementById('twoFactorAuth').checked,
@@ -298,12 +338,16 @@ function saveSettings(options) {
         reminders: document.getElementById('reminders').checked,
         venueUpdates: document.getElementById('venueUpdates').checked,
         marketingEmails: document.getElementById('marketingEmails').checked,
-        language: FIXED_PLAYER_PREFS.language,
-        currency: FIXED_PLAYER_PREFS.currency,
-        timezone: FIXED_PLAYER_PREFS.timezone
+        language: locale.language,
+        currency: locale.currency,
+        timezone: locale.timezone
     };
 
     localStorage.setItem('playerSettings', JSON.stringify(settings));
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.setLocalePrefs(locale, 'PLAYER');
+    }
+    applyLocaleUi();
 
     if (savePrefsTimer) {
         clearTimeout(savePrefsTimer);
@@ -317,7 +361,7 @@ function saveSettings(options) {
         savePrefsTimer = null;
         if (typeof API !== 'undefined' && API.users && API.users.patchMyPreferences) {
             API.users.patchMyPreferences(settings).catch(function (err) {
-                console.warn('Player settings: API save failed', err);
+                console.warn('Player settings: could not save to API', err);
             });
         }
     }, 400);

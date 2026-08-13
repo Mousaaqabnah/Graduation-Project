@@ -354,16 +354,6 @@ function getApiBaseUrl() {
   return origin === '' ? '/api' : `${origin}/api`;
 }
 
-/** Origin for Socket.IO client (no /api suffix). */
-function getSocketOrigin() {
-  const base = getApiBaseUrl();
-  if (typeof window === 'undefined') return '';
-  if (base.startsWith('http')) {
-    return base.replace(/\/api\/?$/, '');
-  }
-  return window.location.origin;
-}
-
 // We keep auth session per tab (sessionStorage) so different tabs
 // can stay logged in as different users during testing.
 function getAuthStorage() {
@@ -880,79 +870,6 @@ const notificationsAPI = {
   clearAll: async () => apiRequest('/notifications/me', { method: 'DELETE' })
 };
 
-// Messages API
-const messagesAPI = {
-  getConversations: async () => {
-    return apiRequest('/messages/conversations');
-  },
-
-  getConversation: async (userId) => {
-    return apiRequest(`/messages/conversation/${userId}`);
-  },
-
-  getMessages: async (conversationId, params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/messages/conversation/${conversationId}/messages?${queryString}`);
-  },
-
-  sendMessage: async (conversationId, payload) => {
-    const body =
-      typeof payload === 'string'
-        ? { content: payload }
-        : { content: payload.content || '', attachments: payload.attachments || undefined };
-    return apiRequest(`/messages/conversation/${conversationId}/messages`, {
-      method: 'POST',
-      body
-    });
-  },
-
-  markAsRead: async (conversationId, messageId) => {
-    return apiRequest(`/messages/conversation/${conversationId}/messages/${messageId}/read`, {
-      method: 'PUT'
-    });
-  },
-
-  markAllRead: async (conversationId) => {
-    return apiRequest(`/messages/conversation/${conversationId}/messages/read-all`, {
-      method: 'PUT'
-    });
-  },
-
-  uploadChatAttachment: async (file) => {
-    const url = `${getApiBaseUrl()}/messages/attachment`;
-    const token = getAuthToken();
-    const form = new FormData();
-    form.append('file', file);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form
-    });
-    let data = {};
-    try {
-      data = await response.json();
-    } catch (_) {}
-    if (!response.ok) {
-      throw new Error(data.error || response.statusText || 'Upload failed');
-    }
-    return data;
-  },
-
-  setBlocked: async (conversationId, blocked) => {
-    return apiRequest(`/messages/conversation/${conversationId}/block`, {
-      method: 'PATCH',
-      body: { blocked }
-    });
-  },
-
-  setStarred: async (conversationId, starred) => {
-    return apiRequest(`/messages/conversation/${conversationId}/star`, {
-      method: 'PATCH',
-      body: { starred }
-    });
-  }
-};
-
 // Field owner API
 const ownerAPI = {
   getStats: async () => {
@@ -1082,7 +999,6 @@ window.API = {
     return getApiBaseUrl();
   },
   getApiBaseUrl,
-  getSocketOrigin,
   getDevApiPort,
   auth: authAPI,
   users: usersAPI,
@@ -1090,7 +1006,6 @@ window.API = {
   bookings: bookingsAPI,
   reviews: reviewsAPI,
   favorites: favoritesAPI,
-  messages: messagesAPI,
   notifications: notificationsAPI,
   support: supportAPI,
   owner: ownerAPI,

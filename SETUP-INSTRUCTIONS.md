@@ -93,7 +93,8 @@ The server will start on `http://localhost:3000`
    - Bookings: `/api/bookings/*`
    - Reviews: `/api/reviews/*`
    - Favorites: `/api/favorites/*`
-   - Messages: `/api/messages/*`
+   - Notifications: `/api/notifications/*`
+   - Support / Contact Us: `/api/support/*`
    - Admin: `/api/admin/*`
 
 ## Available API Endpoints
@@ -136,11 +137,12 @@ The server will start on `http://localhost:3000`
 - `DELETE /api/favorites/:fieldId` - Remove from favorites
 - `GET /api/favorites/check/:fieldId` - Check if favorited
 
-### Messages
-- `GET /api/messages/conversations` - Get user's conversations
-- `GET /api/messages/conversation/:userId` - Get or create conversation
-- `GET /api/messages/conversation/:conversationId/messages` - Get messages
-- `POST /api/messages/conversation/:conversationId/messages` - Send message
+### Notifications
+- `GET /api/notifications/me` - Current user's notifications
+
+### Support / Contact Us
+- `POST /api/support/contact` - Submit a contact / support request
+- Admin support inbox: `/api/admin/support/*`
 
 ### Admin
 - `GET /api/admin/stats` - Get dashboard stats
@@ -198,7 +200,7 @@ await API.bookings.create(bookingData);
 4. **Add more features:**
    - Update other frontend scripts to use the API
    - Add file upload for field images and owner verification
-   - Implement WebSocket for real-time chat (if needed)
+   - (Internal user chat / WebSocket messaging was removed from the product)
 
 ## Development Tips
 

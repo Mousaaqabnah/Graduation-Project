@@ -14,11 +14,12 @@ Graduation Project/
 │   ├── player/                # Player-specific pages
 │   │   ├── home.html
 │   │   ├── bookings.html
-│   │   ├── chat.html
 │   │   ├── map.html
 │   │   └── field-info.html
 │   ├── owner/                 # Field owner-specific pages
 │   │   └── dashboard.html
+│   ├── admin/                 # Admin pages (includes support Messages inbox)
+│   │   └── messages.html
 │   └── shared/                # Shared pages (accessible by all user types)
 │       ├── about-us.html
 │       └── contact-us.html
@@ -28,11 +29,12 @@ Graduation Project/
 │   ├── player/
 │   │   ├── home.css
 │   │   ├── bookings.css
-│   │   ├── chat.css
 │   │   ├── map.css
 │   │   └── field-info.css
 │   ├── owner/
 │   │   └── dashboard.css
+│   ├── admin/
+│   │   └── messages.css       # Admin support inbox styles (not user chat)
 │   └── shared/
 │       ├── base.css           # Base styles (formerly styles.css)
 │       ├── about-us.css
@@ -44,11 +46,12 @@ Graduation Project/
 │   ├── player/
 │   │   ├── home.js
 │   │   ├── bookings.js
-│   │   ├── chat.js
 │   │   ├── map.js
 │   │   └── field-info.js
 │   ├── owner/
 │   │   └── dashboard.js
+│   ├── admin/
+│   │   └── messages.js        # Admin support inbox
 │   └── shared/
 │       ├── about-us.js
 │       └── contact-us.js
@@ -61,12 +64,12 @@ Graduation Project/
 │   └── VenueCard.example.jsx
 ├── app/                       # Future React app structure
 │   └── (dashboard)/
-│       └── chat/
 ├── lib/                       # Library files
 └── components/ui/             # UI components
 
 ```
 
+> Note: Internal player/owner user↔user Chat pages and Socket.IO messaging were removed in product Phase 3. Admin `messages.html` is the support-ticket inbox.
 ## Path References
 
 ### From pages/auth/ (login.html, signup.html)
@@ -101,7 +104,7 @@ Graduation Project/
   - `index.html` → `pages/auth/login.html`
   - `home-player.html` → `pages/player/home.html`
   - `my-booking-player.html` → `pages/player/bookings.html`
-  - `chat-player.html` → `pages/player/chat.html`
+  - `chat-player.html` → removed (internal user chat discontinued)
   - `styles.css` → `styles/shared/base.css`
   - `script.js` → `scripts/auth/login.js`
 

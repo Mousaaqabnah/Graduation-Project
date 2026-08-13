@@ -9,8 +9,16 @@
     var container = document.getElementById(containerId);
     if (!container) throw new Error('Map picker container not found: ' + containerId);
 
-    var center = Array.isArray(cfg.initialCenter) ? cfg.initialCenter : [41.0082, 28.9784];
-    var zoom = Number.isFinite(cfg.initialZoom) ? cfg.initialZoom : 12;
+    var center = Array.isArray(cfg.initialCenter)
+      ? cfg.initialCenter
+      : (typeof window.MatchFieldGeo !== 'undefined' && window.MatchFieldGeo.mapCenterPair
+          ? window.MatchFieldGeo.mapCenterPair()
+          : [31.9038, 35.2034]);
+    var zoom = Number.isFinite(cfg.initialZoom)
+      ? cfg.initialZoom
+      : (typeof window.MatchFieldGeo !== 'undefined' && window.MatchFieldGeo.DEFAULT_ZOOM != null
+          ? window.MatchFieldGeo.DEFAULT_ZOOM
+          : 10);
     var draggable = cfg.draggable !== false;
     var onPositionChange = typeof cfg.onPositionChange === 'function' ? cfg.onPositionChange : function () {};
 

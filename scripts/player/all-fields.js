@@ -4,7 +4,27 @@ const REVIEW_DIRTY_STORAGE_KEY = 'matchfieldReviewDirtyFields';
 
 // Same as home / field-info: list GET does not include distanceKm; compute from coords when needed.
 var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
-var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+var DEFAULT_PLAYER_LOCATION = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_LOCATION)
+  ? { lat: MatchFieldGeo.DEFAULT_LOCATION.lat, lng: MatchFieldGeo.DEFAULT_LOCATION.lng }
+  : { lat: 31.9038, lng: 35.2034 };
+
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Display-only money formatting from user currency preference (no FX conversion). */
+function mfMoney(amount) {
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+    return MatchFieldPrefs.formatMoney(amount);
+  }
+  return '₪' + String(amount == null ? 0 : amount);
+}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   var R = 6371;
@@ -363,7 +383,7 @@ function createVenueCard(venue) {
         <div class="venue-card-content">
             <div class="venue-header">
                 <h3 class="venue-name">${venue.name}</h3>
-                <span class="venue-price">₺${venue.price}/h</span>
+                <span class="venue-price">${escapeHtml(mfMoney(venue.price))}/h</span>
             </div>
             <div class="venue-rating">
                 <span class="star">★</span>
@@ -772,7 +792,7 @@ function populateFieldDetails(venue) {
                     <span><i class="fi fi-rr-tag"></i> ${venue.sport}</span>
                 </div>
                 <div class="field-preview-price">
-                    <span>Price: <strong>₺${venue.price}/hour</strong></span>
+                    <span>Price: <strong>${escapeHtml(mfMoney(venue.price))}/hour</strong></span>
                 </div>
             </div>
         </div>
@@ -1106,9 +1126,9 @@ function updateCostSplit() {
     const totalPlayers = bookingState.players.length + 1;
     const costPerPlayer = totalPlayers > 0 ? Math.round(bookingState.totalCost / totalPlayers) : bookingState.totalCost;
     
-    if (totalCostEl) totalCostEl.textContent = `₺${bookingState.totalCost}`;
+    if (totalCostEl) totalCostEl.textContent = mfMoney(bookingState.totalCost);
     if (playerCountEl) playerCountEl.textContent = totalPlayers;
-    if (costPerPlayerEl) costPerPlayerEl.textContent = `₺${costPerPlayer}`;
+    if (costPerPlayerEl) costPerPlayerEl.textContent = mfMoney(costPerPlayer);
 }
 
 function loadPaymentStep() {
@@ -1121,7 +1141,7 @@ function loadPaymentStep() {
             <div class="payment-summary">
                 <div class="payment-amount">
                     <span class="amount-label">Your Share to Pay</span>
-                    <span class="amount-value">₺${paymentAmount}</span>
+                    <span class="amount-value">${escapeHtml(mfMoney(paymentAmount))}</span>
                 </div>
             </div>
         `;

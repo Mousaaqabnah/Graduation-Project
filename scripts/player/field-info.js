@@ -9,6 +9,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function mfMoney(amount) {
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+    return MatchFieldPrefs.formatMoney(amount);
+  }
+  return '₪' + String(amount == null ? 0 : amount);
+}
+
 function safeUrlAttr(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -31,15 +38,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "outdoor",
           price: 1500,
           isFavorite: false,
-          description: "A premium football field located in the heart of Uskudar. Perfect for both casual matches and professional training sessions. The field features high-quality artificial turf, excellent lighting, and modern facilities.",
+          description: "A premium football field located in the heart of Ramallah. Perfect for both casual matches and professional training sessions. The field features high-quality artificial turf, excellent lighting, and modern facilities.",
           features: ["Parking Available", "Changing Rooms", "Water Station", "First Aid Kit", "Referee Available", "Equipment Rental"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 2,
@@ -52,15 +59,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: true,
           description: "Professional indoor tennis court with climate control and high-quality court surface. Suitable for all skill levels.",
           features: ["Air Conditioning", "Changing Rooms", "Pro Shop", "Coaching Available"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 3,
@@ -73,15 +80,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: false,
           description: "Modern indoor basketball court with professional flooring and excellent lighting.",
           features: ["Air Conditioning", "Changing Rooms", "Scoreboard", "Equipment Rental"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 4,
@@ -94,15 +101,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: true,
           description: "Premium padel court with glass walls and professional court surface.",
           features: ["Air Conditioning", "Changing Rooms", "Equipment Rental", "Coaching Available"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 5,
@@ -115,15 +122,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: false,
           description: "Indoor volleyball court with professional net system and excellent facilities.",
           features: ["Air Conditioning", "Changing Rooms", "Equipment Rental", "Referee Available"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 6,
@@ -136,15 +143,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: true,
           description: "Professional ice hockey rink with temperature-controlled environment.",
           features: ["Ice Rink", "Equipment Rental", "Changing Rooms", "Pro Shop"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       }
   ],
   nearby: [
@@ -159,15 +166,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: false,
-          description: "A premium football field located in the heart of Uskudar.",
+          description: "A premium football field located in the heart of Ramallah.",
           features: ["Parking Available", "Changing Rooms", "Water Station"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 8,
@@ -180,15 +187,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: true,
           description: "Professional indoor tennis court with climate control.",
           features: ["Air Conditioning", "Changing Rooms", "Pro Shop"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       },
       {
           id: 9,
@@ -201,15 +208,15 @@ const venuesData = {
           ],
           rating: 4.8,
           reviews: 98,
-          location: "Uskudar",
+          location: "Ramallah",
           distance: "2.1 Km",
           type: "indoor",
           price: 1500,
           isFavorite: false,
           description: "Modern indoor basketball court with professional flooring.",
           features: ["Air Conditioning", "Changing Rooms", "Scoreboard"],
-          address: "123 Main Street, Uskudar, Istanbul",
-          phone: "+90 212 555 0123"
+          address: "123 Main Street, Al-Manara, Ramallah",
+          phone: "+970 59 555 0123"
       }
   ]
 };
@@ -254,7 +261,7 @@ function findVenueById(venueId) {
 
 // Same keys / default as scripts/player/home.js (list API supplies distanceKm; GET /:id does not).
 var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
-var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+var DEFAULT_PLAYER_LOCATION = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_LOCATION) ? { lat: MatchFieldGeo.DEFAULT_LOCATION.lat, lng: MatchFieldGeo.DEFAULT_LOCATION.lng } : { lat: 31.9038, lng: 35.2034 };
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   var R = 6371;
@@ -599,13 +606,13 @@ function renderFieldInfo(venue) {
           <!-- Booking Card -->
           <div class="field-booking-card">
               <div class="booking-price-section">
-                  <div class="booking-price">₺${escapeHtml(venue.price)}<span class="booking-price-unit">/h</span></div>
+                  <div class="booking-price">${escapeHtml(mfMoney(venue.price))}<span class="booking-price-unit">/h</span></div>
                   <div class="booking-price-note">Per hour • Taxes included</div>
               </div>
               
               <div class="booking-location-section">
                   <h3 class="booking-section-title">Location</h3>
-                  <p class="booking-location-text">Istanbul, ${escapeHtml(venue.location)} • Approx. ${escapeHtml(venue.distance)} from your current location.</p>
+                  <p class="booking-location-text">${escapeHtml(venue.location)} • Approx. ${escapeHtml(venue.distance)} from your current location.</p>
                   <div class="booking-map-placeholder" id="bookingFieldMap"></div>
               </div>
 
@@ -723,7 +730,6 @@ function renderFieldInfo(venue) {
                           <div class="venue-response">${escapeHtml(venue.venueResponse ? venue.venueResponse : 'Responds within a few hours')}</div>
                       </div>
                   </div>
-                  <button class="venue-message-btn" id="messageVenueBtn">Message venue</button>
               </div>
           </div>
       </div>
@@ -751,25 +757,6 @@ function renderFieldInfo(venue) {
   
   // Display reviews (pass apiReviews from field load, or fetch from API)
   displayReviews(venue.id, venue.apiReviews);
-
-  const messageVenueBtn = document.getElementById('messageVenueBtn');
-  if (messageVenueBtn) {
-    messageVenueBtn.addEventListener('click', function() {
-      var own = venue && venue.owner;
-      var ownerId = String(
-        (own && (own.id || own._id)) || (venue && venue.ownerId) || ''
-      ).trim();
-      if (!ownerId) {
-        alert('Venue contact is currently unavailable.');
-        return;
-      }
-      window.location.href =
-        'chat.html?userId=' +
-        encodeURIComponent(ownerId) +
-        '&fieldId=' +
-        encodeURIComponent(String(venue.id));
-    });
-  }
 }
 
 function renderBookingLocationMap(venue) {

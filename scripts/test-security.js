@@ -9,6 +9,9 @@
  *
  * Live login flooding for 429 is intentionally SKIPPED (see S3 live check).
  * Deterministic limiter behavior is covered by the in-memory unit test.
+ *
+ * Chat (S13 IDOR + S7 chat uploads): removed after Phase 3 complete internal chat removal.
+ * Replaced with ~5 route-404 checks (/api/messages/*). Booking IDOR and field-doc S7 remain.
  */
 
 require('dotenv').config();
@@ -177,11 +180,6 @@ async function deleteTempUser(userId) {
   await prisma.payment.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.paymentShare.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.bookingParticipant.deleteMany({ where: { userId } }).catch(() => {});
-  await prisma.messageAttachment.deleteMany({
-    where: { message: { senderId: userId } }
-  }).catch(() => {});
-  await prisma.message.deleteMany({ where: { senderId: userId } }).catch(() => {});
-  await prisma.conversationParticipant.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.refreshToken.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.userNotification.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.user.delete({ where: { id: userId } }).catch(() => {});
@@ -197,31 +195,6 @@ async function cancelBooking(bookingId, token) {
 
 function isDenied(status) {
   return status === 403 || status === 404;
-}
-
-async function multipartUpload({ token, fields = {}, file, filename, mimeType }) {
-  const fd = new FormData();
-  Object.entries(fields).forEach(([k, v]) => {
-    if (v != null) fd.append(k, String(v));
-  });
-  if (file) {
-    fd.append('file', new Blob([file], { type: mimeType || 'application/octet-stream' }), filename || 'upload.bin');
-  }
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${BASE}/api/messages/attachment`, {
-    method: 'POST',
-    headers,
-    body: fd
-  });
-  const raw = await res.text();
-  let body = null;
-  try {
-    body = raw ? JSON.parse(raw) : null;
-  } catch {
-    body = raw;
-  }
-  return { status: res.status, body, raw };
 }
 
 /**
@@ -294,7 +267,6 @@ async function main() {
   const cleanup = {
     userIds: [],
     bookingIds: [],
-    chatFiles: [],
     fieldDocFieldId: null
   };
 
@@ -706,274 +678,55 @@ async function main() {
       }
     }
 
-    // ===================== S13 CHAT IDOR (real conversation) =====================
-    let chatStranger = stranger;
-    if (!chatStranger) {
-      chatStranger = await createTempPlayer('secchatc');
-      cleanup.userIds.push(chatStranger.user.id);
-    }
-
-    const convRes = await req('GET', `/api/messages/conversation/${owner.user.id}`, {
-      token: player.token
-    });
-    const conversationId = convRes.body?.conversation?.id || convRes.body?.conversation?.conversationId;
-    if (!conversationId || (convRes.status !== 200 && convRes.status !== 201)) {
-      record('S13 chat IDOR setup conversation A↔B', FAIL, {
-        status: convRes.status,
-        body: convRes.body
-      });
-      record('S13 chat IDOR participant can read messages', FAIL, 'no conversation');
-      record('S13 chat IDOR unrelated cannot read messages', FAIL, 'no conversation');
-      record('S13 chat IDOR unrelated cannot send message', FAIL, 'no conversation');
-      record('S13 chat IDOR unrelated cannot star conversation', FAIL, 'no conversation');
-      record('S13 chat IDOR unrelated cannot block conversation', FAIL, 'no conversation');
-      record('S13 chat IDOR unrelated cannot mark read', FAIL, 'no conversation');
-    } else {
-      record('S13 chat IDOR setup conversation A↔B', true, conversationId);
-
-      const sendOk = await req('POST', `/api/messages/conversation/${conversationId}/messages`, {
-        token: player.token,
-        body: { content: `sec-idor-${Date.now()}` }
-      });
+    // ===================== Chat feature removed (was S13 chat IDOR + S7 chat upload) =====================
+    // ~19 chat IDOR/upload assertions removed; replaced with route-gone 404 checks.
+    {
+      const someUuid = '00000000-0000-4000-8000-000000000001';
+      const list = await req('GET', '/api/messages/conversations', { token: player.token });
       record(
-        'S13 chat IDOR participant can send message',
-        sendOk.status === 200 || sendOk.status === 201,
-        sendOk.status
+        'S13 chat removed: GET /api/messages/conversations 404',
+        list.status === 404,
+        list.status
       );
 
-      const readOk = await req('GET', `/api/messages/conversation/${conversationId}/messages`, {
+      const conv = await req('GET', `/api/messages/conversation/${someUuid}`, {
         token: player.token
       });
       record(
-        'S13 chat IDOR participant can read messages',
-        readOk.status === 200,
-        readOk.status
+        'S13 chat removed: GET /api/messages/conversation/:id 404',
+        conv.status === 404,
+        conv.status
       );
 
-      const cRead = await req('GET', `/api/messages/conversation/${conversationId}/messages`, {
-        token: chatStranger.token
+      const msgs = await req('GET', `/api/messages/conversation/${someUuid}/messages`, {
+        token: player.token
       });
       record(
-        'S13 chat IDOR unrelated cannot read messages',
-        isDenied(cRead.status),
-        cRead.status === 200
-          ? `UNAUTHORIZED_STATUS=200 (must fail)`
-          : cRead.status
+        'S13 chat removed: GET /api/messages/* messages 404',
+        msgs.status === 404,
+        msgs.status
       );
 
-      const cSend = await req('POST', `/api/messages/conversation/${conversationId}/messages`, {
-        token: chatStranger.token,
-        body: { content: 'idor-probe' }
+      const attach = await req('POST', '/api/messages/attachment', {
+        token: player.token,
+        body: {}
       });
       record(
-        'S13 chat IDOR unrelated cannot send message',
-        isDenied(cSend.status),
-        cSend.status === 200 || cSend.status === 201
-          ? `UNAUTHORIZED_STATUS=${cSend.status}`
-          : cSend.status
+        'S7 chat removed: POST /api/messages/attachment 404',
+        attach.status === 404,
+        attach.status
       );
 
-      const cStar = await req('PATCH', `/api/messages/conversation/${conversationId}/star`, {
-        token: chatStranger.token,
-        body: { starred: true }
-      });
-      record(
-        'S13 chat IDOR unrelated cannot star conversation',
-        isDenied(cStar.status),
-        cStar.status === 200 ? 'UNAUTHORIZED_STATUS=200' : cStar.status
-      );
-
-      const cBlock = await req('PATCH', `/api/messages/conversation/${conversationId}/block`, {
-        token: chatStranger.token,
-        body: { blocked: true }
-      });
-      record(
-        'S13 chat IDOR unrelated cannot block conversation',
-        isDenied(cBlock.status),
-        cBlock.status === 200 ? 'UNAUTHORIZED_STATUS=200' : cBlock.status
-      );
-
-      const cReadAll = await req(
-        'PUT',
-        `/api/messages/conversation/${conversationId}/messages/read-all`,
-        { token: chatStranger.token }
-      );
-      record(
-        'S13 chat IDOR unrelated cannot mark read',
-        isDenied(cReadAll.status),
-        cReadAll.status === 200 ? 'UNAUTHORIZED_STATUS=200' : cReadAll.status
-      );
-
-      // Fake UUID still denied
-      const fakeConv = await req(
+      const files = await req(
         'GET',
-        '/api/messages/conversation/00000000-0000-4000-8000-000000000000/messages',
+        `/api/messages/files/sec-probe.jpg?conversationId=${someUuid}`,
         { token: player.token }
       );
       record(
-        'S13 chat IDOR unknown conversation denied',
-        isDenied(fakeConv.status) || fakeConv.status === 400,
-        fakeConv.status
+        'S7 chat removed: GET /api/messages/files/... 404',
+        files.status === 404,
+        files.status
       );
-    }
-
-    // ===================== Chat upload security =====================
-    if (!conversationId) {
-      record('S7 chat upload requires authentication', FAIL, 'no conversation fixture');
-      record('S7 chat upload requires valid conversationId', FAIL, 'no conversation fixture');
-      record('S7 chat upload unrelated cannot upload', FAIL, 'no conversation fixture');
-      record('S7 chat upload rejects SVG', FAIL, 'no conversation fixture');
-      record('S7 chat upload rejects HTML', FAIL, 'no conversation fixture');
-      record('S7 chat upload participant can upload allowed file', FAIL, 'no conversation fixture');
-      record('S7 chat upload unrelated cannot download attachment', FAIL, 'no conversation fixture');
-      record('S7 chat upload path traversal filename rejected', FAIL, 'no conversation fixture');
-    } else {
-      const unauthUp = await multipartUpload({
-        fields: { conversationId },
-        file: tinyJpegBuffer(),
-        filename: 'x.jpg',
-        mimeType: 'image/jpeg'
-      });
-      record(
-        'S7 chat upload requires authentication',
-        unauthUp.status === 401 || unauthUp.status === 403,
-        unauthUp.status
-      );
-
-      const badConv = await multipartUpload({
-        token: player.token,
-        fields: { conversationId: 'not-a-uuid' },
-        file: tinyJpegBuffer(),
-        filename: 'x.jpg',
-        mimeType: 'image/jpeg'
-      });
-      record(
-        'S7 chat upload requires valid conversationId',
-        badConv.status === 400,
-        badConv.status
-      );
-
-      const strangerUp = await multipartUpload({
-        token: chatStranger.token,
-        fields: { conversationId },
-        file: tinyJpegBuffer(),
-        filename: 'x.jpg',
-        mimeType: 'image/jpeg'
-      });
-      record(
-        'S7 chat upload unrelated cannot upload',
-        isDenied(strangerUp.status),
-        strangerUp.status === 200 || strangerUp.status === 201
-          ? `UNAUTHORIZED_STATUS=${strangerUp.status}`
-          : strangerUp.status
-      );
-
-      const svgUp = await multipartUpload({
-        token: player.token,
-        fields: { conversationId },
-        file: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
-        filename: 'x.svg',
-        mimeType: 'image/svg+xml'
-      });
-      record(
-        'S7 chat upload rejects SVG',
-        svgUp.status === 400 || svgUp.status === 415,
-        svgUp.status
-      );
-
-      const htmlUp = await multipartUpload({
-        token: player.token,
-        fields: { conversationId },
-        file: Buffer.from('<html><body>x</body></html>'),
-        filename: 'x.html',
-        mimeType: 'text/html'
-      });
-      record(
-        'S7 chat upload rejects HTML',
-        htmlUp.status === 400 || htmlUp.status === 415,
-        htmlUp.status
-      );
-
-      const okUp = await multipartUpload({
-        token: player.token,
-        fields: { conversationId },
-        file: tinyJpegBuffer(),
-        filename: 'ok.jpg',
-        mimeType: 'image/jpeg'
-      });
-      const attachUrl = okUp.body?.url;
-      if (attachUrl && (okUp.status === 200 || okUp.status === 201)) {
-        const fnameMatch = String(attachUrl).match(/\/files\/([^?]+)/);
-        if (fnameMatch) {
-          cleanup.chatFiles.push(decodeURIComponent(fnameMatch[1]));
-        }
-        record('S7 chat upload participant can upload allowed file', true, okUp.status);
-
-        const cDl = await req('GET', attachUrl, { token: chatStranger.token });
-        record(
-          'S7 chat upload unrelated cannot download attachment',
-          isDenied(cDl.status),
-          cDl.status === 200 ? 'UNAUTHORIZED_STATUS=200' : cDl.status
-        );
-
-        const aDl = await req('GET', attachUrl, { token: player.token });
-        record(
-          'S7 chat upload participant can download attachment',
-          aDl.status === 200,
-          aDl.status
-        );
-      } else {
-        record('S7 chat upload participant can upload allowed file', false, {
-          status: okUp.status,
-          body: okUp.body
-        });
-        record('S7 chat upload unrelated cannot download attachment', FAIL, 'upload failed');
-        record('S7 chat upload participant can download attachment', FAIL, 'upload failed');
-      }
-
-      const trav = await req(
-        'GET',
-        `/api/messages/files/${encodeURIComponent('../../../etc/passwd')}?conversationId=${conversationId}`,
-        { token: player.token }
-      );
-      record(
-        'S7 chat upload path traversal filename rejected',
-        trav.status === 400 || trav.status === 403 || trav.status === 404,
-        trav.status
-      );
-
-      // Original-name traversal must not escape private chat storage
-      const travUp = await multipartUpload({
-        token: player.token,
-        fields: { conversationId },
-        file: tinyJpegBuffer(),
-        filename: '../../../etc/passwd.jpg',
-        mimeType: 'image/jpeg'
-      });
-      if (travUp.status === 200 || travUp.status === 201) {
-        const stored = String(travUp.body?.url || travUp.body?.storagePath || '');
-        const base = path.basename(stored.split('?')[0]);
-        const escaped =
-          stored.includes('..') ||
-          /[/\\]etc[/\\]passwd/i.test(stored) ||
-          (base && base.includes('..'));
-        if (travUp.body?.url) {
-          const fm = String(travUp.body.url).match(/\/files\/([^?]+)/);
-          if (fm) cleanup.chatFiles.push(decodeURIComponent(fm[1]));
-        }
-        record(
-          'S7 chat upload traversal originalName stays in chat storage',
-          !escaped && /\/api\/messages\/files\//.test(stored),
-          stored
-        );
-      } else {
-        // Rejection is also acceptable
-        record(
-          'S7 chat upload traversal originalName stays in chat storage',
-          true,
-          { status: travUp.status, note: 'rejected' }
-        );
-      }
     }
 
     // ===================== JWT / session =====================
@@ -1070,13 +823,6 @@ async function main() {
       missing.body
     );
   } finally {
-    // Cleanup chat files
-    for (const name of cleanup.chatFiles) {
-      const abs = path.join(__dirname, '..', 'storage', 'private', 'chat', path.basename(name));
-      try {
-        if (fs.existsSync(abs)) fs.unlinkSync(abs);
-      } catch (_) {}
-    }
     for (const id of cleanup.bookingIds) {
       await cancelBooking(id, (await login('player@matchfield.com', 'Player123!').catch(() => ({}))).token);
     }
@@ -1093,6 +839,9 @@ async function main() {
   console.log(`\nPASS: ${passCount}`);
   console.log(`FAIL: ${failCount}`);
   console.log(`SKIP: ${skipCount}`);
+  console.log(
+    'Note: chat IDOR/upload tests removed (~19); new /api/messages 404 removal checks added (5).'
+  );
 
   if (failCount > 0) {
     console.log('\nFailed:');

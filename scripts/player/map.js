@@ -49,7 +49,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initMapView() {
   if (typeof MapService === 'undefined') return;
-  MapService.init('mapContainer', { center: [41.0082, 28.9784], zoom: 12 });
+  var center = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair)
+    ? MatchFieldGeo.mapCenterPair()
+    : [31.9038, 35.2034];
+  var zoom = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM != null)
+    ? MatchFieldGeo.DEFAULT_ZOOM
+    : 10;
+  MapService.init('mapContainer', { center: center, zoom: zoom });
   MapService.onMarkerClick(function(data) {
     if (data && data.id) {
       highlightFieldCard(data.id);
@@ -76,7 +82,7 @@ function createFieldCard(field) {
   card.dataset.fieldId = field.id;
   card.dataset.sport = field.sport;
 
-  var priceStr = (field.price != null && field.price > 0) ? ('₺' + field.price + '/h') : 'Price N/A';
+  var priceStr = (field.price != null && field.price > 0) ? (escapeHtml(mfMoney(field.price)) + '/h') : 'Price N/A';
   var rating = field.rating != null ? field.rating.toFixed(1) : '0';
   var reviews = field.reviews || 0;
 
@@ -135,6 +141,14 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+/** Display-only money formatting from user currency preference (no FX conversion). */
+function mfMoney(amount) {
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+    return MatchFieldPrefs.formatMoney(amount);
+  }
+  return '₪' + String(amount == null ? 0 : amount);
+}
+
 function setupFilters() {
   var filterButtons = document.querySelectorAll('.filter-btn');
   filterButtons.forEach(function(btn) {
@@ -190,7 +204,15 @@ function updateMapMarkers(fields) {
   });
   if (fields.length > 0) MapService.fitMarkers();
   else if (userLocation) MapService.setCenter(userLocation.lat, userLocation.lng, 14);
-  else MapService.setCenter(41.0082, 28.9784, 12);
+  else {
+    var fallbackCenter = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair)
+      ? MatchFieldGeo.mapCenterPair()
+      : [31.9038, 35.2034];
+    var fallbackZoom = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM != null)
+      ? MatchFieldGeo.DEFAULT_ZOOM
+      : 10;
+    MapService.setCenter(fallbackCenter[0], fallbackCenter[1], fallbackZoom);
+  }
 }
 
 function highlightFieldCard(fieldId) {
@@ -257,7 +279,13 @@ function setupRecenter() {
     } else if (userLocation && MapService) {
       MapService.setCenter(userLocation.lat, userLocation.lng, 14);
     } else if (MapService) {
-      MapService.setCenter(41.0082, 28.9784, 12);
+      var recenter = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair)
+        ? MatchFieldGeo.mapCenterPair()
+        : [31.9038, 35.2034];
+      var recenterZoom = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM != null)
+        ? MatchFieldGeo.DEFAULT_ZOOM
+        : 10;
+      MapService.setCenter(recenter[0], recenter[1], recenterZoom);
     }
   });
 }

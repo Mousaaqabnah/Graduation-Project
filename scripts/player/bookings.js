@@ -8,8 +8,18 @@ const bookingsData = {
 
 // Reference point for "distance to field" on cards (same key as home / all-fields)
 var PLAYER_LOCATION_STORAGE_KEY = 'playerSelectedLocation';
-var DEFAULT_PLAYER_LOCATION = { lat: 41.0082, lng: 28.9784 };
+var DEFAULT_PLAYER_LOCATION = (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_LOCATION)
+    ? { lat: MatchFieldGeo.DEFAULT_LOCATION.lat, lng: MatchFieldGeo.DEFAULT_LOCATION.lng }
+    : { lat: 31.9038, lng: 35.2034 };
 var bookingDistanceRefCoords = null;
+
+/** Display-only money formatting from user currency preference (no FX conversion). */
+function mfMoney(amount) {
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+        return MatchFieldPrefs.formatMoney(amount);
+    }
+    return '₪' + String(amount == null ? 0 : amount);
+}
 
 function readPlayerSavedLocationForDistance() {
     try {
@@ -839,7 +849,7 @@ function convertBookingToDisplayFormat(booking) {
         date: dateDisplay,
         time: timeDisplay,
         teamSize: teamSize,
-        price: '₺' + (booking.totalCost || 0),
+        price: mfMoney(booking.totalCost || 0),
         duration: (function() {
             var r = booking.timeSlotRanges && Array.isArray(booking.timeSlotRanges) ? booking.timeSlotRanges : null;
             if (r && r.length > 0) {
@@ -1002,7 +1012,7 @@ function getPaymentButton(booking) {
     if (isOrganizer && (fullBooking.organizerPaymentStatus === 'pending' || fullBooking.organizerPaymentStatus === 'PENDING')) {
         return `
             <button class="pay-now-btn" onclick="payForBooking('${booking.id}', true)">
-                <i class="fi fi-rr-credit-card"></i> Pay Now (₺${fullBooking.totalCost})
+                <i class="fi fi-rr-credit-card"></i> Pay Now (${escapeHtml(mfMoney(fullBooking.totalCost))})
             </button>
         `;
     } else if (!isOrganizer) {
@@ -1015,7 +1025,7 @@ function getPaymentButton(booking) {
             var invite = findInviteNotificationForBooking(booking.id, playerIdStr);
             if (invite) {
                 var inviteAmount = invite.paymentAmount || costPerPlayer;
-                return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (₺' + inviteAmount + ')</button>';
+                return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (' + escapeHtml(mfMoney(inviteAmount)) + ')</button>';
             }
         }
         if (player && !alreadyPaid && (player.paymentStatus === 'PENDING' || player.paymentStatus === 'pending') && needsPayment) {
@@ -1023,7 +1033,7 @@ function getPaymentButton(booking) {
             if (fullBooking.paymentMethod === 'MIXED' || fullBooking.paymentMethod === 'mixed') {
                 amount = (fullBooking.mixedPaymentDistribution && (fullBooking.mixedPaymentDistribution[player.userId || player.id] || fullBooking.mixedPaymentDistribution[String(player.userId || player.id)])) || costPerPlayer;
             }
-            return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (₺' + amount + ')</button>';
+            return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (' + escapeHtml(mfMoney(amount)) + ')</button>';
         }
     }
     
@@ -1987,7 +1997,7 @@ function createPlayerPaymentItem(player) {
     const statusText = noPaymentDue
         ? 'Covered'
         : (normalizedPaymentStatus === 'paid' ? 'Paid' : 'Pending');
-    const amountDisplay = player.paymentAmount > 0 ? `₺${player.paymentAmount}` : '';
+    const amountDisplay = player.paymentAmount > 0 ? escapeHtml(mfMoney(player.paymentAmount)) : '';
     const nameDisplay = player.isCurrentUser ? `${player.name} (You)` : player.name;
     const organizerBadge = player.isOrganizer ? '<span class="organizer-badge">Organizer</span>' : '';
     var displayName = player.name || 'Player';

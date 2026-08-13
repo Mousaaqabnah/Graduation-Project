@@ -123,25 +123,6 @@ enum PaymentShareStatus {
   REFUNDED
 }
 
-enum ConversationType {
-  DIRECT
-  SUPPORT
-  BOOKING
-  GROUP
-}
-
-enum ConversationParticipantRole {
-  MEMBER
-  MODERATOR
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM
-}
-
 enum NotificationType {
   BOOKING
   PAYMENT
@@ -236,9 +217,6 @@ model User {
   bookingParticipants      BookingParticipant[]
   paymentShares            PaymentShare[]
   payments                 Payment[]
-  sentMessages             Message[]                 @relation("MessageSender")
-  conversationParticipants ConversationParticipant[]
-  createdConversations     Conversation[]            @relation("ConversationCreator")
   userNotifications        UserNotification[]
   createdNotifications     Notification[]            @relation("NotificationCreator")
   verificationRequests     OwnerVerification[]       @relation("VerificationOwner")
@@ -512,7 +490,6 @@ model Booking {
   paymentShares PaymentShare[]
   payments      Payment[]
   review        Review?
-  conversations Conversation[]
 
   @@index([fieldId, startAt, status])
   @@index([organizerId, createdAt])
@@ -633,83 +610,6 @@ model Favorite {
   @@id([userId, fieldId])
   @@index([fieldId])
   @@map("favorites")
-}
-
-// ==============================
-// CHAT
-// ==============================
-
-model Conversation {
-  id          String           @id @default(uuid()) @db.Uuid
-  type        ConversationType @default(DIRECT)
-  bookingId   String?          @map("booking_id") @db.Uuid
-  createdById String           @map("created_by_id") @db.Uuid
-  title       String?          @db.VarChar(160)
-  blockedAt   DateTime?        @map("blocked_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-
-  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  createdBy User     @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Restrict)
-
-  participants ConversationParticipant[]
-  messages     Message[]
-
-  @@index([bookingId])
-  @@index([type, updatedAt])
-  @@map("conversations")
-}
-
-model ConversationParticipant {
-  conversationId String                      @map("conversation_id") @db.Uuid
-  userId         String                      @map("user_id") @db.Uuid
-  role           ConversationParticipantRole @default(MEMBER)
-  joinedAt       DateTime                    @default(now()) @map("joined_at")
-  leftAt         DateTime?                   @map("left_at")
-  lastReadAt     DateTime?                   @map("last_read_at")
-  starredAt      DateTime?                   @map("starred_at")
-  mutedUntil     DateTime?                   @map("muted_until")
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@id([conversationId, userId])
-  @@index([userId, leftAt])
-  @@map("conversation_participants")
-}
-
-model Message {
-  id             String      @id @default(uuid()) @db.Uuid
-  conversationId String      @map("conversation_id") @db.Uuid
-  senderId       String      @map("sender_id") @db.Uuid
-  type           MessageType @default(TEXT)
-  content        String      @default("") @db.Text
-  editedAt       DateTime?   @map("edited_at")
-  deletedAt      DateTime?   @map("deleted_at")
-  createdAt      DateTime    @default(now()) @map("created_at")
-
-  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User                @relation("MessageSender", fields: [senderId], references: [id], onDelete: Restrict)
-  attachments  MessageAttachment[]
-
-  @@index([conversationId, createdAt])
-  @@index([senderId, createdAt])
-  @@map("messages")
-}
-
-model MessageAttachment {
-  id           String   @id @default(uuid()) @db.Uuid
-  messageId    String   @map("message_id") @db.Uuid
-  storagePath  String   @map("storage_path") @db.Text
-  mimeType     String   @map("mime_type") @db.VarChar(120)
-  originalName String?  @map("original_name") @db.VarChar(255)
-  sizeBytes    Int      @map("size_bytes")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
-  @@map("message_attachments")
 }
 
 // ==============================

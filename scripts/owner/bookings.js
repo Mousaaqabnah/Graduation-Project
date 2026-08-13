@@ -605,7 +605,10 @@ function applyFilters() {
 }
 
 function formatOwnerBookingMoney(n) {
-    return '₺' + (Number(n) || 0).toLocaleString('tr-TR');
+    if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+        return MatchFieldPrefs.formatMoney(Number(n) || 0);
+    }
+    return '₪' + (Number(n) || 0).toLocaleString('en-IL');
 }
 
 function bookingPaymentMethodLabel(pm) {

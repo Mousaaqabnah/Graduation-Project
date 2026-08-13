@@ -37,9 +37,23 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function formatPriceTry(n) {
+function formatPrice(n) {
   if (n == null || n === '') return '—';
-  return '₺' + n + '/h';
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+    return MatchFieldPrefs.formatMoney(n) + '/h';
+  }
+  return '₪' + n + '/h';
+}
+
+function mfMapCenter() {
+  if (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair) {
+    return MatchFieldGeo.mapCenterPair();
+  }
+  return [31.9038, 35.2034];
+}
+
+function mfMapZoom() {
+  return (typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM) || 10;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -68,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function initMapView() {
   if (typeof MapService === 'undefined') return;
-  MapService.init('mapContainer', { center: [41.0082, 28.9784], zoom: 12 });
+  MapService.init('mapContainer', { center: mfMapCenter(), zoom: mfMapZoom() });
   MapService.onMarkerClick(function (data) {
     if (data && data.id) {
       highlightFieldCard(data.id);
@@ -104,7 +118,7 @@ function createFieldCard(field) {
   card.dataset.fieldId = field.id;
   card.dataset.sport = field.sport;
 
-  var priceStr = field.price != null && field.price > 0 ? formatPriceTry(field.price) : '—';
+  var priceStr = field.price != null && field.price > 0 ? formatPrice(field.price) : '—';
   var rating = field.rating != null ? Number(field.rating).toFixed(1) : '0';
   var reviews = field.reviews || 0;
   var statusLabel = field.isActive ? 'Active' : 'Inactive';
@@ -212,7 +226,7 @@ function updateMapMarkers(fields) {
   });
   if (fields.length > 0) MapService.fitMarkers();
   else if (userLocation) MapService.setCenter(userLocation.lat, userLocation.lng, 14);
-  else MapService.setCenter(41.0082, 28.9784, 12);
+  else MapService.setCenter(mfMapCenter()[0], mfMapCenter()[1], mfMapZoom());
 }
 
 function highlightFieldCard(fieldId) {
@@ -294,7 +308,7 @@ function setupRecenter() {
     } else if (userLocation && typeof MapService !== 'undefined') {
       MapService.setCenter(userLocation.lat, userLocation.lng, 14);
     } else if (typeof MapService !== 'undefined') {
-      MapService.setCenter(41.0082, 28.9784, 12);
+      MapService.setCenter(mfMapCenter()[0], mfMapCenter()[1], mfMapZoom());
     }
   });
 }

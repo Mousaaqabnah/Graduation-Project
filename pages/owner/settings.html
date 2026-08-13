@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
     <link rel="stylesheet" href="../../styles/owner/dashboard.css">
     <link rel="stylesheet" href="../../styles/owner/settings.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -27,31 +28,27 @@
             <nav class="sidebar-nav">
                 <a href="dashboard.html" class="nav-item">
                     <i class="fi fi-rr-apps nav-icon"></i>
-                    <span>Dashboard</span>
+                    <span data-i18n="nav.dashboard">Dashboard</span>
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span>Bookings</span>
+                    <span data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
-                    <span>My Fields</span>
+                    <span data-i18n="nav.my_fields">My Fields</span>
                 </a>
-                <a href="chat.html" class="nav-item">
-                    <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Chat</span>
-                </a>
-                <a href="map.html" class="nav-item">
+<a href="map.html" class="nav-item">
                     <i class="fi fi-rr-map-marker nav-icon"></i>
-                    <span>Map</span>
+                    <span data-i18n="nav.map">Map</span>
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span>Contact Us</span>
+                    <span data-i18n="nav.contact">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
-                    <span>About Us</span>
+                    <span data-i18n="nav.about">About Us</span>
                 </a>
             </nav>
             
@@ -62,7 +59,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -150,7 +147,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -268,35 +265,38 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rr-settings"></i>
-                                <h2>Preferences</h2>
+                                <h2 data-i18n="preferences">Preferences</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Language</h3>
-                                    <p class="settings-item-description">Choose your preferred language</p>
+                                    <h3 class="settings-item-title" data-i18n="language">Language</h3>
+                                    <p class="settings-item-description" data-i18n="language_desc">Choose your preferred language</p>
                                 </div>
                                 <select class="settings-select" id="language">
-                                    <option value="en">English</option>
+                                    <option value="en" data-i18n="opt_english">English</option>
+                                    <option value="ar" data-i18n="opt_arabic">Arabic - العربية</option>
                                 </select>
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Currency</h3>
-                                    <p class="settings-item-description">Select your preferred currency</p>
+                                    <h3 class="settings-item-title" data-i18n="currency">Currency</h3>
+                                    <p class="settings-item-description" data-i18n="currency_desc">Select your preferred currency</p>
                                 </div>
                                 <select class="settings-select" id="currency">
-                                    <option value="TRY">Turkish Lira (₺)</option>
+                                    <option value="ILS" data-i18n="opt_ils">Israeli New Shekel (₪)</option>
+                                    <option value="TRY" data-i18n="opt_try">Turkish Lira (₺)</option>
                                 </select>
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Time Zone</h3>
-                                    <p class="settings-item-description">Set your time zone</p>
+                                    <h3 class="settings-item-title" data-i18n="timezone">Time Zone</h3>
+                                    <p class="settings-item-description" data-i18n="timezone_desc">Set your time zone</p>
                                 </div>
                                 <select class="settings-select" id="timezone">
-                                    <option value="Europe/Istanbul">Istanbul (GMT+3)</option>
+                                    <option value="Asia/Jerusalem" data-i18n="opt_jerusalem">Jerusalem / Palestine (GMT+3)</option>
+                                    <option value="Europe/Istanbul" data-i18n="opt_istanbul">Istanbul (GMT+3)</option>
                                 </select>
                             </div>
                         </div>
@@ -373,6 +373,8 @@
 
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>
     <script src="../../scripts/player/header-user.js"></script>

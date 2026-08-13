@@ -5,7 +5,10 @@
 
     function formatOwnerTry(amount) {
         var n = Number(amount) || 0;
-        return '₺' + n.toLocaleString('tr-TR');
+        if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
+            return MatchFieldPrefs.formatMoney(n);
+        }
+        return '₪' + n.toLocaleString('en-IL');
     }
 
     function defaultAvatarUrl(name, size) {

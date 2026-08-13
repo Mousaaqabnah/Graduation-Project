@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="../../styles/owner/dashboard.css">
     <link rel="stylesheet" href="../../styles/owner/fields.css">
     <link rel="stylesheet" href="../../styles/owner/map.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -29,31 +30,27 @@
             <nav class="sidebar-nav">
                 <a href="dashboard.html" class="nav-item">
                     <i class="fi fi-rr-apps nav-icon"></i>
-                    <span>Dashboard</span>
+                    <span data-i18n="nav.dashboard">Dashboard</span>
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span>Bookings</span>
+                    <span data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
-                    <span>My Fields</span>
+                    <span data-i18n="nav.my_fields">My Fields</span>
                 </a>
-                <a href="chat.html" class="nav-item">
-                    <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Chat</span>
-                </a>
-                <a href="map.html" class="nav-item active">
+<a href="map.html" class="nav-item active">
                     <i class="fi fi-rr-map-marker nav-icon"></i>
-                    <span>Map</span>
+                    <span data-i18n="nav.map">Map</span>
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span>Contact Us</span>
+                    <span data-i18n="nav.contact">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
-                    <span>About Us</span>
+                    <span data-i18n="nav.about">About Us</span>
                 </a>
             </nav>
             
@@ -64,7 +61,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -147,7 +144,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -166,7 +163,7 @@
                 <div class="location-controls">
                     <div class="location-indicator">
                         <i class="fi fi-rr-marker location-pin"></i>
-                        <span>Istanbul</span>
+                        <span>Ramallah</span>
                     </div>
                     <button class="btn-use-location">
                         Use my location
@@ -239,7 +236,7 @@
                         </div>
                         <div class="view-field-info-card">
                             <div class="view-field-price-section">
-                                <div class="view-field-price" id="viewFieldPrice">₺0<span class="view-field-price-unit">/h</span></div>
+                                <div class="view-field-price" id="viewFieldPrice">₪0<span class="view-field-price-unit">/h</span></div>
                                 <div class="view-field-price-note">Per hour • Taxes included</div>
                             </div>
                             <div class="view-field-details-section">
@@ -302,6 +299,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
+    <script src="../../scripts/utils/geoDefaults.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>
     <script src="../../scripts/utils/fieldMapData.js"></script>

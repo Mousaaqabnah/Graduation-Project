@@ -16,8 +16,8 @@ const supportContactLimiter = createRateLimiter({
 router.get('/contact-info', (_req, res) => {
   res.json({
     email: process.env.PUBLIC_SUPPORT_EMAIL || 'MatchField@gmail.com',
-    whatsapp: process.env.PUBLIC_SUPPORT_WHATSAPP || '+90 (5xx) xxx xx xx',
-    phoneLine: process.env.PUBLIC_SUPPORT_PHONE || '+90 (212) xxx xx xx. 09:00-22:00'
+    whatsapp: process.env.PUBLIC_SUPPORT_WHATSAPP || '+970 (59x) xxx xxx',
+    phoneLine: process.env.PUBLIC_SUPPORT_PHONE || '+970 (2) xxx xxx. 09:00-22:00'
   });
 });
 

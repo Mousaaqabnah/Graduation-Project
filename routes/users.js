@@ -277,6 +277,7 @@ const ADMIN_PREF_KEYS = new Set([
   'ipWhitelist',
   'auditLogAccess',
   'language',
+  'currency',
   'timezone',
   'dateFormat',
   'itemsPerPage'
@@ -292,18 +293,43 @@ const STRING_PREF_KEYS = new Set([
   'itemsPerPage'
 ]);
 
+const {
+  normalizeLocalePrefs,
+  validateLocalePrefPatch
+} = require('../lib/userPreferences');
+
 function sanitizePrefsSlice(body, allowedKeys) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { slice: {}, localeError: null };
   const out = {};
   for (const k of Object.keys(body)) {
     if (!allowedKeys.has(k)) continue;
+    if (k === 'language' || k === 'currency' || k === 'timezone') continue;
     const v = body[k];
     if (typeof v === 'boolean') out[k] = v;
     else if (STRING_PREF_KEYS.has(k) && v != null && typeof v === 'string' && v.length < 200) {
       out[k] = v;
     }
   }
-  return out;
+
+  const localePatch = {};
+  if (Object.prototype.hasOwnProperty.call(body, 'language') && allowedKeys.has('language')) {
+    localePatch.language = body.language;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'currency') && allowedKeys.has('currency')) {
+    localePatch.currency = body.currency;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'timezone') && allowedKeys.has('timezone')) {
+    localePatch.timezone = body.timezone;
+  }
+  if (Object.keys(localePatch).length) {
+    const validated = validateLocalePrefPatch(localePatch);
+    if (!validated.ok) {
+      return { slice: out, localeError: validated.errors[0] || 'Invalid preference value' };
+    }
+    Object.assign(out, validated.sanitized);
+  }
+
+  return { slice: out, localeError: null };
 }
 
 router.get('/me/preferences', authenticate, async (req, res) => {
@@ -314,9 +340,9 @@ router.get('/me/preferences', authenticate, async (req, res) => {
     });
     const raw = user?.preferences && typeof user.preferences === 'object' ? user.preferences : {};
     res.json({
-      owner: raw.owner && typeof raw.owner === 'object' ? raw.owner : {},
-      player: raw.player && typeof raw.player === 'object' ? raw.player : {},
-      admin: raw.admin && typeof raw.admin === 'object' ? raw.admin : {}
+      owner: normalizeLocalePrefs(raw.owner && typeof raw.owner === 'object' ? raw.owner : {}),
+      player: normalizeLocalePrefs(raw.player && typeof raw.player === 'object' ? raw.player : {}),
+      admin: normalizeLocalePrefs(raw.admin && typeof raw.admin === 'object' ? raw.admin : {})
     });
   } catch (error) {
     console.error('Get preferences error:', error);
@@ -339,7 +365,10 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
       allowed = PLAYER_PREF_KEYS;
     }
 
-    const slice = sanitizePrefsSlice(req.body, allowed);
+    const { slice, localeError } = sanitizePrefsSlice(req.body, allowed);
+    if (localeError) {
+      return res.status(400).json({ error: localeError });
+    }
     if (!Object.keys(slice).length) {
       return res.status(400).json({ error: 'No valid preference fields to save' });
     }
@@ -364,9 +393,9 @@ router.patch('/me/preferences', authenticate, async (req, res) => {
     const p = updated.preferences && typeof updated.preferences === 'object' ? updated.preferences : {};
     res.json({
       preferences: {
-        owner: p.owner && typeof p.owner === 'object' ? p.owner : {},
-        player: p.player && typeof p.player === 'object' ? p.player : {},
-        admin: p.admin && typeof p.admin === 'object' ? p.admin : {}
+        owner: normalizeLocalePrefs(p.owner && typeof p.owner === 'object' ? p.owner : {}),
+        player: normalizeLocalePrefs(p.player && typeof p.player === 'object' ? p.player : {}),
+        admin: normalizeLocalePrefs(p.admin && typeof p.admin === 'object' ? p.admin : {})
       }
     });
   } catch (error) {

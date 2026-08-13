@@ -27,7 +27,18 @@
       _markers = [];
     }
 
-    var center = options && options.center ? options.center : [41.0082, 28.9784]; // Istanbul
+    var center =
+      options && options.center
+        ? options.center
+        : typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.mapCenterPair
+          ? MatchFieldGeo.mapCenterPair()
+          : [31.9038, 35.2034];
+    var zoom =
+      options && options.zoom != null
+        ? options.zoom
+        : typeof MatchFieldGeo !== 'undefined' && MatchFieldGeo.DEFAULT_ZOOM
+          ? MatchFieldGeo.DEFAULT_ZOOM
+          : 10;
     var zoom = options && options.zoom != null ? options.zoom : 12;
 
     _map = L.map(containerId).setView(center, zoom);
@@ -46,7 +57,11 @@
       var content = (data.name ? '<strong>' + escapeHtml(data.name) + '</strong><br>' : '') +
         (cityDistrict ? escapeHtml(cityDistrict) + '<br>' : '') +
         (data.location ? escapeHtml(data.location) + '<br>' : '') +
-        (data.price != null ? '₺' + data.price + '/h' : '');
+        (data.price != null
+          ? (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney
+              ? MatchFieldPrefs.formatMoney(data.price)
+              : '₪' + data.price) + '/h'
+          : '');
       marker.bindPopup(content);
     }
     marker._fieldData = data || {};

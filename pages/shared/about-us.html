@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../../styles/shared/about-us.css">
     <link rel="stylesheet" href="../../styles/player/profile-favorite-modal.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="app-container">
@@ -27,27 +28,23 @@
             <nav class="sidebar-nav">
                 <a href="../player/home.html" class="nav-item">
                     <i class="fi fi-rr-home nav-icon"></i>
-                    <span>Home Page</span>
+                    <span data-i18n="nav.home">Home Page</span>
                 </a>
                 <a href="../player/bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span>My Booking</span>
+                    <span data-i18n="nav.bookings">My Booking</span>
                 </a>
-                <a href="../player/chat.html" class="nav-item">
-                    <i class="fi fi-rr-messages nav-icon"></i>
-                    <span>Chat</span>
-                </a>
-                <a href="../player/map.html" class="nav-item">
+<a href="../player/map.html" class="nav-item">
                     <i class="fi fi-rr-map-marker nav-icon"></i>
-                    <span>Map</span>
+                    <span data-i18n="nav.map">Map</span>
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span>Contact Us</span>
+                    <span data-i18n="nav.contact">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item active">
                     <i class="fi fi-rr-info nav-icon"></i>
-                    <span>About Us</span>
+                    <span data-i18n="nav.about">About Us</span>
                 </a>
             </nav>
             
@@ -58,7 +55,7 @@
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
                     </svg>
-                    <span>Log Out</span>
+                    <span data-i18n="nav.logout">Log Out</span>
                 </a>
             </div>
         </aside>
@@ -164,7 +161,7 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-sign-out-alt"></i>
                                         </div>
-                                        <span>Log Out</span>
+                                        <span data-i18n="nav.logout">Log Out</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                 </div>
@@ -178,7 +175,7 @@
             <div class="about-content">
                 <div class="about-header">
                     <h1 class="page-title">About MatchField</h1>
-                    <p class="page-description">MatchField makes it simple for players and venues to connect. Book trusted sports fields in just a few taps and spend more time playing, not planning. The platform is implemented as a capstone graduation project (full-stack booking, chat, and venue management).</p>
+                    <p class="page-description">MatchField makes it simple for players and venues to connect. Book trusted sports fields in just a few taps and spend more time playing, not planning. The platform is implemented as a capstone graduation project (full-stack booking and venue management).</p>
                 </div>
 
                 <div class="about-wrapper">
@@ -195,7 +192,7 @@
                             <li>Search fields by sport, location, price, and availability.</li>
                             <li>Compare photos, ratings, and details to pick the right venue.</li>
                             <li>Book and pay securely in minutes — no phone calls needed.</li>
-                            <li>Manage your bookings, chat with venues, and get directions from one dashboard.</li>
+                            <li>Manage your bookings and get directions from one dashboard.</li>
                         </ol>
                     </div>
 
@@ -253,6 +250,8 @@
 
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/player/notifications.js"></script>
     <script src="../../scripts/player/header-user.js"></script>

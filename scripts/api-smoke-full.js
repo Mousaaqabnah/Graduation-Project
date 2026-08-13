@@ -5,7 +5,8 @@
  * Skips: account delete, clearing all notifications, owner verify/moderation mutations,
  * admin broadcast to all users (optional future opt-in).
  * May: preferences PATCH, contact POST, mark-read, favorite add+remove if not favorited,
- * admin support star/block idempotent clears, tiny chat PNG upload.
+ * admin support star/block idempotent clears.
+ * Internal chat (/api/messages) is removed — smoke expects 404 on those routes.
  */
 
 const BASE = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:3000';
@@ -147,7 +148,7 @@ async function main() {
     }
   }
   {
-    const r = await req('GET', '/api/fields/nearby?lat=41.0082&lng=28.9784&limit=5');
+    const r = await req('GET', '/api/fields/nearby?lat=31.9038&lng=35.2034&limit=5');
     expect(r.status, [200], 'GET /api/fields/nearby');
   }
   {
@@ -332,88 +333,27 @@ async function main() {
     expect(r.status, [200], 'POST /api/notifications/me/mark-read');
   }
 
-  // --- Messages / chat ---
-  let convId;
-  let otherUserId;
-  let messageId;
+  // --- Messages / chat (removed — expect 404) ---
   {
-    const r = await req('GET', '/api/messages/conversations', { token: playerT });
-    expect(r.status, [200], 'GET /api/messages/conversations');
-    const c = r.body.conversations?.[0];
-    if (c) {
-      convId = c.id;
-      const u1 = c.user1Id || c.user1?.id;
-      const u2 = c.user2Id || c.user2?.id;
-      otherUserId = String(u1) === String(playerId) ? u2 : u1;
+    const someUuid = '00000000-0000-4000-8000-000000000001';
+    {
+      const r = await req('GET', '/api/messages/conversations', { token: playerT });
+      expect(r.status, [404], 'GET /api/messages/conversations returns 404');
     }
-  }
-  if (otherUserId) {
-    const r = await req('GET', `/api/messages/conversation/${otherUserId}`, { token: playerT });
-    expect(r.status, [200], 'GET /api/messages/conversation/:userId');
-  }
-  if (convId) {
-    const r = await req('GET', `/api/messages/conversation/${convId}/messages?limit=5`, { token: playerT });
-    expect(r.status, [200], 'GET /api/messages/conversation/:conversationId/messages');
-    const msgs = r.body.messages || [];
-    if (msgs.length) messageId = msgs[msgs.length - 1].id;
-  }
-  if (convId) {
-    const r = await req('PUT', `/api/messages/conversation/${convId}/messages/read-all`, { token: playerT, body: {} });
-    expect(r.status, [200], 'PUT /api/messages/conversation/:id/messages/read-all');
-  }
-  if (convId && messageId) {
-    const r = await req('PUT', `/api/messages/conversation/${convId}/messages/${messageId}/read`, { token: playerT, body: {} });
-    expect(r.status, [200], 'PUT /api/messages/conversation/:cid/messages/:mid/read');
-  }
-  if (convId) {
-    const r = await req('PATCH', `/api/messages/conversation/${convId}/star`, { token: playerT, body: { starred: false } });
-    expect(r.status, [200], 'PATCH /api/messages/conversation/:id/star');
-  }
-  if (convId) {
-    const r = await req('PATCH', `/api/messages/conversation/${convId}/block`, { token: playerT, body: { blocked: false } });
-    expect(r.status, [200], 'PATCH /api/messages/conversation/:id/block');
-  }
-  if (convId) {
-    const r = await req('POST', `/api/messages/conversation/${convId}/messages`, { token: playerT, body: {} });
-    expect(r.status, [400], 'POST /api/messages/conversation/:id/messages empty body');
-  }
-
-  // Ensure a player↔owner conversation exists for upload tests
-  if (!convId) {
-    const r = await req('GET', `/api/messages/conversation/${ownerId}`, { token: playerT });
-    if (r.status === 200 && r.body.conversation?.id) {
-      convId = r.body.conversation.id;
-      otherUserId = ownerId;
+    {
+      const r = await req('GET', `/api/messages/conversation/${someUuid}`, { token: playerT });
+      expect(r.status, [404], 'GET /api/messages/conversation/:id returns 404');
     }
-  }
-
-  // Chat upload: tiny PNG (requires conversationId — H6)
-  {
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64'
-    );
-    const form = new FormData();
-    form.append('file', new Blob([png], { type: 'image/png' }), 'smoke.png');
-    if (convId) form.append('conversationId', convId);
-    const res = await fetch(`${BASE}/api/messages/attachment`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${playerT}` },
-      body: form
-    });
-    const b = await json(res);
-    const ok = convId ? res.status === 201 : res.status === 400;
-    record('POST /api/messages/attachment', res.status, ok, b.url || b.error);
-  }
-  {
-    const form = new FormData();
-    const res = await fetch(`${BASE}/api/messages/attachment`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${playerT}` },
-      body: form
-    });
-    const b = await json(res);
-    record('POST /api/messages/attachment no file', res.status, res.status === 400, b.error);
+    {
+      const r = await req('POST', '/api/messages/attachment', { token: playerT, body: {} });
+      expect(r.status, [404], 'POST /api/messages/attachment returns 404');
+    }
+    {
+      const r = await req('GET', `/api/messages/files/smoke.png?conversationId=${someUuid}`, {
+        token: playerT
+      });
+      expect(r.status, [404], 'GET /api/messages/files/... returns 404');
+    }
   }
 
   // --- Support ---

@@ -1,10 +1,5 @@
 // Admin Settings Page JavaScript (aligned with owner/player patterns)
 
-var FIXED_ADMIN_PREFS = {
-    language: 'en',
-    timezone: 'Europe/Istanbul'
-};
-
 var ACCOUNT_PREF_KEYS = ['emailNotifications', 'twoFactorAuth'];
 var accountSettingsState = {
     emailNotifications: true,
@@ -31,6 +26,33 @@ var adminSystemPrefsState = {
     itemsPerPage: '25',
     isSaving: false
 };
+
+function readLocaleFromDom() {
+    var languageEl = document.getElementById('language');
+    var currencyEl = document.getElementById('currency');
+    var timezoneEl = document.getElementById('timezone');
+    var Prefs = window.MatchFieldPrefs;
+    return {
+        language: Prefs
+            ? Prefs.normalizeLanguage(languageEl && languageEl.value)
+            : (languageEl && languageEl.value) || 'en',
+        currency: Prefs
+            ? Prefs.normalizeCurrency(currencyEl && currencyEl.value)
+            : (currencyEl && currencyEl.value) || 'ILS',
+        timezone: Prefs
+            ? Prefs.normalizeTimezone(timezoneEl && timezoneEl.value)
+            : (timezoneEl && timezoneEl.value) || 'Asia/Jerusalem'
+    };
+}
+
+function applyLocaleUi() {
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.applyDocumentLocale(MatchFieldPrefs.getLanguage());
+    }
+    if (window.MatchFieldI18n) {
+        MatchFieldI18n.applyTranslations(document);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
     var profileBtn = document.getElementById('profileBtn');
@@ -227,13 +249,30 @@ async function loadSettings() {
         console.warn('Admin settings: could not load from API', err);
     }
 
-    var settings = {
-        ...local,
-        ...remote,
-        language: FIXED_ADMIN_PREFS.language,
-        timezone: FIXED_ADMIN_PREFS.timezone
-    };
+    var locale = window.MatchFieldPrefs
+        ? MatchFieldPrefs.normalizeLocalePrefs(Object.assign({}, local, remote))
+        : Object.assign(
+            { language: 'en', currency: 'ILS', timezone: 'Asia/Jerusalem' },
+            local,
+            remote
+          );
+
+    var settings = Object.assign({}, local, remote, {
+        language: locale.language,
+        currency: locale.currency,
+        timezone: locale.timezone
+    });
     localStorage.setItem('adminSettings', JSON.stringify(settings));
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.setLocalePrefs(
+            {
+                language: settings.language,
+                currency: settings.currency,
+                timezone: settings.timezone
+            },
+            'ADMIN'
+        );
+    }
 
     if (settings.emailNotifications !== undefined) {
         var el = document.getElementById('emailNotifications');
@@ -251,9 +290,11 @@ async function loadSettings() {
     });
 
     var langEl = document.getElementById('language');
-    if (langEl) langEl.value = FIXED_ADMIN_PREFS.language;
+    if (langEl) langEl.value = settings.language;
+    var curEl = document.getElementById('currency');
+    if (curEl) curEl.value = settings.currency;
     var tzEl = document.getElementById('timezone');
-    if (tzEl) tzEl.value = FIXED_ADMIN_PREFS.timezone;
+    if (tzEl) tzEl.value = settings.timezone;
 
     if (settings.dateFormat) {
         var df = document.getElementById('dateFormat');
@@ -265,9 +306,11 @@ async function loadSettings() {
     }
 
     syncAdminStateFromDom();
+    applyLocaleUi();
 }
 
 function buildAdminSettingsFromDom() {
+    var locale = readLocaleFromDom();
     return {
         emailNotifications: Boolean(document.getElementById('emailNotifications') && document.getElementById('emailNotifications').checked),
         twoFactorAuth: Boolean(document.getElementById('twoFactorAuth') && document.getElementById('twoFactorAuth').checked),
@@ -275,8 +318,9 @@ function buildAdminSettingsFromDom() {
         verificationRequests: Boolean(document.getElementById('verificationRequests') && document.getElementById('verificationRequests').checked),
         systemErrors: Boolean(document.getElementById('systemErrors') && document.getElementById('systemErrors').checked),
         securityAlerts: Boolean(document.getElementById('securityAlerts') && document.getElementById('securityAlerts').checked),
-        language: FIXED_ADMIN_PREFS.language,
-        timezone: FIXED_ADMIN_PREFS.timezone,
+        language: locale.language,
+        currency: locale.currency,
+        timezone: locale.timezone,
         dateFormat: document.getElementById('dateFormat') ? document.getElementById('dateFormat').value : 'DD/MM/YYYY',
         itemsPerPage: document.getElementById('itemsPerPage') ? document.getElementById('itemsPerPage').value : '25',
         lastUpdated: new Date().toISOString()
@@ -286,6 +330,17 @@ function buildAdminSettingsFromDom() {
 function saveSettings() {
     var settings = buildAdminSettingsFromDom();
     localStorage.setItem('adminSettings', JSON.stringify(settings));
+    if (window.MatchFieldPrefs) {
+        MatchFieldPrefs.setLocalePrefs(
+            {
+                language: settings.language,
+                currency: settings.currency,
+                timezone: settings.timezone
+            },
+            'ADMIN'
+        );
+    }
+    applyLocaleUi();
 }
 
 function syncAdminStateFromDom() {
@@ -455,6 +510,17 @@ function initializeAdminSystemPrefsHandlers() {
             });
         });
     }
+    ['language', 'currency', 'timezone'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', function () {
+            saveSettings();
+            saveAdminSystemPreferences({
+                dateFormat: adminSystemPrefsState.dateFormat,
+                itemsPerPage: adminSystemPrefsState.itemsPerPage
+            });
+        });
+    });
 }
 
 function applyAdminSystemPrefsToDom(prefs) {
@@ -493,8 +559,9 @@ function saveAdminSystemPreferences(next) {
     API.users.patchMyPreferences({
         dateFormat: adminSystemPrefsState.dateFormat,
         itemsPerPage: adminSystemPrefsState.itemsPerPage,
-        language: FIXED_ADMIN_PREFS.language,
-        timezone: FIXED_ADMIN_PREFS.timezone
+        language: readLocaleFromDom().language,
+        currency: readLocaleFromDom().currency,
+        timezone: readLocaleFromDom().timezone
     })
         .catch(function(err) {
             adminSystemPrefsState.dateFormat = prev.dateFormat;
