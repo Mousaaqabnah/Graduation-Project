@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | MatchField</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -20,7 +21,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -52,7 +53,7 @@
                 </a>
                 <a href="messages.html" class="nav-item">
                     <i class="fi fi-rr-messages nav-icon"></i>
-                    <span data-i18n="nav.messages">Messages</span>
+                    <span data-i18n="nav.messages" data-i18n="admin.messages">Messages</span>
                 </a>
             </nav>
             
@@ -88,7 +89,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -96,8 +97,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">System update</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleSystem">System update</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -112,7 +113,7 @@
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>Profile</h3>
+                                <h3 data-i18n="nav.profile">Profile</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
@@ -129,14 +130,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>My Profile</span>
+                                        <span data-i18n="profile.myProfile">My Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -157,31 +158,31 @@
             <div class="dashboard-content">
                 <!-- Greeting Header -->
                 <div class="greeting-header">
-                    <h1>Good evening, Mousa 👋</h1>
-                    <p>Monitor users, field owners and bookings across MatchField.</p>
+                    <h1 data-i18n="owner.goodEvening">Good evening, Mousa 👋</h1>
+                    <p data-i18n="admin.monitorDash">Monitor users, field owners and bookings across MatchField.</p>
                 </div>
 
                 <!-- KPI Cards -->
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-card-title">Total users</div>
+                        <div class="stat-card-title" data-i18n="admin.totalUsers">Total users</div>
                         <div class="stat-card-value" id="statTotalUsers">-</div>
                         <div class="stat-card-subtext" id="statUsersSubtext">-</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-card-title">Active field owners</div>
+                        <div class="stat-card-title" data-i18n="admin.activeOwners">Active field owners</div>
                         <div class="stat-card-value" id="statActiveOwners">-</div>
                         <div class="stat-card-subtext" id="statOwnersSubtext">-</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-card-title">Bookings (7 days)</div>
+                        <div class="stat-card-title" data-i18n="admin.bookings7">Bookings (7 days)</div>
                         <div class="stat-card-value" id="statBookings">-</div>
                         <div class="stat-card-subtext" id="statBookingsSubtext">-</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-card-title">Revenue (7 days)</div>
+                        <div class="stat-card-title" data-i18n="admin.revenue7">Revenue (7 days)</div>
                         <div class="stat-card-value" id="statRevenue">-</div>
-                        <div class="stat-card-subtext">Estimated payout</div>
+                        <div class="stat-card-subtext" data-i18n="admin.estimatedPayout">Estimated payout</div>
                     </div>
                 </div>
 
@@ -191,56 +192,56 @@
                     <div class="section-card">
                         <div class="section-header">
                             <div>
-                                <h2 class="section-title">Send notification</h2>
-                                <p class="section-subtitle">Choose audience, channel and write your message.</p>
+                                <h2 class="section-title" data-i18n="admin.sendNotification">Send notification</h2>
+                                <p class="section-subtitle" data-i18n="admin.sendSubtitle">Choose audience, channel and write your message.</p>
                             </div>
                         </div>
                         
                         <div class="notification-form">
                             <div class="form-group">
-                                <label for="notificationTitle">Title</label>
+                                <label for="notificationTitle" data-i18n="admin.title">Title</label>
                                 <input 
                                     type="text" 
                                     id="notificationTitle" 
-                                    placeholder="Weekend reminder, feature announcement..."
+                                    placeholder="Weekend reminder, feature announcement..." data-i18n-placeholder="admin.notifTitlePh"
                                 >
                             </div>
                             
                             <div class="form-group">
-                                <label for="notificationMessage">Message</label>
+                                <label for="notificationMessage" data-i18n="admin.message">Message</label>
                                 <textarea 
                                     id="notificationMessage" 
                                     rows="4"
-                                    placeholder="Write a clear message for your users..."
+                                    placeholder="Write a clear message for your users..." data-i18n-placeholder="admin.notifMessagePh"
                                 ></textarea>
                             </div>
 
                             <div class="form-group">
-                                <label>Audience</label>
+                                <label data-i18n="admin.audience">Audience</label>
                                 <div class="tag-selector" id="notificationAudienceSelector" role="group" aria-label="Notification audience">
-                                    <button type="button" class="tag-btn active" data-audience="all">All users</button>
-                                    <button type="button" class="tag-btn" data-audience="players">Players</button>
-                                    <button type="button" class="tag-btn" data-audience="owners">Field owners</button>
-                                    <button type="button" class="tag-btn" data-audience="admins">Admins</button>
-                                    <button type="button" class="tag-btn" data-audience="private">Private</button>
+                                    <button type="button" class="tag-btn active" data-audience="all" data-i18n="admin.allUsers">All users</button>
+                                    <button type="button" class="tag-btn" data-audience="players" data-i18n="admin.players">Players</button>
+                                    <button type="button" class="tag-btn" data-audience="owners" data-i18n="admin.fieldOwners">Field owners</button>
+                                    <button type="button" class="tag-btn" data-audience="admins" data-i18n="admin.admins">Admins</button>
+                                    <button type="button" class="tag-btn" data-audience="private" data-i18n="admin.private">Private</button>
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label>Channel</label>
+                                <label data-i18n="admin.channel">Channel</label>
                                 <div class="tag-selector" id="notificationChannelSelector" role="group" aria-label="Notification channel">
-                                    <button type="button" class="tag-btn active" data-channel="inapp">In-app</button>
+                                    <button type="button" class="tag-btn active" data-channel="inapp" data-i18n="admin.inApp">In-app</button>
                                 </div>
                             </div>
 
                             <div class="form-group private-user-selector" id="privateUserSelector" style="display: none;">
-                                <label for="userSearchInput">Select user</label>
+                                <label for="userSearchInput" data-i18n="admin.selectUser">Select user</label>
                                 <div class="user-search-container">
                                     <i class="fi fi-rr-search user-search-icon"></i>
                                     <input 
                                         type="text" 
                                         id="userSearchInput" 
-                                        placeholder="Search by name or email..."
+                                        placeholder="Search by name or email..." data-i18n-placeholder="admin.searchNameEmail"
                                         class="user-search-input"
                                         autocomplete="off"
                                     >
@@ -264,10 +265,10 @@
 
                             <div class="form-tip">
                                 <i class="fi fi-rr-info"></i>
-                                <span>Tip: keep notifications short and schedule them outside busy match hours.</span>
+                                <span data-i18n="admin.notifTip">Tip: keep notifications short and schedule them outside busy match hours.</span>
                             </div>
 
-                            <button class="btn btn-primary btn-send" id="sendNotificationBtn">
+                            <button class="btn btn-primary btn-send" id="sendNotificationBtn" data-i18n="admin.sendNow">
                                 Send now
                             </button>
                         </div>
@@ -277,10 +278,10 @@
                     <div class="section-card">
                     <div class="section-header">
                         <div>
-                            <h2 class="section-title">Recent notifications</h2>
-                            <p class="section-subtitle">Last messages sent to your users.</p>
+                            <h2 class="section-title" data-i18n="admin.recentNotifications">Recent notifications</h2>
+                            <p class="section-subtitle" data-i18n="admin.lastMessages">Last messages sent to your users.</p>
                         </div>
-                        <button class="link-btn" id="viewAllNotificationsBtn">View all</button>
+                        <button class="link-btn" id="viewAllNotificationsBtn" data-i18n="admin.viewAll">View all</button>
                     </div>
 
                     <div class="notifications-list" id="recentNotifications">
@@ -329,7 +330,7 @@
                 </svg>
             </button>
             
-            <div class="modal-title">All Notifications</div>
+            <div class="modal-title" data-i18n="admin.allNotifications">All Notifications</div>
             
             <!-- Search and Filter Bar -->
             <div class="notifications-modal-toolbar">
@@ -338,29 +339,29 @@
                     <input 
                         type="text" 
                         id="notificationSearch" 
-                        placeholder="Search notifications by title or message..."
+                        placeholder="Search notifications by title or message..." data-i18n-placeholder="admin.searchNotifPh"
                         class="search-input"
                     >
                 </div>
                 
                 <div class="filter-container">
-                    <label>Filter by Audience:</label>
+                    <label data-i18n="admin.filterByAudience">Filter by Audience:</label>
                     <select id="filterAudience" class="filter-select">
-                        <option value="all">All audiences</option>
-                        <option value="all-users">All users</option>
-                        <option value="players">Players</option>
-                        <option value="field-owners">Field owners</option>
-                        <option value="admins">Admins</option>
-                        <option value="private">Private</option>
+                        <option value="all" data-i18n="admin.allAudiences">All audiences</option>
+                        <option value="all-users" data-i18n="admin.allUsers">All users</option>
+                        <option value="players" data-i18n="admin.players">Players</option>
+                        <option value="field-owners" data-i18n="admin.fieldOwners">Field owners</option>
+                        <option value="admins" data-i18n="admin.admins">Admins</option>
+                        <option value="private" data-i18n="admin.private">Private</option>
                     </select>
                 </div>
                 
                 <div class="filter-container">
-                    <label>Filter by Channel:</label>
+                    <label data-i18n="admin.filterByChannel">Filter by Channel:</label>
                     <select id="filterChannel" class="filter-select">
-                        <option value="all">All channels</option>
-                        <option value="in-app">In-app</option>
-                        <option value="email">Email</option>
+                        <option value="all" data-i18n="admin.allChannels">All channels</option>
+                        <option value="in-app" data-i18n="admin.inApp">In-app</option>
+                        <option value="email" data-i18n="common.email">Email</option>
                     </select>
                 </div>
             </div>
@@ -382,44 +383,44 @@
                 </svg>
             </button>
 
-            <div class="modal-title" id="inviteAdminTitle">Invite admin</div>
+            <div class="modal-title" id="inviteAdminTitle" data-i18n="admin.inviteAdmin">Invite admin</div>
 
             <div class="invite-admin-modal-content">
                 <form id="inviteAdminForm" class="invite-admin-form">
                     <div class="invite-admin-inline-error" id="inviteAdminError" style="display:none;"></div>
                     <div class="form-group">
-                        <label for="inviteAdminEmail">Admin email</label>
+                        <label for="inviteAdminEmail" data-i18n="admin.adminEmail">Admin email</label>
                         <input type="email" id="inviteAdminEmail" placeholder="admin@example.com" required autocomplete="off">
                     </div>
 
                     <div class="form-group">
-                        <label for="inviteAdminName">Full name (optional)</label>
-                        <input type="text" id="inviteAdminName" placeholder="Admin User" maxlength="200" autocomplete="off">
+                        <label for="inviteAdminName" data-i18n="admin.fullNameOptional">Full name (optional)</label>
+                        <input type="text" id="inviteAdminName" placeholder="Admin User" data-i18n-placeholder="admin.inviteNamePh" maxlength="200" autocomplete="off">
                     </div>
 
                     <div class="invite-admin-actions">
-                        <button type="button" class="btn invite-admin-cancel" id="cancelInviteAdminBtn">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="submitInviteAdminBtn">Create admin</button>
+                        <button type="button" class="btn invite-admin-cancel" id="cancelInviteAdminBtn" data-i18n="common.cancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="submitInviteAdminBtn" data-i18n="admin.createAdmin">Create admin</button>
                     </div>
                 </form>
 
                 <div class="invite-admin-result" id="inviteAdminResult" style="display:none;">
-                    <div class="invite-admin-result-title">Admin created</div>
+                    <div class="invite-admin-result-title" data-i18n="admin.adminCreated">Admin created</div>
                     <div class="invite-admin-result-row">
-                        <div class="invite-admin-result-label">Email</div>
+                        <div class="invite-admin-result-label" data-i18n="common.email">Email</div>
                         <div class="invite-admin-result-value" id="inviteAdminCreatedEmail">—</div>
                     </div>
                     <div class="invite-admin-result-row">
-                        <div class="invite-admin-result-label">Temporary password</div>
+                        <div class="invite-admin-result-label" data-i18n="admin.tempPassword">Temporary password</div>
                         <div class="invite-admin-password-wrap">
                             <input id="inviteAdminTempPassword" class="invite-admin-password" type="password" value="" readonly>
-                            <button type="button" class="btn invite-admin-copy invite-admin-toggle" id="toggleInviteAdminPasswordBtn" aria-label="Show password">Show</button>
-                            <button type="button" class="btn invite-admin-copy" id="copyInviteAdminPasswordBtn">Copy</button>
+                            <button type="button" class="btn invite-admin-copy invite-admin-toggle" id="toggleInviteAdminPasswordBtn" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword" data-i18n="common.show">Show</button>
+                            <button type="button" class="btn invite-admin-copy" id="copyInviteAdminPasswordBtn" data-i18n="common.copy">Copy</button>
                         </div>
-                        <div class="invite-admin-hint">Share this password securely. The admin can change it in Settings.</div>
+                        <div class="invite-admin-hint" data-i18n="admin.sharePasswordHint">Share this password securely. The admin can change it in Settings.</div>
                     </div>
                     <div class="invite-admin-actions">
-                        <button type="button" class="btn btn-primary" id="doneInviteAdminBtn">Done</button>
+                        <button type="button" class="btn btn-primary" id="doneInviteAdminBtn" data-i18n="common.done">Done</button>
                     </div>
                 </div>
             </div>
@@ -430,6 +431,7 @@
     <script src="../../lib/bookingRegionStats.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>

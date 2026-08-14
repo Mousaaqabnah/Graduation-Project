@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - MatchField</title>
+    <title data-i18n="settings.pageTitle">Settings - MatchField</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,7 +22,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -32,7 +33,7 @@
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span data-i18n="nav.bookings_list">Bookings</span>
+                    <span data-i18n="nav.bookings_list" data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
@@ -44,7 +45,7 @@
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span data-i18n="nav.contact">Contact Us</span>
+                    <span data-i18n="nav.contact" data-i18n="support.contactUs">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
@@ -70,7 +71,7 @@
             <header class="main-header">
                 <a href="dashboard.html" class="back-btn">
                     <i class="fi fi-rr-arrow-left"></i>
-                    <span>Back</span>
+                    <span data-i18n="common.back">Back</span>
                 </a>
                 
                 <div class="header-actions">
@@ -82,7 +83,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -90,8 +91,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">New booking request</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleRequest">New booking request</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                                 <div class="notification-item">
@@ -99,8 +100,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">Payment received</p>
-                                        <p class="notification-time">5 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.samplePayment">Payment received</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo5">5 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -109,21 +110,21 @@
                     
                     <div class="profile-wrapper">
                         <div class="profile-picture" id="profileBtn">
-                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                         </div>
                         
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>My Account</h3>
+                                <h3 data-i18n="account">My Account</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
                                     <div class="profile-avatar-large">
-                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                                     </div>
                                     <div class="profile-details">
-                                        <p class="profile-name">Fozi Court</p>
+                                        <p class="profile-name" data-i18n="common.user">Fozi Court</p>
                                         <p class="profile-email">info@fozicourt.com</p>
                                     </div>
                                 </div>
@@ -133,14 +134,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>View Profile</span>
+                                        <span data-i18n="profile.viewProfile">View Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -162,8 +163,8 @@
                 <!-- Page Header -->
                 <div class="page-header">
                     <div class="page-header-content">
-                        <h1 class="page-title">Settings</h1>
-                        <p class="page-description">Manage your account settings and preferences</p>
+                        <h1 class="page-title" data-i18n="settings.pageTitle">Settings</h1>
+                        <p class="page-description" data-i18n="settings.pageDesc">Manage your account settings and preferences</p>
                     </div>
                 </div>
 
@@ -174,20 +175,20 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rr-user"></i>
-                                <h2>Account Settings</h2>
+                                <h2 data-i18n="settings.accountSettings">Account Settings</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Change Password</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.changePassword">Change Password</h3>
                                     <p class="settings-item-description">Update your password to keep your account secure</p>
                                 </div>
-                                <button class="btn btn-secondary" id="changePasswordBtn">Change</button>
+                                <button class="btn btn-secondary" id="changePasswordBtn" data-i18n="common.change">Change</button>
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Email Notifications</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.emailNotifications">Email Notifications</h3>
                                     <p class="settings-item-description">Receive email notifications for bookings and updates</p>
                                 </div>
                                 <label class="toggle-switch">
@@ -197,7 +198,7 @@
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Two-Factor Authentication</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.twoFactor">Two-Factor Authentication</h3>
                                     <p class="settings-item-description">Add an extra layer of security to your account</p>
                                 </div>
                                 <label class="toggle-switch">
@@ -213,7 +214,7 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rs-bell"></i>
-                                <h2>Notification Preferences</h2>
+                                <h2 data-i18n="settings.notificationPrefs">Notification Preferences</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
@@ -307,16 +308,16 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rr-exclamation-triangle"></i>
-                                <h2>Danger Zone</h2>
+                                <h2 data-i18n="settings.dangerZone">Danger Zone</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Delete Account</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.deleteAccount">Delete Account</h3>
                                     <p class="settings-item-description">Permanently delete your account and all associated data</p>
                                 </div>
-                                <button class="btn btn-danger" id="deleteAccountBtn">Delete Account</button>
+                                <button class="btn btn-danger" id="deleteAccountBtn" data-i18n="settings.deleteAccount">Delete Account</button>
                             </div>
                         </div>
                     </div>
@@ -329,7 +330,7 @@
     <div class="change-password-modal-overlay" id="changePasswordModal">
         <div class="change-password-modal">
             <div class="change-password-modal-header">
-                <h2>Change Password</h2>
+                <h2 data-i18n="settings.changePassword">Change Password</h2>
                 <button type="button" class="change-password-modal-close" id="changePasswordModalClose" aria-label="Close">
                     <i class="fi fi-rr-cross"></i>
                 </button>
@@ -338,8 +339,8 @@
                 <div class="form-group">
                     <label for="currentPassword">Current Password</label>
                     <div class="password-input-wrapper">
-                        <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" required autocomplete="current-password">
-                        <button type="button" class="password-toggle-btn" data-toggle-password="currentPassword" aria-label="Show password" aria-pressed="false">
+                        <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" data-i18n-placeholder="settings.currentPasswordPh" required autocomplete="current-password">
+                        <button type="button" class="password-toggle-btn" data-toggle-password="currentPassword" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword" aria-pressed="false">
                             <i class="fi fi-rr-eye"></i>
                         </button>
                     </div>
@@ -347,8 +348,8 @@
                 <div class="form-group">
                     <label for="newPassword">New Password</label>
                     <div class="password-input-wrapper">
-                        <input type="password" id="newPassword" name="newPassword" placeholder="Enter new password (min 8 characters)" required minlength="8" autocomplete="new-password">
-                        <button type="button" class="password-toggle-btn" data-toggle-password="newPassword" aria-label="Show password" aria-pressed="false">
+                        <input type="password" id="newPassword" name="newPassword" placeholder="Enter new password (min 8 characters)" data-i18n-placeholder="settings.newPasswordPh" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="password-toggle-btn" data-toggle-password="newPassword" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword" aria-pressed="false">
                             <i class="fi fi-rr-eye"></i>
                         </button>
                     </div>
@@ -356,16 +357,16 @@
                 <div class="form-group">
                     <label for="confirmPassword">Confirm New Password</label>
                     <div class="password-input-wrapper">
-                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
-                        <button type="button" class="password-toggle-btn" data-toggle-password="confirmPassword" aria-label="Show password" aria-pressed="false">
+                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password" data-i18n-placeholder="settings.confirmPasswordPh" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="password-toggle-btn" data-toggle-password="confirmPassword" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword" aria-pressed="false">
                             <i class="fi fi-rr-eye"></i>
                         </button>
                     </div>
                 </div>
                 <p class="change-password-error" id="changePasswordError"></p>
                 <div class="change-password-modal-footer">
-                    <button type="button" class="btn btn-secondary" id="changePasswordCancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="changePasswordSubmit">Update Password</button>
+                    <button type="button" class="btn btn-secondary" id="changePasswordCancel" data-i18n="common.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="changePasswordSubmit" data-i18n="settings.updatePassword">Update Password</button>
                 </div>
             </form>
         </div>
@@ -374,6 +375,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>

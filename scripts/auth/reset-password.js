@@ -16,7 +16,7 @@
         const isHidden = passwordInput.type === 'password';
         passwordInput.type = isHidden ? 'text' : 'password';
         icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
-        this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        this.setAttribute('aria-label', isHidden ? t('accessibility.hidePassword') : t('accessibility.showPassword'));
       });
     });
   }
@@ -24,7 +24,7 @@
   if (!token || token.length < 32) {
     if (tokenHint) {
       tokenHint.textContent =
-        'This reset link is missing or invalid. Request a new link from the forgot password page.';
+        t('auth.resetMissing');
     }
     form.hidden = true;
     return;
@@ -38,16 +38,16 @@
     const password = document.getElementById('password').value;
     const confirm = document.getElementById('passwordConfirm').value;
     if (password !== confirm) {
-      window.alert('Passwords do not match.');
+      window.alert(t('auth.passwordsMismatch'));
       return;
     }
     const original = submitBtn.textContent;
-    submitBtn.textContent = 'Saving…';
+    submitBtn.textContent = t('common.saving');
     submitBtn.disabled = true;
 
     try {
       const data = await API.auth.resetPassword(token, password);
-      const msg = data.message || 'Password updated.';
+      const msg = t('auth.passwordUpdated');
       if (window.MatchFieldDialog && typeof window.MatchFieldDialog.alert === 'function') {
         await window.MatchFieldDialog.alert(msg);
       } else {
@@ -55,7 +55,7 @@
       }
       window.location.href = 'login.html';
     } catch (err) {
-      window.alert((err && err.message) || 'Reset failed. The link may have expired.');
+      window.alert((err && err.message) || t('auth.resetFailed'));
     } finally {
       submitBtn.textContent = original;
       submitBtn.disabled = false;

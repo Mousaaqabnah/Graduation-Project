@@ -198,12 +198,12 @@ body {
 }
 
 .password-input-wrapper input {
-    padding-right: 46px;
+    padding-inline-end: 46px;
 }
 
 .password-toggle-btn {
     position: absolute;
-    right: 12px;
+    inset-inline-end: 12px;
     top: 50%;
     transform: translateY(-50%);
     border: none;

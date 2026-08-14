@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile - MatchField Admin</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -21,7 +22,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -53,7 +54,7 @@
                 </a>
                 <a href="messages.html" class="nav-item">
                     <i class="fi fi-rr-messages nav-icon"></i>
-                    <span data-i18n="nav.messages">Messages</span>
+                    <span data-i18n="nav.messages" data-i18n="admin.messages">Messages</span>
                 </a>
             </nav>
             
@@ -75,7 +76,7 @@
             <header class="main-header">
                 <a href="dashboard.html" class="back-btn">
                     <i class="fi fi-rr-arrow-left"></i>
-                    <span>Back</span>
+                    <span data-i18n="common.back">Back</span>
                 </a>
                 
                 <div class="header-actions">
@@ -87,7 +88,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -95,8 +96,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">System update</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleSystem">System update</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -111,7 +112,7 @@
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>Profile</h3>
+                                <h3 data-i18n="nav.profile">Profile</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
@@ -128,14 +129,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>My Profile</span>
+                                        <span data-i18n="profile.myProfile">My Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -157,12 +158,12 @@
                 <!-- Page Header -->
                 <div class="page-header">
                     <div class="page-header-content">
-                        <h1 class="page-title">My Profile</h1>
-                        <p class="page-description">View and manage your administrator profile information</p>
+                        <h1 class="page-title" data-i18n="profile.myProfile">My Profile</h1>
+                        <p class="page-description" data-i18n="profile.viewManageAdmin">View and manage your administrator profile information</p>
                     </div>
                     <button class="btn btn-primary btn-edit-profile" id="editProfileBtn">
                         <i class="fi fi-rr-edit"></i>
-                        Edit Profile
+                        <span data-i18n="profile.editProfile">Edit Profile</span>
                     </button>
                 </div>
 
@@ -204,27 +205,27 @@
                             </div>
                             <div class="profile-info-grid">
                                 <div class="info-item">
-                                    <label class="info-label">Full Name</label>
+                                    <label class="info-label" data-i18n="profile.fullName">Full Name</label>
                                     <p class="info-value" id="fullName">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Email Address</label>
+                                    <label class="info-label" data-i18n="profile.emailAddress">Email Address</label>
                                     <p class="info-value" id="emailAddress">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Phone Number</label>
+                                    <label class="info-label" data-i18n="profile.phoneNumber">Phone Number</label>
                                     <p class="info-value" id="phoneNumber">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Admin ID</label>
+                                    <label class="info-label" data-i18n="profile.adminId">Admin ID</label>
                                     <p class="info-value" id="adminId">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Role</label>
+                                    <label class="info-label" data-i18n="common.role">Role</label>
                                     <p class="info-value" id="role">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Member Since</label>
+                                    <label class="info-label" data-i18n="profile.memberSince">Member Since</label>
                                     <p class="info-value" id="memberSince">—</p>
                                 </div>
                             </div>
@@ -240,19 +241,19 @@
                             </div>
                             <div class="profile-info-grid">
                                 <div class="info-item">
-                                    <label class="info-label">Access Level</label>
+                                    <label class="info-label" data-i18n="profile.accessLevel">Access Level</label>
                                     <p class="info-value" id="accessLevel">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Last Login</label>
+                                    <label class="info-label" data-i18n="profile.lastLogin">Last Login</label>
                                     <p class="info-value" id="lastLogin">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">IP Address</label>
+                                    <label class="info-label" data-i18n="profile.ipAddress">IP Address</label>
                                     <p class="info-value" id="ipAddress">—</p>
                                 </div>
                                 <div class="info-item">
-                                    <label class="info-label">Active Sessions</label>
+                                    <label class="info-label" data-i18n="profile.activeSessions">Active Sessions</label>
                                     <p class="info-value" id="activeSessions">—</p>
                                 </div>
                             </div>
@@ -333,7 +334,7 @@
     <div class="modal-overlay" id="editProfileModal">
         <div class="modal-container">
             <div class="modal-header">
-                <h2 class="modal-title">Edit Profile</h2>
+                <h2 class="modal-title" data-i18n="profile.editProfile">Edit Profile</h2>
                 <button class="modal-close-btn" id="closeEditModalBtn">
                     <i class="fi fi-rr-cross"></i>
                 </button>
@@ -342,7 +343,7 @@
                 <form id="editProfileForm">
                     <!-- Personal Information -->
                     <div class="modal-section">
-                        <h3 class="modal-section-title">Personal Information</h3>
+                        <h3 class="modal-section-title" data-i18n="profile.personalInfo">Personal Information</h3>
                         <div class="modal-form-grid">
                             <div class="form-group">
                                 <label for="editFullName">Full Name</label>
@@ -361,8 +362,8 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="cancelEditBtn">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveProfileBtn">Save Changes</button>
+                <button type="button" class="btn btn-secondary" id="cancelEditBtn" data-i18n="common.cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveProfileBtn" data-i18n="profile.saveChanges">Save Changes</button>
             </div>
         </div>
     </div>
@@ -373,6 +374,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>

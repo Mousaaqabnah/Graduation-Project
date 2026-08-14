@@ -46,30 +46,33 @@ function escapeHtml(text) {
 }
 
 function formatStatus(status) {
+    if (window.MatchFieldI18n && MatchFieldI18n.statusLabel) {
+        return MatchFieldI18n.statusLabel(status) || (status ? String(status) : '—');
+    }
     const s = String(status || '').toUpperCase();
-    if (s === 'ACTIVE') return 'Active';
-    if (s === 'SUSPENDED') return 'Suspended';
+    if (s === 'ACTIVE') return t('status.ACTIVE');
+    if (s === 'SUSPENDED') return t('status.SUSPENDED');
     return status ? String(status) : '—';
 }
 
 function formatVerificationStatus(status) {
     const s = String(status || '').toUpperCase();
-    if (s === 'PENDING') return 'Pending';
-    if (s === 'APPROVED') return 'Verified';
-    if (s === 'REJECTED') return 'Rejected';
-    if (s === 'NOT_SUBMITTED' || !s) return 'Not Submitted';
-    return String(status);
+    if (s === 'PENDING') return t('status.PENDING');
+    if (s === 'APPROVED') return t('status.VERIFIED');
+    if (s === 'REJECTED') return t('status.REJECTED');
+    if (s === 'NOT_SUBMITTED' || !s) return t('status.NOT_SUBMITTED');
+    return (window.MatchFieldI18n && MatchFieldI18n.statusLabel) ? MatchFieldI18n.statusLabel(s) : String(status);
 }
 
 function formatDate(d) {
     if (!d) return '—';
     const date = new Date(d);
     if (isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function mapVerificationUser(u) {
-    const name = u.fullName || u.email || 'User';
+    const name = u.fullName || u.email || t('common.user');
     return {
         id: u.id,
         name,
@@ -90,7 +93,7 @@ async function loadVerificationRequestsFromAPI() {
     isLoading = true;
     try {
         if (!window.API || !API.admin || !API.admin.getVerifications) {
-            throw new Error('API not available. Make sure the backend is running and you opened this page from the server.');
+            throw new Error(t('admin.apiFromServer'));
         }
         const res = await API.admin.getVerifications({ limit: 200, page: 1 });
         const users = (res && res.users) ? res.users : [];
@@ -102,7 +105,7 @@ async function loadVerificationRequestsFromAPI() {
             verificationTableBody.innerHTML = `
                 <tr>
                     <td colspan="7" style="text-align: center; padding: 40px; color: #DC2626;">
-                        ${escapeHtml(e && e.message ? e.message : 'Failed to load verification requests')}
+                        ${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('admin.failedLoadVerifications'))}
                     </td>
                 </tr>
             `;
@@ -128,7 +131,7 @@ function renderVerificationRequests(requests = allVerificationRequests) {
         verificationTableBody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; padding: 40px; color: #6B7280;">
-                    ${isLoading ? 'Loading verification requests...' : 'No verification requests found.'}
+                    ${isLoading ? t('admin.loadingVerification') : t('admin.noVerification')}
                 </td>
             </tr>
         `;
@@ -157,7 +160,7 @@ function renderVerificationRequests(requests = allVerificationRequests) {
             <td>
                 <div class="actions-cell">
                     <div class="action-buttons">
-                        <button class="action-icon-btn verify" onclick="showVerificationModal('${escapeHtml(user.id)}')" title="Review verification">
+                        <button class="action-icon-btn verify" onclick="showVerificationModal('${escapeHtml(user.id)}')" title="${t('admin.reviewVerification')}">
                             <i class="fi fi-rr-badge-check"></i>
                         </button>
                     </div>
@@ -231,31 +234,31 @@ function showVerificationModal(userId) {
             ${hasIdImages ? `
                 <div class="verification-images">
                     <div class="verification-image-section">
-                        <label class="verification-image-label">ID Front</label>
+                        <label class="verification-image-label">${t('profile.idFront')}</label>
                         <div class="verification-image-container">
-                            <img data-doc-src="${escapeHtml(user.idFrontUrl)}" alt="ID Front" class="verification-image js-kyc-image">
+                            <img data-doc-src="${escapeHtml(user.idFrontUrl)}" alt="${t('profile.idFront')}" class="verification-image js-kyc-image">
                         </div>
                     </div>
                     <div class="verification-image-section">
-                        <label class="verification-image-label">ID Back</label>
+                        <label class="verification-image-label">${t('profile.idBack')}</label>
                         <div class="verification-image-container">
-                            <img data-doc-src="${escapeHtml(user.idBackUrl)}" alt="ID Back" class="verification-image js-kyc-image">
+                            <img data-doc-src="${escapeHtml(user.idBackUrl)}" alt="${t('profile.idBack')}" class="verification-image js-kyc-image">
                         </div>
                     </div>
                 </div>
             ` : `
                 <div class="verification-no-images">
                     <i class="fi fi-rr-document"></i>
-                    <p>No ID images submitted yet</p>
+                    <p>${t('admin.noIdImages')}</p>
                 </div>
             `}
             
             <div class="verification-actions">
                 <button class="btn btn-verify" onclick="approveVerification('${escapeHtml(user.id)}')" ${!hasIdImages ? 'disabled' : ''}>
-                    <i class="fi fi-rr-check"></i> Approve Owner
+                    <i class="fi fi-rr-check"></i> ${t('admin.approveOwner')}
                 </button>
                 <button class="btn btn-reject" onclick="rejectVerification('${escapeHtml(user.id)}')" ${!hasIdImages ? 'disabled' : ''}>
-                    <i class="fi fi-rr-cross"></i> Reject Owner
+                    <i class="fi fi-rr-cross"></i> ${t('admin.rejectOwner')}
                 </button>
             </div>
         `;
@@ -267,7 +270,7 @@ function showVerificationModal(userId) {
                     img.src = blobUrl;
                     img.onclick = function () { openImageModal(blobUrl); };
                 }).catch(function () {
-                    img.alt = 'Unable to load document';
+                    img.alt = t('admin.unableLoadDoc');
                 });
             });
         }
@@ -284,8 +287,8 @@ async function approveVerification(userId) {
     const user = allVerificationRequests.find(u => String(u.id) === String(userId));
     if (!user) return;
     
-    if (await MatchFieldDialog.confirm(`Verify ${user.name} as a field owner?`, {
-        okText: 'Verify'
+    if (await MatchFieldDialog.confirm(t('admin.verifyConfirm', { name: user.name }), {
+        okText: t('admin.verify')
     })) {
         try {
             await API.admin.verifyOwner(String(userId), 'APPROVED', '');
@@ -296,7 +299,7 @@ async function approveVerification(userId) {
                 document.body.style.overflow = '';
             }
         } catch (e) {
-            alert((e && e.message) ? e.message : 'Failed to approve verification.');
+            alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('admin.approveFailed'));
         }
     }
 }
@@ -308,17 +311,17 @@ async function rejectVerification(userId) {
     
     const reason =
         typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.prompt
-            ? await MatchFieldDialog.prompt('Please provide a reason for rejection (optional):', {
-                  title: 'Reason for rejection',
+            ? await MatchFieldDialog.prompt(t('admin.rejectReason'), {
+                  title: t('admin.reasonTitle'),
                   type: 'warning',
-                  okText: 'OK',
-                  cancelText: 'Cancel',
-                  placeholder: 'Optional note…'
+                  okText: t('common.ok'),
+                  cancelText: t('common.cancel'),
+                  placeholder: t('admin.optionalNote')
               }) ?? ''
-            : prompt('Please provide a reason for rejection (optional):') || '';
-    if (await MatchFieldDialog.confirm(`Reject verification for ${user.name}?`, {
+            : prompt(t('admin.rejectReason')) || '';
+    if (await MatchFieldDialog.confirm(t('admin.rejectVerify', { name: user.name }), {
         type: 'danger',
-        okText: 'Reject'
+        okText: t('admin.rejectOwner')
     })) {
         try {
             await API.admin.verifyOwner(String(userId), 'REJECTED', reason || '');
@@ -329,7 +332,7 @@ async function rejectVerification(userId) {
                 document.body.style.overflow = '';
             }
         } catch (e) {
-            alert((e && e.message) ? e.message : 'Failed to reject verification.');
+            alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('admin.rejectFailed'));
         }
     }
 }
@@ -346,7 +349,7 @@ function openImageModal(imageSrc) {
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
-            <img src="${imageSrc}" alt="ID Document" class="image-modal-img">
+            <img src="${imageSrc}" alt="${t('admin.idDocument')}" class="image-modal-img">
         </div>
     `;
     document.body.appendChild(imageModal);

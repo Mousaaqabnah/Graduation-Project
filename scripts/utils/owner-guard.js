@@ -42,10 +42,10 @@
     prompt.innerHTML =
       '<p class="owner-verification-prompt__text">' +
       (isProfilePage
-        ? 'Your account is not verified yet. Upload your ID below to complete verification.'
-        : 'Your account is not verified yet. Verify now to unlock adding fields.') +
+        ? t('owner.notVerifiedYet')
+        : t('owner.verifyNow')) +
       '</p>' +
-      '<a class="owner-verification-prompt__btn" href="/pages/owner/profile.html">Verify account</a>';
+      '<a class="owner-verification-prompt__btn" href="/pages/owner/profile.html">' + t('owner.verifyAccount') + '</a>';
 
     var mainContent = document.querySelector('.main-content') || document.querySelector('main');
     if (mainContent) {

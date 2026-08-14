@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 let dateOfBirthDisplay = '';
                 if (dateOfBirthInput && dateOfBirthInput.value) {
                     const date = new Date(dateOfBirthInput.value);
-                    dateOfBirthDisplay = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    dateOfBirthDisplay = date.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                 }
                 
                 const formData = {
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const activeUser = (typeof API !== 'undefined' && API.getCurrentUser) ? API.getCurrentUser() : null;
                 const userId = activeUser && activeUser.id ? activeUser.id : null;
                 if (!userId) {
-                    alert('Unable to identify your account. Please log in again.');
+                    alert(t('profile.identifyFailed'));
                     return;
                 }
 
@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 try {
                     saveProfileBtn.disabled = true;
-                    saveProfileBtn.textContent = 'Saving...';
+                    saveProfileBtn.textContent = t('common.saving');
 
                     // Persist supported profile fields to backend.
                     const res = await API.users.update(userId, payload);
@@ -188,12 +188,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     updateProfileFromForm(formData);
                     closeEditModal();
-                    alert('Profile updated successfully!');
+                    alert(t('profile.updated'));
                 } catch (error) {
-                    alert(error && error.message ? error.message : 'Failed to update profile.');
+                    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(error && error.message)) || t('profile.updateFailed'));
                 } finally {
                     saveProfileBtn.disabled = false;
-                    saveProfileBtn.textContent = 'Save Changes';
+                    saveProfileBtn.textContent = t('profile.saveChanges');
                 }
             } else {
                 form.reportValidity();
@@ -261,12 +261,12 @@ document.addEventListener('DOMContentLoaded', function() {
         avatarFileInput.addEventListener('change', function() {
             var file = this.files && this.files[0];
             if (!file || !file.type.startsWith('image/')) {
-                alert('Please select an image file (JPEG, PNG, GIF, etc.).');
+                alert(t('profile.selectImage'));
                 this.value = '';
                 return;
             }
             if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                alert('Image must be less than 5MB. Please choose a smaller image.');
+                alert(t('profile.imageTooLarge'));
                 this.value = '';
                 return;
             }
@@ -367,15 +367,15 @@ function saveAndShowAvatar(avatarUrl) {
                 }
                 if (userId) localStorage.setItem('userAvatar_' + userId, avatarUrl);
                 applyAvatarToAllDisplays(avatarUrl);
-                alert('Profile picture updated successfully!');
+                alert(t('profile.pictureUpdated'));
             })
             .catch(function(err) {
-                alert(err.message || 'Failed to update profile picture.');
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('profile.avatarFailed'));
             });
     } else {
         if (userId) localStorage.setItem('userAvatar_' + userId, avatarUrl);
         applyAvatarToAllDisplays(avatarUrl);
-        alert('Profile picture updated! (Logged-in users: it will sync when you sign in.)');
+        alert(t('profile.pictureUpdated'));
     }
 }
 
@@ -411,10 +411,10 @@ function fallbackCopyTextToClipboard(text, button) {
                 button.innerHTML = originalIcon;
             }, 2000);
         } else {
-            alert('Failed to copy Player ID. Please copy manually: ' + text);
+            alert(t('profile.copyFailed'));
         }
     } catch (err) {
-        alert('Failed to copy Player ID. Please copy manually: ' + text);
+        alert(t('profile.copyFailed'));
     }
     
     document.body.removeChild(textArea);
@@ -476,7 +476,7 @@ function formatFullDate(isoDate) {
     if (!isoDate) return '';
     const d = new Date(isoDate);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', {
+    return d.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -488,7 +488,7 @@ function formatMonthYear(isoDate) {
     if (!isoDate) return '';
     const d = new Date(isoDate);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', {
+    return d.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', {
         year: 'numeric',
         month: 'long'
     });
@@ -658,7 +658,7 @@ function updateProfileDisplay(data) {
     if (emailAddressEl) emailAddressEl.textContent = email;
     const playerIdEl = document.getElementById('playerId');
     if (playerIdEl) {
-        playerIdEl.textContent = data.playerId || 'Loading...';
+        playerIdEl.textContent = data.playerId || t('common.loading');
     }
 
     const phoneNumberEl = document.getElementById('phoneNumber');

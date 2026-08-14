@@ -19,6 +19,7 @@
     "test:palestine": "node scripts/test-palestine-sweep.js",
     "test:no-chat": "node scripts/test-no-chat.js",
     "test:storage": "node scripts/test-storage.js",
+    "test:i18n": "node scripts/test-i18n.js",
     "migrate:base64-docs": "node scripts/migrate-base64-documents.js --dry-run",
     "migrate:storage": "node scripts/migrate-storage-to-supabase.js --dry-run"
   },

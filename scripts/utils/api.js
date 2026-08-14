@@ -51,12 +51,19 @@
     return 'i';
   }
 
+  function tt(key, fallback) {
+    if (window.MatchFieldI18n && typeof window.MatchFieldI18n.t === 'function') {
+      return window.MatchFieldI18n.t(key);
+    }
+    return fallback;
+  }
+
   function titleFor(type, customTitle) {
     if (customTitle) return customTitle;
-    if (type === 'success') return 'Success';
-    if (type === 'warning') return 'Please Confirm';
-    if (type === 'danger') return 'Attention Required';
-    return 'MatchField';
+    if (type === 'success') return tt('dialog.success', 'Success');
+    if (type === 'warning') return tt('dialog.confirmTitle', 'Please Confirm');
+    if (type === 'danger') return tt('dialog.attention', 'Attention Required');
+    return tt('dialog.app', 'MatchField');
   }
 
   function showDialog(options) {
@@ -68,14 +75,15 @@
       overlay.innerHTML = `
         <div class="mf-dialog-card" role="dialog" aria-modal="true">
           <div class="mf-dialog-icon ${type}">${iconFor(type)}</div>
-          <h3 class="mf-dialog-title">${titleFor(type, options.title)}</h3>
+          <h3 class="mf-dialog-title"></h3>
           <p class="mf-dialog-message"></p>
           <div class="mf-dialog-actions"></div>
         </div>
       `;
+      overlay.querySelector('.mf-dialog-title').textContent = titleFor(type, options.title);
       overlay.querySelector('.mf-dialog-message').textContent = String(options.message || '');
       const actions = overlay.querySelector('.mf-dialog-actions');
-      const buttons = options.buttons || [{ label: 'OK', value: true, variant: 'primary' }];
+      const buttons = options.buttons || [{ label: tt('common.ok', 'OK'), value: true, variant: 'primary' }];
       buttons.forEach((button) => {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -146,13 +154,13 @@
       const cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
       cancelBtn.className = 'mf-dialog-btn secondary';
-      cancelBtn.textContent = options.cancelText || 'Cancel';
+      cancelBtn.textContent = options.cancelText || tt('common.cancel', 'Cancel');
       cancelBtn.addEventListener('click', () => close(null));
 
       const okBtn = document.createElement('button');
       okBtn.type = 'button';
       okBtn.className = 'mf-dialog-btn ' + (type === 'danger' ? 'danger' : 'primary');
-      okBtn.textContent = options.okText || 'OK';
+      okBtn.textContent = options.okText || tt('common.ok', 'OK');
       okBtn.addEventListener('click', () => close(input.value));
 
       actions.appendChild(cancelBtn);
@@ -188,18 +196,18 @@
         message,
         title: options.title,
         type: inferType(message, options.type),
-        buttons: [{ label: options.okText || 'OK', value: true, variant: options.variant || 'primary' }]
+        buttons: [{ label: options.okText || tt('common.ok', 'OK'), value: true, variant: options.variant || 'primary' }]
       });
     },
     confirm(message, options = {}) {
       const type = inferType(message, options.type || 'warning');
       return showDialog({
         message,
-        title: options.title || 'Please Confirm',
+        title: options.title || tt('dialog.confirmTitle', 'Please Confirm'),
         type,
         buttons: [
-          { label: options.cancelText || 'Cancel', value: false, variant: 'secondary' },
-          { label: options.okText || 'Confirm', value: true, variant: type === 'danger' ? 'danger' : 'primary' }
+          { label: options.cancelText || tt('common.cancel', 'Cancel'), value: false, variant: 'secondary' },
+          { label: options.okText || tt('common.confirm', 'Confirm'), value: true, variant: type === 'danger' ? 'danger' : 'primary' }
         ]
       });
     },

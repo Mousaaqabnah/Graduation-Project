@@ -2,38 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MatchField - Log in to your account</title>
+    <title data-i18n="auth.pageLogin">MatchField - Log in to your account</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/2.1.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="../../styles/shared/base.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="container">
         <!-- Left Section - Promotional Content -->
         <div class="left-section">
             <div class="logo">
-                <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-icon">
+                <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-icon">
             </div>
             
-            <h1 class="headline">Book fields in seconds.</h1>
-            <p class="description">Find nearby sports fields, check live availability, and secure your slot with instant confirmation.</p>
+            <h1 class="headline" data-i18n="auth.loginHeadline">Book fields in seconds.</h1>
+            <p class="description" data-i18n="auth.loginDescription">Find nearby sports fields, check live availability, and secure your slot with instant confirmation.</p>
             
             <div class="stats-container">
                 <div class="stat-box">
                     <div class="stat-number" id="loginStatFields">—</div>
-                    <div class="stat-label">Fields listed</div>
+                    <div class="stat-label" data-i18n="auth.fieldsListed">Fields listed</div>
                 </div>
                 <div class="stat-box">
                     <div class="stat-number">98%</div>
-                    <div class="stat-label">Happy players</div>
+                    <div class="stat-label" data-i18n="auth.happyPlayers">Happy players</div>
                 </div>
                 <div class="stat-box">
                     <div class="stat-number">24/7</div>
-                    <div class="stat-label">Support</div>
+                    <div class="stat-label" data-i18n="auth.support247">Support</div>
                 </div>
             </div>
         </div>
@@ -41,48 +43,50 @@
         <!-- Right Section - Login Form -->
         <div class="right-section">
             <div class="login-card">
-                <h2 class="login-title">Log in to your account</h2>
-                <p class="welcome-text">Welcome back! Please enter your details.</p>
+                <h2 class="login-title" data-i18n="auth.loginTitle">Log in to your account</h2>
+                <p class="welcome-text" data-i18n="auth.welcomeBack">Welcome back! Please enter your details.</p>
                 
                 <form class="login-form" id="loginForm" autocomplete="off">
                     <div class="form-group">
-                        <label for="email">Email</label>
+                        <label for="email" data-i18n="auth.email">Email</label>
                         <input 
                             type="email" 
                             id="email" 
                             name="email" 
                             placeholder="Enter your email"
+                            data-i18n-placeholder="auth.enterEmail"
                             autocomplete="email"
                             required
                         >
                     </div>
                     
                     <div class="form-group">
-                        <label for="password">Password</label>
+                        <label for="password" data-i18n="auth.password">Password</label>
                         <div class="password-input-wrapper">
                             <input 
                                 type="password" 
                                 id="password" 
                                 name="password" 
                                 placeholder="Enter your password"
+                                data-i18n-placeholder="auth.enterPassword"
                                 autocomplete="new-password"
                                 required
                             >
-                            <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password">
+                            <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword">
                                 <i class="fi fi-rr-eye"></i>
                             </button>
                         </div>
                     </div>
                     
                     <div class="form-options form-options--end">
-                        <a href="forgot-password.html" class="forgot-password">Forgot password</a>
+                        <a href="forgot-password.html" class="forgot-password" data-i18n="auth.forgotPassword">Forgot password</a>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">Log in</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="auth.logIn">Log in</button>
                 </form>
                 
                 <p class="signup-text">
-                    Don't have an account? <a href="signup.html" class="signup-link">Sign up</a>
+                    <span data-i18n="auth.noAccount">Don't have an account?</span> <a href="signup.html" class="signup-link" data-i18n="auth.signUp">Sign up</a>
                 </p>
             </div>
         </div>
@@ -90,6 +94,9 @@
     
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/auth/login.js"></script>
     <script>
       // Keep user on login when pressing Back: ensure every Back stays on login

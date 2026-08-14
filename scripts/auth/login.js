@@ -11,7 +11,7 @@ function initPasswordToggles() {
             const isHidden = passwordInput.type === 'password';
             passwordInput.type = isHidden ? 'text' : 'password';
             icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
-            this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            this.setAttribute('aria-label', isHidden ? t('accessibility.hidePassword') : t('accessibility.showPassword'));
         });
     });
 }
@@ -27,8 +27,8 @@ async function redirectAfterAuth(user) {
                 : '/pages/shared/contact-us.html';
         if (window.MatchFieldDialog && typeof MatchFieldDialog.alert === 'function') {
             await MatchFieldDialog.alert(
-                'Your account has been suspended. You can only use Contact Us until support restores your access.',
-                { type: 'warning', title: 'Account suspended' }
+                t('auth.accountSuspended'),
+                { type: 'warning', title: t('auth.accountSuspendedTitle') }
             );
         }
         try {
@@ -57,14 +57,14 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     const loginButton = document.querySelector('.btn-primary');
     const originalText = loginButton.textContent;
-    loginButton.textContent = 'Logging in...';
+    loginButton.textContent = t('auth.loggingIn');
     loginButton.disabled = true;
     
     try {
         const response = await API.auth.login(email, password);
         await redirectAfterAuth(response.user);
     } catch (error) {
-        alert(error.message || 'Login failed. Please check your credentials.');
+        alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(error.message)) || t('auth.loginFailed'));
         loginButton.textContent = originalText;
         loginButton.disabled = false;
     }

@@ -64,13 +64,13 @@ function setupForm() {
       };
 
       if (!formData.fullName || !formData.email || !formData.message) {
-        alert('Please fill in all required fields.');
+        alert(t('support.fillRequired'));
         return;
       }
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
-        alert('Please enter a valid email address.');
+        alert(t('support.invalidEmail'));
         return;
       }
 
@@ -80,7 +80,7 @@ function setupForm() {
       const originalText = submitBtn ? submitBtn.textContent : '';
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Sending...';
+        submitBtn.textContent = t('common.sending');
       }
 
       try {
@@ -95,15 +95,15 @@ function setupForm() {
           ...(formData.topic ? { topic: formData.topic } : {})
         };
         const res = await window.API.support.contact(payload);
-        alert((res && res.message) || 'Thank you for your message! We will get back to you soon.');
+        alert((window.MatchFieldI18n && res && res.message && MatchFieldI18n.localizeError(res.message)) || t('support.thanks'));
         contactForm.reset();
       } catch (err) {
         console.error('Contact form error:', err);
-        alert(err.message || 'Failed to send your message. Please try again later.');
+        alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('support.sendFailed'));
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = originalText || 'Send message';
+          submitBtn.textContent = originalText || t('support.send');
         }
       }
     });

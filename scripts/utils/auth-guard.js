@@ -41,8 +41,8 @@
     }
     if (window.MatchFieldDialog && typeof MatchFieldDialog.alert === 'function') {
       MatchFieldDialog.alert(
-        'Your account has been suspended. You can use this Contact Us page to reach our team. Other features stay unavailable until your account is restored.',
-        { type: 'warning', title: 'Account suspended' }
+        t('errors.suspendedContact'),
+        { type: 'warning', title: t('auth.accountSuspendedTitle') }
       );
     }
   }

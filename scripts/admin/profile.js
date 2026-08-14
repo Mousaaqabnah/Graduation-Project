@@ -10,7 +10,7 @@ function formatDateLong(d) {
     if (!d) return '—';
     const date = new Date(d);
     if (isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    return date.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function setText(id, value) {
@@ -24,7 +24,7 @@ function setImg(id, src) {
 }
 
 function getUiAvatarUrl(name) {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Admin')}&background=007BFF&color=fff&size=256`;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || t('admin.adminRole'))}&background=007BFF&color=fff&size=256`;
 }
 
 let currentUser = null;
@@ -32,11 +32,11 @@ let currentUser = null;
 function compressImageToJpegDataUrl(file, maxEdge, quality) {
     return new Promise(function (resolve, reject) {
         if (!file || !file.type || !/^image\//i.test(file.type)) {
-            reject(new Error('Please choose an image file.'));
+            reject(new Error(t('owner.chooseImage')));
             return;
         }
         if (file.size > 8 * 1024 * 1024) {
-            reject(new Error('Image is too large (max 8 MB).'));
+            reject(new Error(t('owner.imageTooLarge8')));
             return;
         }
         const reader = new FileReader();
@@ -61,12 +61,12 @@ function compressImageToJpegDataUrl(file, maxEdge, quality) {
                 resolve(dataUrl);
             };
             img.onerror = function () {
-                reject(new Error('Could not read this image.'));
+                reject(new Error(t('owner.couldNotReadImage')));
             };
             img.src = reader.result;
         };
         reader.onerror = function () {
-            reject(new Error('Could not read file.'));
+            reject(new Error(t('owner.couldNotReadFile')));
         };
         reader.readAsDataURL(file);
     });
@@ -79,7 +79,7 @@ async function loadMe() {
 }
 
 function renderUser(user) {
-    const name = user.fullName || 'Admin';
+    const name = user.fullName || t('admin.adminRole');
     const email = user.email || '';
     const phone = user.phone || '—';
     const avatar = user.avatar || getUiAvatarUrl(name);
@@ -92,7 +92,7 @@ function renderUser(user) {
     setText('emailAddress', email);
     setText('phoneNumber', phone);
     setText('adminId', user.id || '—');
-    setText('role', user.role === 'ADMIN' ? 'Administrator' : (user.role || '—'));
+        setText('role', user.role === 'ADMIN' ? t('admin.administrator') : (user.role || '—'));
     setText('memberSince', formatDateLong(user.createdAt));
 
     // Also update top-right profile picture + popup avatar if present
@@ -201,15 +201,15 @@ document.addEventListener('DOMContentLoaded', async function() {
             const fullName = editFullName ? String(editFullName.value || '').trim() : '';
             const phone = editPhone ? String(editPhone.value || '').trim() : '';
             if (!fullName) {
-                alert('Full name is required.');
+                alert(t('profile.fullNameRequired'));
                 return;
             }
 
             const oldText = saveProfileBtn.textContent;
             saveProfileBtn.disabled = true;
-            saveProfileBtn.textContent = 'Saving...';
+            saveProfileBtn.textContent = t('common.saving');
             try {
-                if (!window.API?.users?.update) throw new Error('API not available');
+                if (!window.API?.users?.update) throw new Error(t('common.apiUnavailable'));
                 const res = await API.users.update(currentUser.id, {
                     fullName,
                     phone: phone || null
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
                 closeEditModal();
             } catch (e) {
-                alert((e && e.message) ? e.message : 'Failed to save profile.');
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('profile.updateFailed'));
             } finally {
                 saveProfileBtn.disabled = false;
                 saveProfileBtn.textContent = oldText;
@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const file = avatarFileInput.files && avatarFileInput.files[0];
             if (!file) return;
             if (!file.type || file.type.indexOf('image/') !== 0) {
-                alert('Please select an image file.');
+                alert(t('admin.selectImage'));
                 avatarFileInput.value = '';
                 return;
             }
@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             avatarEditBtn.innerHTML = '<i class="fi fi-rr-hourglass"></i>';
             try {
                 const dataUrl = await compressImageToJpegDataUrl(file, 384, 0.72);
-                if (!dataUrl.startsWith('data:image/')) throw new Error('Invalid image.');
+                if (!dataUrl.startsWith('data:image/')) throw new Error(t('admin.invalidImage'));
                 const res = await API.users.updateAvatar(currentUser.id, dataUrl);
                 const updated = res && res.user ? res.user : null;
                 if (updated && updated.avatar) {
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     renderUser(currentUser);
                 }
             } catch (e) {
-                alert((e && e.message) ? e.message : 'Failed to upload avatar.');
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('profile.avatarFailed'));
             } finally {
                 avatarEditBtn.disabled = false;
                 avatarEditBtn.innerHTML = oldIcon;

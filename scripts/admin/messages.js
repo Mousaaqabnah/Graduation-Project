@@ -17,6 +17,12 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (m) => map[m]);
 }
 
+function mfT(key, params) {
+  return (window.MatchFieldI18n && typeof MatchFieldI18n.t === 'function')
+    ? MatchFieldI18n.t(key, params)
+    : String(key);
+}
+
 function parseContactFormContent(rawText, fallback) {
   const raw = String(rawText || '');
   const result = {
@@ -67,13 +73,13 @@ function renderContactMessageCard(rawText, fallback) {
     <div class="contact-message-card">
       ${data.topic ? `
         <div class="contact-message-topic">
-          <span class="contact-message-label">Topic</span>
+          <span class="contact-message-label">${mfT('admin.topic')}</span>
           <strong>${escapeHtml(data.topic)}</strong>
         </div>
       ` : ''}
       <div class="contact-message-main">
-        <span class="contact-message-label">Message</span>
-        <p>${escapeHtml(data.message || 'No message provided.')}</p>
+        <span class="contact-message-label">${mfT('admin.message')}</span>
+        <p>${escapeHtml(data.message || mfT('admin.noMessage'))}</p>
       </div>
     </div>
   `;
@@ -87,10 +93,10 @@ function getTimeAgo(date) {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'Minute' : 'Minutes'} Ago`;
-  if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'Hour' : 'Hours'} Ago`;
-  if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'Day' : 'Days'} Ago`;
+  if (diffMins < 1) return mfT('common.justNow');
+  if (diffMins < 60) return diffMins === 1 ? mfT('common.minuteAgo') : mfT('common.minutesAgo', { count: diffMins });
+  if (diffHours < 24) return diffHours === 1 ? mfT('common.hourAgo') : mfT('common.hoursAgo', { count: diffHours });
+  if (diffDays < 7) return diffDays === 1 ? mfT('common.dayAgo') : mfT('common.daysAgo', { count: diffDays });
   return d.toLocaleDateString();
 }
 
@@ -100,7 +106,7 @@ function mapConversationToThread(conv, currentUser) {
   const starred = !!conv.starredAt;
   const meId = currentUser && currentUser.id ? String(currentUser.id) : '';
   const otherUser = meId && conv.user1 && String(conv.user1.id) === meId ? conv.user2 : conv.user1;
-  const otherName = otherUser ? (otherUser.fullName || otherUser.email || 'User') : 'User';
+  const otherName = otherUser ? (otherUser.fullName || otherUser.email || mfT('common.user')) : mfT('common.user');
   const otherEmail = otherUser ? (otherUser.email || '') : '';
   const isFromUser = latest && latest.sender && meId && String(latest.sender.id) !== meId;
   const isUnread = !!(isFromUser && latest && !latest.readAt);
@@ -114,11 +120,11 @@ function mapConversationToThread(conv, currentUser) {
     latestMessageId: latest ? latest.id : null,
     fullName: otherName,
     email: otherEmail,
-    topic: latest ? (String(latest.content).slice(0, 60) + (String(latest.content).length > 60 ? '...' : '')) : 'Conversation',
-    message: latest ? latest.content : 'No messages yet.',
+    topic: latest ? (String(latest.content).slice(0, 60) + (String(latest.content).length > 60 ? '...' : '')) : mfT('admin.conversation'),
+    message: latest ? latest.content : mfT('admin.noMessages'),
     messagePreview: latest
       ? String(latest.content).slice(0, 220) + (String(latest.content).length > 220 ? '…' : '')
-      : 'No messages yet.',
+      : mfT('admin.noMessages'),
     date: latest ? latest.createdAt : conv.updatedAt,
     status: isUnread ? 'unread' : 'read',
     workflowStatus,
@@ -130,7 +136,7 @@ function mapConversationToThread(conv, currentUser) {
 function mapSubmissionToThread(sub) {
   const sid = String(sub.id);
   const date = sub.createdAt || sub.created_at;
-  const rawTopic = sub.topic ? String(sub.topic) : 'Contact form';
+  const rawTopic = sub.topic ? String(sub.topic) : mfT('admin.contactForm');
   const topicLine = rawTopic.length > 72 ? `${rawTopic.slice(0, 72)}…` : rawTopic;
   const rawMsg = sub.message || '';
   const seen = !!(sub.adminSeenAt);
@@ -141,7 +147,7 @@ function mapSubmissionToThread(sub) {
     isContactSubmission: true,
     submissionMongoId: sid,
     latestMessageId: null,
-    fullName: sub.fullName || 'User',
+    fullName: sub.fullName || mfT('common.user'),
     email: sub.email || '',
     topic: topicLine,
     message: rawMsg,
@@ -163,7 +169,7 @@ function renderThreads(threads) {
   if (shown.length === 0) {
     messagesList.innerHTML = `
       <div style="text-align: center; padding: 60px 20px; color: #6B7280;">
-        <p style="font-size: 16px; margin: 0;">No messages found.</p>
+        <p style="font-size: 16px; margin: 0;">${mfT('admin.noMessagesFound')}</p>
       </div>
     `;
     return;
@@ -173,15 +179,15 @@ function renderThreads(threads) {
     const isUnread = t.status === 'unread';
     const timeAgo = getTimeAgo(t.date);
     const badges = [];
-    if (t.status === 'unread') badges.push({ text: 'Unread', class: 'unread' });
-    else badges.push({ text: 'Read', class: 'read' });
+    if (t.status === 'unread') badges.push({ text: mfT('status.UNREAD'), class: 'unread' });
+    else badges.push({ text: mfT('status.READ'), class: 'read' });
     if (!t.isContactSubmission && t.workflowStatus === 'pending' && t.status === 'unread') {
-      badges.push({ text: 'Needs your reply', class: 'marked' });
+      badges.push({ text: mfT('admin.needsReply'), class: 'marked' });
     }
     if (!t.isContactSubmission && t.workflowStatus === 'replied') {
-      badges.push({ text: 'You replied last', class: 'read' });
+      badges.push({ text: mfT('admin.youReplied'), class: 'read' });
     }
-    if (t.starred) badges.push({ text: '(marked)', class: 'marked' });
+    if (t.starred) badges.push({ text: mfT('admin.marked'), class: 'marked' });
     const badgesHtml = badges.length > 0 ? `
       <div class="message-badges">
         ${badges.map(b => `<span class="status-badge ${b.class}">${b.text}</span>`).join('')}
@@ -194,23 +200,23 @@ function renderThreads(threads) {
             <h3 class="message-sender-name">${escapeHtml(t.fullName)}</h3>
             <p class="message-sender-email">${escapeHtml(t.email)}</p>
           </div>
-          <h4 class="message-subject">${escapeHtml(t.topic || 'No topic')}</h4>
+          <h4 class="message-subject">${escapeHtml(t.topic || mfT('admin.noTopic'))}</h4>
           <p class="message-preview">${escapeHtml(t.messagePreview != null ? t.messagePreview : t.message)}</p>
           ${badgesHtml}
         </div>
         <div class="message-actions-right">
           <div class="message-icon-actions">
-            ${t.isContactSubmission ? `<span class="status-badge unread" title="From Contact Us form">Contact form</span>` : `
-            <button class="message-icon-btn ${t.starred ? 'starred' : ''}" onclick="toggleStar('${escapeHtml(t.id)}')" title="${t.starred ? 'Unstar' : 'Star'}">
+            ${t.isContactSubmission ? `<span class="status-badge unread" title="${mfT('admin.fromContactForm')}">${mfT('admin.contactForm')}</span>` : `
+            <button class="message-icon-btn ${t.starred ? 'starred' : ''}" onclick="toggleStar('${escapeHtml(t.id)}')" title="${t.starred ? mfT('admin.unstar') : mfT('admin.star')}">
               <i class="fi ${t.starred ? 'fi-sr-star' : 'fi-rr-star'}"></i>
             </button>
-            <button class="message-icon-btn ${t.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock('${escapeHtml(t.id)}')" title="${t.blocked ? 'Unblock (move to normal)' : 'Block/Spam'}">
+            <button class="message-icon-btn ${t.blocked ? 'unblock-btn' : ''}" onclick="toggleBlock('${escapeHtml(t.id)}')" title="${t.blocked ? mfT('admin.unblockMove') : mfT('admin.blockSpam')}">
               <i class="fi ${t.blocked ? 'fi-rr-check-circle' : 'fi-rr-circle-xmark'}"></i>
             </button>
             `}
           </div>
           <p class="message-time">${escapeHtml(timeAgo)}</p>
-          <button class="btn-view-message" onclick="showMessageDetail('${escapeHtml(t.id)}')">View Message</button>
+          <button class="btn-view-message" onclick="showMessageDetail('${escapeHtml(t.id)}')">${mfT('admin.viewMessage')}</button>
         </div>
       </div>
     `;
@@ -249,13 +255,13 @@ async function loadSupportInbox(opts) {
   if (!silent) {
     if (loadingIndicator) {
       loadingIndicator.style.display = 'block';
-      loadingIndicator.textContent = 'Loading messages from server...';
+      loadingIndicator.textContent = mfT('admin.loadingMessages');
     }
   }
 
   try {
     if (!window.API || !API.admin || !API.admin.supportGetConversations) {
-      throw new Error('API not available.');
+      throw new Error(mfT('common.apiUnavailable'));
     }
 
     let currentUser = API.getCurrentUser && API.getCurrentUser();
@@ -283,7 +289,7 @@ async function loadSupportInbox(opts) {
   } catch (e) {
     console.error('Load support inbox error:', e);
     if (!silent) {
-      messagesList.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#DC2626"><p style="margin:0">${escapeHtml(e && e.message ? e.message : 'Failed to load messages')}</p></div>`;
+      messagesList.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#DC2626"><p style="margin:0">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || mfT('admin.loadMessagesFailed'))}</p></div>`;
     }
   } finally {
     if (!silent) {
@@ -315,7 +321,7 @@ async function toggleStar(threadId) {
     t.starred = next;
     filterThreads();
   } catch (e) {
-    alert(e && e.message ? e.message : 'Failed to update star.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || mfT('admin.starFailed'));
   }
 }
 
@@ -324,8 +330,8 @@ async function toggleBlock(threadId) {
   if (!t || t.isContactSubmission) return;
   const next = !t.blocked;
   const ok = await MatchFieldDialog.confirm(
-    next ? `Block/Spam message from ${t.fullName}?` : `Unblock this message from ${t.fullName}?`,
-    { type: next ? 'danger' : 'warning', okText: next ? 'Block' : 'Unblock' }
+    next ? mfT('admin.blockConfirm', { name: t.fullName }) : mfT('admin.unblockConfirm', { name: t.fullName }),
+    { type: next ? 'danger' : 'warning', okText: next ? mfT('admin.block') : mfT('admin.unblock') }
   );
   if (!ok) return;
   try {
@@ -333,7 +339,7 @@ async function toggleBlock(threadId) {
     t.blocked = next;
     filterThreads();
   } catch (e) {
-    alert(e && e.message ? e.message : 'Failed to update block status.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || mfT('admin.blockFailed'));
   }
 }
 
@@ -343,20 +349,20 @@ function appendReplyFormToMessageModal(t) {
   const replyDiv = document.createElement('div');
   replyDiv.innerHTML = `
     <div class="reply-section">
-      <h4 class="reply-section-title">Reply to ${escapeHtml(t.fullName)}</h4>
+      <h4 class="reply-section-title">${mfT('admin.replyTo', { name: escapeHtml(t.fullName) })}</h4>
       <form class="reply-form" id="replyForm-${suf}" onsubmit="handleReplySubmit(event, '${tid}')">
         <div class="reply-form-group">
-          <label for="replyMessage-${suf}" class="reply-label">Your Reply</label>
-          <textarea id="replyMessage-${suf}" class="reply-textarea" rows="6" placeholder="Type your reply here..." required></textarea>
+          <label for="replyMessage-${suf}" class="reply-label">${mfT('admin.yourReply')}</label>
+          <textarea id="replyMessage-${suf}" class="reply-textarea" rows="6" placeholder="${mfT('admin.typeReply')}" required></textarea>
         </div>
         <div class="reply-form-actions">
-          <button type="button" class="btn-cancel-reply" onclick="cancelReply('${tid}')">Cancel</button>
-          <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> Send Reply</button>
+          <button type="button" class="btn-cancel-reply" onclick="cancelReply('${tid}')">${mfT('common.cancel')}</button>
+          <button type="submit" class="btn-send-reply"><i class="fi fi-rr-paper-plane"></i> ${mfT('admin.sendReply')}</button>
         </div>
       </form>
     </div>
     <div class="message-detail-actions">
-      <button class="btn-reply-toggle" onclick="toggleReplySection('${tid}')"><i class="fi fi-rr-envelope"></i> Reply</button>
+      <button class="btn-reply-toggle" onclick="toggleReplySection('${tid}')"><i class="fi fi-rr-envelope"></i> ${mfT('admin.reply')}</button>
     </div>
   `;
   while (replyDiv.firstChild) messageContent.appendChild(replyDiv.firstChild);
@@ -376,7 +382,7 @@ async function showMessageDetail(threadId) {
       t.status = prevStatus;
       filterThreads();
       console.warn('Admin inbox: mark as read failed', err);
-      alert((err && err.message) || 'Could not mark as read on the server. Try again.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || mfT('admin.markReadFailed'));
     }
   }
 
@@ -396,7 +402,7 @@ async function showMessageDetail(threadId) {
         </div>
       </div>
       <div class="message-detail-thread" id="messageDetailThread">
-        <div class="message-detail-thread-label">Contact form message</div>
+        <div class="message-detail-thread-label">${mfT('admin.contactFormMessage')}</div>
         <div class="message-detail-item from-user">
           <div class="message-detail-item-header">${escapeHtml(t.fullName)} · ${escapeHtml(timeStr)}</div>
           ${renderContactMessageCard(t.message, t)}
@@ -415,7 +421,7 @@ async function showMessageDetail(threadId) {
         <p class="message-detail-email">${escapeHtml(t.email)}</p>
       </div>
     </div>
-    <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> Loading full conversation...</div>
+    <div class="message-detail-thread-loading"><i class="fi fi-rr-spinner"></i> ${mfT('admin.loadingConversation')}</div>
     <div class="message-detail-thread" id="messageDetailThread" style="display:none;"></div>
   `;
 
@@ -427,13 +433,13 @@ async function showMessageDetail(threadId) {
     if (loadingEl) loadingEl.remove();
     if (!threadEl) return;
     if (msgs.length === 0) {
-      threadEl.innerHTML = '<div class="message-detail-empty">No messages in this conversation.</div>';
+      threadEl.innerHTML = '<div class="message-detail-empty">' + mfT('admin.noMessagesInConv') + '</div>';
     } else {
       const me = API.getCurrentUser ? API.getCurrentUser() : null;
       const meId = me && me.id ? String(me.id) : '';
       const threadHtml = msgs.map((m) => {
         const isFromAdmin = meId && m.sender && String(m.sender.id) === meId;
-        const senderName = m.sender ? (m.sender.fullName || 'Unknown') : 'Unknown';
+        const senderName = m.sender ? (m.sender.fullName || mfT('common.unknown')) : mfT('common.unknown');
         const timeStr = m.createdAt ? getTimeAgo(m.createdAt) : '';
         const contentHtml = !isFromAdmin && looksLikeContactFormContent(m.content)
           ? renderContactMessageCard(m.content, { fullName: senderName })
@@ -445,7 +451,7 @@ async function showMessageDetail(threadId) {
           </div>
         `;
       }).join('');
-      threadEl.innerHTML = '<div class="message-detail-thread-label">Full conversation history</div>' + threadHtml;
+      threadEl.innerHTML = '<div class="message-detail-thread-label">' + mfT('admin.fullConversation') + '</div>' + threadHtml;
     }
     threadEl.style.display = 'block';
   } catch (e) {
@@ -454,7 +460,7 @@ async function showMessageDetail(threadId) {
     const loadingEl = messageContent.querySelector('.message-detail-thread-loading');
     if (loadingEl) loadingEl.remove();
     if (threadEl) {
-      threadEl.innerHTML = '<div class="message-detail-empty">Could not load full conversation.</div>';
+      threadEl.innerHTML = '<div class="message-detail-empty">' + mfT('admin.couldNotLoadConversation') + '</div>';
       threadEl.style.display = 'block';
     }
   }
@@ -493,13 +499,13 @@ async function handleReplySubmit(event, threadId) {
   if (!t || !t.replyElSuffix) return;
   const ta = document.getElementById(`replyMessage-${t.replyElSuffix}`);
   const text = ta ? String(ta.value || '').trim() : '';
-  if (!text) return alert('Please enter a reply message.');
+  if (!text) return alert(mfT('admin.enterReply'));
 
   const submitBtn = document.querySelector(`#replyForm-${CSS.escape(t.replyElSuffix)} .btn-send-reply`);
   const originalHtml = submitBtn ? submitBtn.innerHTML : '';
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> Sending...';
+    submitBtn.innerHTML = '<i class="fi fi-rr-spinner"></i> ' + mfT('common.sending');
   }
   try {
     if (t.isContactSubmission) {
@@ -509,13 +515,13 @@ async function handleReplySubmit(event, threadId) {
     }
     closeMessageModal();
     await loadSupportInbox({ silent: true });
-    alert('Reply sent. The user will see it in their notifications.');
+    alert(mfT('admin.replySentNotify'));
   } catch (e) {
-    alert(e && e.message ? e.message : 'Failed to send reply.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || mfT('admin.replyFailed'));
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = originalHtml || '<i class="fi fi-rr-paper-plane"></i> Send Reply';
+      submitBtn.innerHTML = originalHtml || '<i class="fi fi-rr-paper-plane"></i> ' + mfT('admin.sendReply');
     }
   }
 }
@@ -587,7 +593,7 @@ function initialize() {
       submissionTake = Math.min(200, submissionTake + 40);
       if (conversationTake >= 300 && submissionTake >= 200) {
         loadMoreBtn.disabled = true;
-        loadMoreBtn.textContent = 'Maximum loaded';
+        loadMoreBtn.textContent = mfT('admin.maxLoaded');
       }
       loadSupportInbox();
     });

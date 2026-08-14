@@ -36,17 +36,24 @@ function escapeHtml(text) {
 }
 
 function formatRole(role) {
-  const m = { PLAYER: 'Player', OWNER: 'Field owner', ADMIN: 'Admin' };
+  const m = { PLAYER: t('admin.playerRole'), OWNER: t('admin.fieldOwners'), ADMIN: t('admin.adminRole') };
   return m[role] || role;
 }
 
 function formatStatus(status) {
-  return status === 'ACTIVE' ? 'Active' : status === 'SUSPENDED' ? 'Suspended' : (status || '');
+  if (window.MatchFieldI18n && MatchFieldI18n.statusLabel) {
+    return MatchFieldI18n.statusLabel(status) || status || '';
+  }
+  return status === 'ACTIVE' ? t('status.ACTIVE') : status === 'SUSPENDED' ? t('status.SUSPENDED') : (status || '');
 }
 
 function formatVerificationStatus(s) {
-  if (!s || s === 'NOT_SUBMITTED') return 'Not Submitted';
-  const m = { PENDING: 'Pending', APPROVED: 'Verified', REJECTED: 'Rejected' };
+  if (!s || s === 'NOT_SUBMITTED') return t('status.NOT_SUBMITTED');
+  if (window.MatchFieldI18n && MatchFieldI18n.statusLabel) {
+    if (s === 'APPROVED') return MatchFieldI18n.statusLabel('VERIFIED');
+    return MatchFieldI18n.statusLabel(s) || s;
+  }
+  const m = { PENDING: t('status.PENDING'), APPROVED: t('status.VERIFIED'), REJECTED: t('status.REJECTED') };
   return m[s] || s;
 }
 
@@ -54,7 +61,7 @@ function formatDate(d) {
   if (!d) return '—';
   const date = new Date(d);
   if (isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Map API user to display format
@@ -63,7 +70,7 @@ function mapUser(u) {
   const status = (u.status || 'ACTIVE').toUpperCase();
   return {
     id: u.id,
-    name: u.fullName || u.email || 'Unknown',
+    name: u.fullName || u.email || t('common.unknown'),
     email: u.email || '',
     role,
     status,
@@ -77,11 +84,11 @@ function mapUser(u) {
 async function loadUsers() {
   if (!usersTableBody) return;
   if (typeof API === 'undefined' || !API.users || !API.users.getAll) {
-    usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">API not available.</td></tr>';
+    usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">' + t('common.apiUnavailable') + '</td></tr>';
     return;
   }
 
-  usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">Loading users...</td></tr>';
+  usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">' + t('admin.loadingUsers') + '</td></tr>';
 
   const params = { limit: 100 };
   const role = roleFilter?.value;
@@ -97,7 +104,7 @@ async function loadUsers() {
     renderUsers();
   } catch (err) {
     console.error('Load users error:', err);
-    usersTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#DC2626">${escapeHtml(err.message || 'Failed to load users')}</td></tr>`;
+    usersTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#DC2626">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('admin.failedLoadUsers'))}</td></tr>`;
   }
 }
 
@@ -105,7 +112,7 @@ function renderUsers() {
   if (!usersTableBody) return;
 
   if (allUsers.length === 0) {
-    usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">No users found.</td></tr>';
+    usersTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#6B7280">' + t('admin.noUsersFound') + '</td></tr>';
     return;
   }
 
@@ -114,11 +121,11 @@ function renderUsers() {
     if (verifClass === 'approved') verifClass = 'verified';
     const verifDisplay = user.role === 'OWNER'
       ? `<span class="verification-badge ${verifClass}">${formatVerificationStatus(user.verificationStatus)}</span>`
-      : '<span class="verification-badge not-applicable">N/A</span>';
+      : '<span class="verification-badge not-applicable">' + t('common.na') + '</span>';
 
     const statusBtn = user.status === 'ACTIVE'
-      ? `<button class="action-btn suspend" data-id="${escapeHtml(user.id)}" data-action="suspend">Suspend</button>`
-      : `<button class="action-btn activate" data-id="${escapeHtml(user.id)}" data-action="activate">Activate</button>`;
+      ? `<button class="action-btn suspend" data-id="${escapeHtml(user.id)}" data-action="suspend">${t('admin.suspend')}</button>`
+      : `<button class="action-btn activate" data-id="${escapeHtml(user.id)}" data-action="activate">${t('admin.activate')}</button>`;
 
     const roleClass = user.role === 'OWNER' ? 'field-owner' : user.role.toLowerCase();
     return `
@@ -140,7 +147,7 @@ function renderUsers() {
         <td>
           <div class="actions-cell">
             <div class="action-buttons">
-              <button class="info-btn" data-id="${escapeHtml(user.id)}" title="View user info">
+              <button class="info-btn" data-id="${escapeHtml(user.id)}" title="${t('admin.viewUserInfo')}">
                 <i class="fi fi-rr-info"></i>
               </button>
               ${statusBtn}
@@ -163,8 +170,8 @@ function renderUsers() {
 async function toggleUserStatus(userId, action) {
   const newStatus = action === 'suspend' ? 'SUSPENDED' : 'ACTIVE';
   const ok = await MatchFieldDialog.confirm(
-    `Are you sure you want to ${action === 'suspend' ? 'suspend' : 'activate'} this user?`,
-    { type: action === 'suspend' ? 'danger' : 'warning', okText: action === 'suspend' ? 'Suspend' : 'Activate' }
+    action === 'suspend' ? t('admin.suspendConfirm') : t('admin.activateConfirm'),
+    { type: action === 'suspend' ? 'danger' : 'warning', okText: action === 'suspend' ? t('admin.suspend') : t('admin.activate') }
   );
   if (!ok) return;
 
@@ -175,12 +182,12 @@ async function toggleUserStatus(userId, action) {
     renderUsers();
     if (action === 'suspend' && window.MatchFieldDialog && typeof MatchFieldDialog.alert === 'function') {
       await MatchFieldDialog.alert(
-        'This user has been suspended. They can only use Contact Us until you activate their account again.',
-        { type: 'info', title: 'User suspended' }
+        t('admin.userSuspendedLong'),
+        { type: 'info', title: t('admin.userSuspendedTitle') }
       );
     }
   } catch (err) {
-    alert(err.message || 'Failed to update user status.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('admin.statusFailed'));
   }
 }
 
@@ -191,14 +198,14 @@ function showUserInfo(userId) {
   if (userInfoContent) {
     userInfoContent.innerHTML = `
       <img src="${escapeHtml(user.avatar)}" alt="${escapeHtml(user.name)}" class="user-info-avatar" onerror="this.style.display='none'">
-      <div class="user-info-item"><div class="user-info-label">User ID</div><div class="user-info-value">${escapeHtml(user.id)}</div></div>
-      <div class="user-info-item"><div class="user-info-label">Name</div><div class="user-info-value">${escapeHtml(user.name)}</div></div>
-      <div class="user-info-item"><div class="user-info-label">Email</div><div class="user-info-value">${escapeHtml(user.email)}</div></div>
-      <div class="user-info-item"><div class="user-info-label">Role</div><div class="user-info-value"><span class="role-badge ${user.role === 'OWNER' ? 'field-owner' : user.role.toLowerCase()}">${formatRole(user.role)}</span></div></div>
-      <div class="user-info-item"><div class="user-info-label">Location</div><div class="user-info-value">${escapeHtml(user.location)}</div></div>
-      <div class="user-info-item"><div class="user-info-label">Joined</div><div class="user-info-value">${escapeHtml(user.joined)}</div></div>
-      <div class="user-info-item"><div class="user-info-label">Status</div><div class="user-info-value"><span class="status-badge ${(user.status || 'ACTIVE').toLowerCase()}">${formatStatus(user.status)}</span></div></div>
-      ${user.role === 'OWNER' ? `<div class="user-info-item"><div class="user-info-label">Verification</div><div class="user-info-value">${formatVerificationStatus(user.verificationStatus)}</div></div>` : ''}
+      <div class="user-info-item"><div class="user-info-label">${t('admin.userId')}</div><div class="user-info-value">${escapeHtml(user.id)}</div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.name')}</div><div class="user-info-value">${escapeHtml(user.name)}</div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.email')}</div><div class="user-info-value">${escapeHtml(user.email)}</div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.role')}</div><div class="user-info-value"><span class="role-badge ${user.role === 'OWNER' ? 'field-owner' : user.role.toLowerCase()}">${formatRole(user.role)}</span></div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.location')}</div><div class="user-info-value">${escapeHtml(user.location)}</div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.joined')}</div><div class="user-info-value">${escapeHtml(user.joined)}</div></div>
+      <div class="user-info-item"><div class="user-info-label">${t('common.status')}</div><div class="user-info-value"><span class="status-badge ${(user.status || 'ACTIVE').toLowerCase()}">${formatStatus(user.status)}</span></div></div>
+      ${user.role === 'OWNER' ? `<div class="user-info-item"><div class="user-info-label">${t('admin.verification')}</div><div class="user-info-value">${formatVerificationStatus(user.verificationStatus)}</div></div>` : ''}
     `;
   }
   if (userInfoModal) {

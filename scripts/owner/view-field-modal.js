@@ -63,8 +63,12 @@
     const images = Array.isArray(f.images) && f.images.length
       ? f.images.slice()
       : ['https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=500&fit=crop'];
-    const typeLabel = String(f.type || '').toUpperCase() === 'INDOOR' ? 'Indoor' : 'Outdoor';
-    const sport = f.sport || 'Sport';
+    const typeLabel = String(f.type || '').toUpperCase() === 'INDOOR'
+      ? t('sports.indoor')
+      : t('sports.outdoor');
+    const sport = (window.MatchFieldI18n && MatchFieldI18n.sportLabel)
+      ? (MatchFieldI18n.sportLabel(f.sport) || f.sport || t('owner.sportType'))
+      : (f.sport || t('owner.sportType'));
     const ratingNum = f.rating != null ? Number(f.rating).toFixed(1) : '—';
     const reviewTotal = f.reviewCount != null ? String(f.reviewCount) : '0';
     const loc = f.location || '—';
@@ -76,7 +80,7 @@
     renderViewGalleryControls();
 
     const titleEl = document.getElementById('viewFieldName');
-    if (titleEl) titleEl.textContent = f.name || 'Field';
+    if (titleEl) titleEl.textContent = f.name || t('owner.colField');
 
     const metaLine = document.getElementById('viewFieldMeta');
     if (metaLine) {
@@ -107,7 +111,7 @@
     if (priceElement) {
       priceElement.innerHTML =
         ownerFieldEsc(formatOwnerFieldPrice(f.pricePerHour)) +
-        '<span class="view-field-price-unit">/h</span>';
+        '<span class="view-field-price-unit">' + t('common.perHour') + '</span>';
     }
 
     const features = mergedAmenitiesAndFeatures(f);
@@ -132,7 +136,7 @@
     if (capacityEl) capacityEl.textContent = '—';
 
     if (descriptionEl) {
-      descriptionEl.textContent = f.description || 'No description yet.';
+      descriptionEl.textContent = f.description || t('common.noDescription');
     }
 
     const amenitiesGrid = document.getElementById('viewFieldAmenities');
@@ -150,7 +154,7 @@
           })
           .join('');
       } else {
-        amenitiesGrid.innerHTML = '<p style="color:#6B7280;font-size:14px;">No amenities listed.</p>';
+        amenitiesGrid.innerHTML = '<p style="color:#6B7280;font-size:14px;">' + t('owner.noAmenities') + '</p>';
       }
     }
 
@@ -163,12 +167,12 @@
     if (reviewsList) {
       const apiReviews = Array.isArray(f.reviews) ? f.reviews : [];
       if (!apiReviews.length) {
-        reviewsList.innerHTML = '<p style="padding:16px;color:#6B7280;font-size:14px;">No reviews yet.</p>';
+        reviewsList.innerHTML = '<p style="padding:16px;color:#6B7280;font-size:14px;">' + t('owner.noReviews') + '</p>';
       } else {
         reviewsList.innerHTML = apiReviews
           .map(function (rv) {
             const u = rv.user || {};
-            const name = u.fullName || 'Player';
+            const name = u.fullName || t('owner.player');
             const avatar = (u.avatar || '').trim();
             let r = parseInt(rv.rating, 10);
             if (isNaN(r)) r = 0;
@@ -221,9 +225,9 @@
     const controls = document.createElement('div');
     controls.className = 'view-gallery-controls';
     controls.innerHTML =
-      '<button type="button" class="gallery-nav-btn gallery-nav-left" aria-label="Previous image"><i class="fi fi-rr-angle-left"></i></button>' +
-      '<div class="view-gallery-dots" aria-label="Image indicators"></div>' +
-      '<button type="button" class="gallery-nav-btn gallery-nav-right" aria-label="Next image"><i class="fi fi-rr-angle-right"></i></button>';
+      '<button type="button" class="gallery-nav-btn gallery-nav-left" aria-label="' + t('owner.previousImage') + '"><i class="fi fi-rr-angle-left"></i></button>' +
+      '<div class="view-gallery-dots" aria-label="' + t('owner.imageIndicators') + '"></div>' +
+      '<button type="button" class="gallery-nav-btn gallery-nav-right" aria-label="' + t('owner.nextImage') + '"><i class="fi fi-rr-angle-right"></i></button>';
     gallery.appendChild(controls);
 
     controls.querySelector('.gallery-nav-left').addEventListener('click', function () {
@@ -249,7 +253,7 @@
     if (!dotsWrap || viewGalleryImages.length <= 1) return;
     dotsWrap.innerHTML = viewGalleryImages
       .map(function (_img, idx) {
-        return '<button type="button" class="view-gallery-dot ' + (idx === viewGalleryIndex ? 'active' : '') + '" data-idx="' + idx + '" aria-label="Go to image ' + (idx + 1) + '"></button>';
+        return '<button type="button" class="view-gallery-dot ' + (idx === viewGalleryIndex ? 'active' : '') + '" data-idx="' + idx + '" aria-label="' + t('owner.goToImage', { n: idx + 1 }) + '"></button>';
       })
       .join('');
     dotsWrap.querySelectorAll('.view-gallery-dot').forEach(function (btn) {
@@ -289,10 +293,10 @@
     document.body.style.overflow = 'hidden';
 
     const titleEl = document.getElementById('viewFieldName');
-    if (titleEl) titleEl.textContent = 'Loading…';
+    if (titleEl) titleEl.textContent = t('common.loading');
 
     if (typeof API === 'undefined' || !API.fields || !API.fields.getById) {
-      alert('API not available.');
+      alert(t('common.apiUnavailable'));
       closeViewModal();
       return;
     }
@@ -300,7 +304,7 @@
     const res = await API.fields.getById(fieldId);
     const f = res && res.field;
     if (!f) {
-      alert('Field not found.');
+      alert(t('errors.fieldNotFound'));
       closeViewModal();
       return;
     }
@@ -319,7 +323,7 @@
       await openViewFieldModalForFieldId(fieldId);
     } catch (error) {
       console.error('Error opening view field modal:', error);
-      alert((error && error.message) || 'Could not load field details.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(error && error.message)) || t('owner.couldNotLoadField'));
       closeViewModal();
     }
   }
@@ -335,7 +339,7 @@
       if (toggleBtn) {
         toggleBtn.classList.remove('expanded');
         const toggleText = toggleBtn.querySelector('.view-toggle-text');
-        if (toggleText) toggleText.textContent = 'View reviews';
+        if (toggleText) toggleText.textContent = t('owner.viewReviews');
       }
     }
   }
@@ -351,12 +355,12 @@
         reviewsList.style.display = 'flex';
         toggleBtn.classList.add('expanded');
         const toggleText = toggleBtn.querySelector('.view-toggle-text');
-        if (toggleText) toggleText.textContent = 'Hide reviews';
+            if (toggleText) toggleText.textContent = t('owner.hideReviews');
       } else {
         reviewsList.style.display = 'none';
         toggleBtn.classList.remove('expanded');
         const toggleText = toggleBtn.querySelector('.view-toggle-text');
-        if (toggleText) toggleText.textContent = 'View reviews';
+        if (toggleText) toggleText.textContent = t('owner.viewReviews');
       }
     }
   }

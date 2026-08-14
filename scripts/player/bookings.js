@@ -55,30 +55,30 @@ function getPlayerCoordsForBookings() {
 
 function computeBookingCardDistance(booking) {
     var field = booking && booking.field;
-    if (!field) return 'N/A';
+    if (!field) return t('common.na');
     var apiKm = field.distanceKm != null ? Number(field.distanceKm) : NaN;
     if (Number.isFinite(apiKm) && window.FieldMapData && typeof FieldMapData.formatDistanceFromKm === 'function') {
         var label = FieldMapData.formatDistanceFromKm(apiKm);
-        return label || 'N/A';
+        return label || t('common.na');
     }
     var flat = field.latitude != null ? Number(field.latitude) : NaN;
     var flng = field.longitude != null ? Number(field.longitude) : NaN;
-    if (!Number.isFinite(flat) || !Number.isFinite(flng)) return 'N/A';
+    if (!Number.isFinite(flat) || !Number.isFinite(flng)) return t('common.na');
     var ref = bookingDistanceRefCoords;
-    if (!ref || !Number.isFinite(ref.lat) || !Number.isFinite(ref.lng)) return 'N/A';
-    if (!window.FieldMapData || typeof FieldMapData.haversineKm !== 'function') return 'N/A';
+    if (!ref || !Number.isFinite(ref.lat) || !Number.isFinite(ref.lng)) return t('common.na');
+    if (!window.FieldMapData || typeof FieldMapData.haversineKm !== 'function') return t('common.na');
     var km = FieldMapData.haversineKm(ref.lat, ref.lng, flat, flng);
     var formatted = FieldMapData.formatDistanceFromKm(km);
-    return formatted || 'N/A';
+    return formatted || t('common.na');
 }
 
 function bookingLocationLine(displayBooking) {
-    var loc = displayBooking.location || '';
+    var loc = displayBooking.location || t('common.location');
     var dist = displayBooking.distance;
-    if (dist && dist !== 'N/A') {
+    if (dist && dist !== 'N/A' && dist !== t('common.na')) {
         return (loc ? loc + ' · ' : '') + dist;
     }
-    return loc || 'Location';
+    return loc || t('common.location');
 }
 
 // Current filter state
@@ -191,7 +191,7 @@ function participantAvatarFromRaw(player) {
 }
 
 function resolveParticipantAvatarUrl(player) {
-    var name = (player && player.name) || 'Player';
+    var name = (player && player.name) || t('booking.playerFallback');
     var pid = String(player && player.id || '');
     var direct = (player && player.avatar && String(player.avatar).trim()) || '';
     if (direct) return direct;
@@ -209,7 +209,7 @@ function normalizeBookingParticipants(booking) {
 
     list.forEach(function(player) {
         var pid = String(player.userId || player.id || '');
-        var pName = (player.user && player.user.fullName) || player.fullName || player.name || 'Player';
+        var pName = (player.user && player.user.fullName) || player.fullName || player.name || t('booking.playerFallback');
         var key = pid || ('name:' + pName.toLowerCase());
         if (!key || byKey[key]) return;
         byKey[key] = true;
@@ -240,7 +240,7 @@ function getInvitedPlayersFromNotifications(bookingId) {
         .map(function(n) {
             var pid = String(n.playerId);
             var rawName = n.playerName || n.recipientName || '';
-            var fallbackName = pid ? ('Player ' + pid.slice(-4)) : 'Player';
+            var fallbackName = pid ? (t('booking.playerFallback') + ' ' + pid.slice(-4)) : t('booking.playerFallback');
             return {
                 id: pid,
                 name: rawName || fallbackName,
@@ -345,7 +345,7 @@ function buildInviteBookingPlaceholder(bookingId, playerId) {
     var defaultDate = new Date().toISOString().split('T')[0];
     return {
         id: String(bookingId),
-        fieldName: invite.fieldName || 'Invited Booking',
+        fieldName: invite.fieldName || t('booking.invitedBooking'),
         fieldImage: invite.fieldImage || null,
         date: invite.date || defaultDate,
         timeSlots: rawSlots,
@@ -353,7 +353,7 @@ function buildInviteBookingPlaceholder(bookingId, playerId) {
         paymentMethod: 'split',
         status: 'pending',
         organizerId: invite.organizerId || '',
-        organizerName: invite.organizerName || 'Organizer',
+        organizerName: invite.organizerName || t('booking.organizer'),
         participants: [
             {
                 userId: String(playerId),
@@ -731,9 +731,11 @@ function convertBookingToDisplayFormat(booking) {
     var today = new Date();
     var tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    var dateDisplay = date.toDateString() === today.toDateString() ? 'Today'
-        : date.toDateString() === tomorrow.toDateString() ? 'Tomorrow'
-        : date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    var dateDisplay = date.toDateString() === today.toDateString() ? t('common.today')
+        : date.toDateString() === tomorrow.toDateString() ? t('booking.tomorrow')
+        : (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatInTimezone)
+          ? MatchFieldPrefs.formatInTimezone(date, { day: 'numeric', month: 'short', year: 'numeric', hour: undefined, minute: undefined })
+          : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
     // Build time display: prefer timeSlotRanges (non-contiguous), else single range
     var timeDisplay;
@@ -751,11 +753,11 @@ function convertBookingToDisplayFormat(booking) {
                     var hour = parseInt(String(slot).split(':')[0], 10);
                     return slot + ' - ' + (hour + 1).toString().padStart(2, '0') + ':00';
                 }).join(', '))
-            : 'Not specified';
+            : t('common.notSpecified');
     }
     var fieldName = (booking.field && booking.field.name) || booking.fieldName;
     var fieldImage = resolveBookingImage(booking);
-    var players = booking.participants ? booking.participants.map(function(p) { return { id: p.userId, name: (p.user && p.user.fullName) || 'Player' }; }) : (booking.players || []);
+    var players = booking.participants ? booking.participants.map(function(p) { return { id: p.userId, name: (p.user && p.user.fullName) || t('booking.playerFallback') }; }) : (booking.players || []);
     var teamSize = players.length + 1;
     var displayStatus = booking.status || 'upcoming';
     if (booking.status !== 'CANCELLED' && booking.status !== 'cancelled' && isBookingEndTimePassed(booking)) {
@@ -840,11 +842,11 @@ function convertBookingToDisplayFormat(booking) {
 
     return {
         id: booking.id,
-        fieldName: fieldName || 'Field',
+        fieldName: fieldName || t('booking.fieldColon').replace(':', ''),
         image: fieldImage || 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&h=400&fit=crop',
         rating: ratingDisplay,
         reviewCount: reviewCountDisplay,
-        location: (booking.field && booking.field.location) || 'Location',
+        location: (booking.field && booking.field.location) || t('common.location'),
         distance: computeBookingCardDistance(booking),
         date: dateDisplay,
         time: timeDisplay,
@@ -859,18 +861,20 @@ function convertBookingToDisplayFormat(booking) {
                     var eh = parseInt(String(x.end).split(':')[0], 10);
                     total += (eh - sh);
                 });
-                return (total || 1) + 'h';
+                return t('booking.hoursShort', { count: (total || 1) });
             }
             if (booking.timeSlotStart && booking.timeSlotEnd) {
                 var startHour = parseInt(String(booking.timeSlotStart).split(':')[0], 10);
                 var endHour = parseInt(String(booking.timeSlotEnd).split(':')[0], 10);
                 var diff = endHour - startHour;
-                return (diff > 0 ? diff : 1) + 'h';
+                return t('booking.hoursShort', { count: (diff > 0 ? diff : 1) });
             }
             var timeSlots = booking.timeSlots || [];
-            return (timeSlots.length || 1) + 'h';
+            return t('booking.hoursShort', { count: (timeSlots.length || 1) });
         })(),
-        bookedDate: new Date(booking.createdAt || Date.now()).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
+        bookedDate: (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatInTimezone)
+            ? MatchFieldPrefs.formatInTimezone(new Date(booking.createdAt || Date.now()), { day: 'numeric', month: 'short', year: 'numeric', hour: undefined, minute: undefined })
+            : new Date(booking.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
         status: isConfirmed ? 'confirmed' : displayStatus.toLowerCase(),
         isConfirmed: isConfirmed,
         paymentStatusLabel: paymentStatusLabel,
@@ -1012,7 +1016,7 @@ function getPaymentButton(booking) {
     if (isOrganizer && (fullBooking.organizerPaymentStatus === 'pending' || fullBooking.organizerPaymentStatus === 'PENDING')) {
         return `
             <button class="pay-now-btn" onclick="payForBooking('${booking.id}', true)">
-                <i class="fi fi-rr-credit-card"></i> Pay Now (${escapeHtml(mfMoney(fullBooking.totalCost))})
+                <i class="fi fi-rr-credit-card"></i> ${t('payment.payNowAmount', { money: escapeHtml(mfMoney(fullBooking.totalCost)) })}
             </button>
         `;
     } else if (!isOrganizer) {
@@ -1025,7 +1029,7 @@ function getPaymentButton(booking) {
             var invite = findInviteNotificationForBooking(booking.id, playerIdStr);
             if (invite) {
                 var inviteAmount = invite.paymentAmount || costPerPlayer;
-                return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (' + escapeHtml(mfMoney(inviteAmount)) + ')</button>';
+                return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> ' + t('payment.payShareAmount', { money: escapeHtml(mfMoney(inviteAmount)) }) + '</button>';
             }
         }
         if (player && !alreadyPaid && (player.paymentStatus === 'PENDING' || player.paymentStatus === 'pending') && needsPayment) {
@@ -1033,7 +1037,7 @@ function getPaymentButton(booking) {
             if (fullBooking.paymentMethod === 'MIXED' || fullBooking.paymentMethod === 'mixed') {
                 amount = (fullBooking.mixedPaymentDistribution && (fullBooking.mixedPaymentDistribution[player.userId || player.id] || fullBooking.mixedPaymentDistribution[String(player.userId || player.id)])) || costPerPlayer;
             }
-            return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> Pay Your Share (' + escapeHtml(mfMoney(amount)) + ')</button>';
+            return '<button class="pay-now-btn" onclick="payForBooking(\'' + booking.id + '\', false)"><i class="fi fi-rr-credit-card"></i> ' + t('payment.payShareAmount', { money: escapeHtml(mfMoney(amount)) }) + '</button>';
         }
     }
     
@@ -1050,7 +1054,7 @@ function payForBooking(bookingId, isOrganizer) {
     }
     
     if (!booking) {
-        alert('Booking not found. Please refresh the page and try again.');
+        alert(t('booking.notFoundRefresh'));
         return;
     }
 
@@ -1079,7 +1083,7 @@ function payForBooking(bookingId, isOrganizer) {
         });
     } else {
         // Redirect to home page to use payment modal
-        alert('Redirecting to payment page...');
+        alert(t('booking.redirectPayment'));
         window.location.href = 'home.html?payBooking=' + bookingId + '&isOrganizer=' + isOrganizer;
     }
 }
@@ -1123,29 +1127,30 @@ function createBookingCard(booking) {
     const hasPaidAsParticipant = !isOrganizer && hasCurrentUserPaidAsParticipant(booking.id);
     
     // Determine cancel/leave: organizer sees Cancel+Reschedule; participant who hasn't paid sees Leave; participant who paid sees neither
-    const cancelButtonText = isOrganizer ? 'Cancel Booking' : 'Leave Booking';
+    const cancelButtonText = isOrganizer ? t('booking.cancelBooking') : t('booking.leaveBooking');
     const cancelAction = isOrganizer ? `cancelBooking('${booking.id}')` : `leaveBooking('${booking.id}')`;
     const showCancelOrLeave = isOrganizer ? true : !hasPaidAsParticipant;
     const explicitDecision = booking.ownerDecisionLabel || '';
     const rawStatus = String(booking.status || '').toLowerCase();
     const instantUi = booking.fieldUsesInstantBooking === true;
-    const statusLabel = explicitDecision
+    const statusCode = explicitDecision
         ? explicitDecision
         : (rawStatus === 'cancelled'
-            ? 'Rejected'
+            ? 'REJECTED'
             : (rawStatus === 'confirmed' || rawStatus === 'upcoming' || rawStatus === 'completed' || booking.isConfirmed)
-                ? 'Approved'
-                : (instantUi ? 'Instant' : 'Pending'));
+                ? 'APPROVED'
+                : (instantUi ? 'INSTANT' : 'PENDING'));
+    const statusLabel = (window.MatchFieldI18n && MatchFieldI18n.statusLabel(statusCode)) || statusCode;
     const statusClass = explicitDecision
-        ? (explicitDecision === 'Approved' ? 'confirmed' : 'cancelled')
-        : (statusLabel === 'Approved' ? 'confirmed' : (statusLabel === 'Rejected' ? 'cancelled' : (instantUi ? 'confirmed' : 'pending')));
+        ? (String(explicitDecision).toUpperCase() === 'APPROVED' ? 'confirmed' : 'cancelled')
+        : (String(statusCode).toUpperCase() === 'APPROVED' ? 'confirmed' : (String(statusCode).toUpperCase() === 'REJECTED' ? 'cancelled' : (instantUi ? 'confirmed' : 'pending')));
     
     card.innerHTML = `
-        <img src="${booking.image}" alt="${booking.fieldName}" class="booking-card-image">
+        <img src="${booking.image}" alt="${escapeHtml(booking.fieldName)}" class="booking-card-image">
         <div class="booking-card-content">
             <div class="booking-card-header">
                 <div class="booking-card-info">
-                    <h3 class="booking-card-title">${booking.fieldName}</h3>
+                    <h3 class="booking-card-title">${escapeHtml(booking.fieldName)}</h3>
                     <div class="booking-card-meta">
                         <div class="booking-rating">
                             <i class="fi fi-rs-star"></i>
@@ -1153,28 +1158,28 @@ function createBookingCard(booking) {
                         </div>
                         <div class="booking-location">
                             <i class="fi fi-rr-marker"></i>
-                            <span>${bookingLocationLine(booking)}</span>
+                            <span>${escapeHtml(bookingLocationLine(booking))}</span>
                         </div>
                     </div>
                     <div class="booking-details">
                         <div class="booking-detail-item">
                             <i class="fi fi-rr-clock"></i>
-                            <span class="booking-detail-label">Time:</span>
+                            <span class="booking-detail-label">${t('booking.timeColon')}</span>
                             <span class="booking-detail-value">${booking.date}, ${booking.time}</span>
                         </div>
                         <div class="booking-detail-item">
                             <i class="fi fi-rr-users"></i>
-                            <span class="booking-detail-label">Team Size:</span>
-                            <span class="booking-detail-value">Team of ${booking.teamSize}</span>
+                            <span class="booking-detail-label">${t('booking.teamSize')}</span>
+                            <span class="booking-detail-value">${t('booking.teamOf', { count: booking.teamSize })}</span>
                         </div>
                         <div class="booking-detail-item">
                             <i class="fi fi-rr-money"></i>
-                            <span class="booking-detail-label">Price:</span>
+                            <span class="booking-detail-label">${t('booking.priceLabel')}</span>
                             <span class="booking-detail-value">${booking.price}/${booking.duration}</span>
                         </div>
                         <div class="booking-detail-item">
                             <i class="fi fi-rr-calendar"></i>
-                            <span class="booking-detail-label">Booked on:</span>
+                            <span class="booking-detail-label">${t('booking.bookedOn')}</span>
                             <span class="booking-detail-value">${booking.bookedDate}</span>
                         </div>
                     </div>
@@ -1186,7 +1191,7 @@ function createBookingCard(booking) {
                                 <span class="booking-status-dot"></span>
                                 <span>${statusLabel}</span>
                             </div>
-                            <button type="button" class="info-btn" data-booking-id="${String(booking.id || '').replace(/"/g, '&quot;')}" title="Booking details & payments">
+                            <button type="button" class="info-btn" data-booking-id="${String(booking.id || '').replace(/"/g, '&quot;')}" title="${t('booking.detailsTitle')}">
                                 <i class="fi fi-rr-info"></i>
                             </button>
                         </div>
@@ -1198,7 +1203,7 @@ function createBookingCard(booking) {
                                 </button>
                                 ${isOrganizer ? `
                                     <a href="#" class="reschedule-link" onclick="rescheduleBooking('${booking.id}'); return false;">
-                                        Reschedule
+                                        ${t('booking.rescheduleShort')}
                                     </a>
                                 ` : ''}
                             ` : ''}
@@ -1214,9 +1219,9 @@ function createBookingCard(booking) {
 
 // Cancel booking function (API or localStorage)
 async function cancelBooking(bookingId) {
-    if (!(await MatchFieldDialog.confirm('Are you sure you want to cancel this booking?', {
+    if (!(await MatchFieldDialog.confirm(t('booking.confirmCancel'), {
         type: 'danger',
-        okText: 'Cancel Booking'
+        okText: t('booking.cancelBooking')
     }))) return;
     function moveToCancelled() {
         var displayIndex = bookingsData.upcoming.findIndex(function(b) { return b.id === bookingId; });
@@ -1226,14 +1231,14 @@ async function cancelBooking(bookingId) {
             bookingsData.cancelled.push(booking);
             bookingsData.upcoming.splice(displayIndex, 1);
             if (currentFilter === 'upcoming') renderBookings();
-            alert('Booking cancelled successfully!');
+            alert(t('booking.cancelledOk'));
         }
     }
     if (typeof API !== 'undefined' && API.getAuthToken()) {
         API.bookings.updateStatus(bookingId, 'CANCELLED')
             .then(moveToCancelled)
             .catch(function(err) {
-                alert(err.message || 'Failed to cancel booking.');
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('booking.cancelFailed'));
             });
     } else {
         var allBookings = JSON.parse(localStorage.getItem('playerBookings') || '[]');
@@ -1248,14 +1253,14 @@ async function cancelBooking(bookingId) {
 
 // Leave booking function (for non-organizers)
 async function leaveBooking(bookingId) {
-    if (!(await MatchFieldDialog.confirm('Are you sure you want to leave this booking? The organizer will be notified.', {
+    if (!(await MatchFieldDialog.confirm(t('booking.confirmLeaveNotified'), {
         type: 'warning',
-        okText: 'Leave Booking'
+        okText: t('booking.leaveBooking')
     }))) return;
     
     var playerData = getCurrentUserSafe() || {};
     var playerId = playerData && playerData.id;
-    var playerName = playerData && (playerData.fullName || playerData.name || 'A player');
+    var playerName = playerData && (playerData.fullName || playerData.name || t('booking.aPlayer'));
     
     // Find the booking
     var fullBooking = allBookingsCache.find(function(b) { return b.id === bookingId; });
@@ -1265,7 +1270,7 @@ async function leaveBooking(bookingId) {
     }
     
     if (!fullBooking) {
-        alert('Booking not found.');
+        alert(t('player.bookingNotFound'));
         return;
     }
 
@@ -1297,7 +1302,7 @@ async function leaveBooking(bookingId) {
         leftPlayerName: playerName,
         fieldName: (fullBooking.field && fullBooking.field.name) || fullBooking.fieldName || 'the field',
         paymentAmount: leftPlayerShareAmount,
-        title: 'Player Left Booking',
+        title: t('booking.playerLeft'),
         message: playerName + ' has left your booking at ' + (fullBooking.field && fullBooking.field.name || 'the field') + '.',
         date: fullBooking.date,
         status: 'unread',
@@ -1320,7 +1325,7 @@ async function leaveBooking(bookingId) {
         // Update allBookingsCache so refresh shows correct state
         var cacheIdx = allBookingsCache.findIndex(function(b) { return b.id === bookingId; });
         if (cacheIdx !== -1) allBookingsCache.splice(cacheIdx, 1);
-        alert('You have left the booking. The organizer has been notified.');
+        alert(t('booking.leftOkNotified'));
     }
     
     // If user is only invited (not an actual participant yet), remove invite locally and exit.
@@ -1342,7 +1347,7 @@ async function leaveBooking(bookingId) {
         API.bookings.removeParticipant(bookingId)
             .then(onLeftSuccess)
             .catch(function(err) {
-                alert(err.message || 'Failed to leave booking. Please try again.');
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('booking.leaveFailed'));
             });
         return;
     }
@@ -1417,7 +1422,7 @@ function rescheduleBooking(bookingId) {
         fullBooking = all.find(function(b) { return String(getBookingId(b)) === String(bookingId); });
     }
     if (!fullBooking) {
-        alert('Booking not found. Please refresh the page and try again.');
+        alert(t('booking.notFoundRefresh'));
         return;
     }
 
@@ -1427,14 +1432,14 @@ function rescheduleBooking(bookingId) {
         var dateStr = dateObj.toISOString().split('T')[0];
         var startTimeStr = fullBooking.timeSlotStart || (fullBooking.timeSlots && fullBooking.timeSlots[0]);
         if (!startTimeStr) {
-            alert('Unable to determine booking start time for reschedule.');
+            alert(t('booking.rescheduleUnknown'));
             return;
         }
         var originalStart = new Date(dateStr + 'T' + startTimeStr);
         var now = new Date();
         var hoursUntilStart = (originalStart.getTime() - now.getTime()) / (1000 * 60 * 60);
         if (hoursUntilStart < 24) {
-            alert('You cannot reschedule this booking because it starts in less than 24 hours.');
+            alert(t('booking.rescheduleSoon'));
             return;
         }
     } catch (e) {
@@ -1446,7 +1451,7 @@ function rescheduleBooking(bookingId) {
     var dateInput = document.getElementById('rescheduleDate');
     var slotsGrid = document.getElementById('rescheduleSlotsGrid');
     if (!modal || !dateInput || !slotsGrid) {
-        alert('Reschedule UI not available on this page.');
+        alert(t('booking.rescheduleUnavailable'));
         return;
     }
 
@@ -1523,12 +1528,12 @@ document.addEventListener('DOMContentLoaded', function() {
             var date = document.getElementById('rescheduleDate').value;
             var container = document.getElementById('rescheduleSlotsGrid');
             if (!container) {
-                alert('Unable to read selected time slots.');
+                alert(t('booking.unableReadSlots'));
                 return;
             }
             var selectedButtons = Array.prototype.slice.call(container.querySelectorAll('.time-slot.selected'));
             if (!date || !selectedButtons.length) {
-                alert('Please select date and time slots.');
+                alert(t('booking.selectDateSlots'));
                 return;
             }
 
@@ -1589,18 +1594,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 return sum + (eh - sh);
             }, 0);
             if (totalSelectedHours <= 0) {
-                alert('Please select at least one hour.');
+                alert(t('booking.selectOneHour'));
                 return;
             }
 
             // Enforce same total hours as original booking
             if (totalSelectedHours !== requiredHours) {
-                alert('You must select exactly ' + requiredHours + ' hour(s) for this booking.');
+                alert(t('booking.selectExactHours', { count: requiredHours }));
                 return;
             }
 
             if (typeof API === 'undefined' || !API.getAuthToken()) {
-                alert('You must be logged in to reschedule a booking.');
+                alert(t('booking.loginToReschedule'));
                 return;
             }
 
@@ -1634,11 +1639,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Re-run applyBookings logic via loadBookingsFromStorage
                     loadBookingsFromStorage();
                 }
-                alert('Booking rescheduled successfully.');
+                alert(t('booking.rescheduleOk'));
             }).catch(function(err) {
                 console.error('Failed to reschedule booking', err);
-                var msg = (err && err.error) || (err && err.message) || 'Failed to reschedule booking.';
-                alert(msg);
+                var msg = (err && err.error) || (err && err.message) || '';
+                alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(msg)) || t('booking.rescheduleFailed'));
             });
         });
     }
@@ -1666,17 +1671,17 @@ async function loadRescheduleSlots(fieldId, date, originalStart) {
 
     if (typeof API !== 'undefined' && API.fields && API.fields.getAvailability) {
         try {
-            container.innerHTML = '<p style=\"text-align: center; padding: 16px;\">Loading availability...</p>';
+            container.innerHTML = '<p style=\"text-align: center; padding: 16px;\">' + t('booking.loadingAvailability') + '</p>';
             var availability = await API.fields.getAvailability(fieldId, date);
             if (availability && availability.available === false && availability.lockedByOwner) {
                 container.innerHTML = '<div style=\"text-align:center; padding:16px; color:#dc3545;\">' +
-                  (availability.message || 'This field is not available on the selected date.') +
+                  escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.notAvailableDate')) +
                   '</div>';
                 return;
             }
             if (availability && availability.available === false && availability.closedBySchedule) {
                 container.innerHTML = '<div style=\"text-align:center; padding:16px; color:#dc3545;\">' +
-                  (availability.message || 'This field is closed on the selected day.') +
+                  escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.closedDay')) +
                   '</div>';
                 return;
             }
@@ -1816,7 +1821,7 @@ async function showPaymentStatusInfo(bookingId) {
     }
 
     if (!booking) {
-        alert('Booking not found.');
+        alert(t('player.bookingNotFound'));
         return;
     }
 
@@ -1920,7 +1925,7 @@ async function showPaymentStatusInfo(bookingId) {
         if (detailsTime) detailsTime.textContent = displayBooking.time;
         if (detailsMethod) {
             const method = booking.paymentMethod || 'organizer';
-            detailsMethod.textContent = method.charAt(0).toUpperCase() + method.slice(1);
+            detailsMethod.textContent = (window.MatchFieldI18n && MatchFieldI18n.paymentModeLabel(String(method).toUpperCase())) || method;
         }
         if (detailsPrice) detailsPrice.textContent = displayBooking.price;
     } catch (e) {
@@ -1945,7 +1950,7 @@ async function showPaymentStatusInfo(bookingId) {
     }
     const organizerItem = createPlayerPaymentItem({
         id: booking.organizerId,
-        name: booking.organizerName || (booking.organizer && booking.organizer.fullName) || 'Organizer',
+        name: booking.organizerName || (booking.organizer && booking.organizer.fullName) || t('booking.organizer'),
         avatar: organizerAvatar,
         paymentStatus: organizerPaymentStatus,
         paymentAmount: organizerAmount,
@@ -1957,7 +1962,7 @@ async function showPaymentStatusInfo(bookingId) {
     // Add players (use players array - API may use participants)
     players.forEach(function(player) {
         const pid = player.id;
-        const pName = player.name || 'Player';
+        const pName = player.name || t('booking.playerFallback');
         const isCurrentUser = String(pid) === String(currentPlayerId);
         const playerAmount = pmLower === 'split' ? booking.costPerPlayer :
                             pmLower === 'mixed' ? (booking.mixedPaymentDistribution && booking.mixedPaymentDistribution[pid] || 0) : 0;
@@ -1995,12 +2000,12 @@ function createPlayerPaymentItem(player) {
         : '<i class="fi fi-rr-clock status-icon pending"></i>';
 
     const statusText = noPaymentDue
-        ? 'Covered'
-        : (normalizedPaymentStatus === 'paid' ? 'Paid' : 'Pending');
+        ? t('booking.covered')
+        : (normalizedPaymentStatus === 'paid' ? t('status.PAID') : t('status.PENDING'));
     const amountDisplay = player.paymentAmount > 0 ? escapeHtml(mfMoney(player.paymentAmount)) : '';
-    const nameDisplay = player.isCurrentUser ? `${player.name} (You)` : player.name;
-    const organizerBadge = player.isOrganizer ? '<span class="organizer-badge">Organizer</span>' : '';
-    var displayName = player.name || 'Player';
+    const nameDisplay = player.isCurrentUser ? (player.name + t('booking.youSuffix')) : player.name;
+    const organizerBadge = player.isOrganizer ? '<span class="organizer-badge">' + t('booking.organizer') + '</span>' : '';
+    var displayName = player.name || t('booking.playerFallback');
     var initial = displayName.length ? displayName.charAt(0).toUpperCase() : '?';
     var avatarSrc = escapeHtml(resolveParticipantAvatarUrl(player));
     var avatarAlt = escapeHtml(displayName);
@@ -2015,7 +2020,7 @@ function createPlayerPaymentItem(player) {
             </div>
             <div class="player-details">
                 <div class="player-name-row">
-                    <span class="player-name">${nameDisplay}</span>
+                    <span class="player-name">${escapeHtml(nameDisplay)}</span>
                     ${organizerBadge}
                 </div>
             </div>

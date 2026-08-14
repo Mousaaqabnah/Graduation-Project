@@ -71,17 +71,17 @@ function getPlayerCoordsForDistance() {
 }
 
 function formatDistanceFromKm(km) {
-  if (!Number.isFinite(km)) return 'N/A';
-  return km.toFixed(1) + ' km';
+  if (!Number.isFinite(km)) return t('common.na');
+  return t('player.distanceKm', { km: km.toFixed(1) });
 }
 
 function computeFieldDistance(field, refCoords) {
   var apiKm = field.distanceKm != null ? Number(field.distanceKm) : NaN;
   if (Number.isFinite(apiKm)) return formatDistanceFromKm(apiKm);
-  if (!refCoords || !Number.isFinite(refCoords.lat) || !Number.isFinite(refCoords.lng)) return 'N/A';
+  if (!refCoords || !Number.isFinite(refCoords.lat) || !Number.isFinite(refCoords.lng)) return t('common.na');
   var flat = field.latitude != null ? Number(field.latitude) : null;
   var flng = field.longitude != null ? Number(field.longitude) : null;
-  if (!Number.isFinite(flat) || !Number.isFinite(flng)) return 'N/A';
+  if (!Number.isFinite(flat) || !Number.isFinite(flng)) return t('common.na');
   return formatDistanceFromKm(haversineKm(refCoords.lat, refCoords.lng, flat, flng));
 }
 
@@ -94,7 +94,7 @@ function mapFieldToVenue(field, favoriteIdSet, refCoords) {
   return {
     id: id,
     name: field.name,
-    sport: field.sport || 'Sport',
+    sport: field.sport || '',
     image: img,
     rating: field.rating != null ? field.rating : 0,
     reviews: field.reviewCount != null ? field.reviewCount : 0,
@@ -219,9 +219,9 @@ function handleInviteLink() {
         
         if (venue) {
             setTimeout(async () => {
-                if (await MatchFieldDialog.confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`, {
+                if (await MatchFieldDialog.confirm(t('booking.invitedToBook', { name: venue.name }), {
                     type: 'info',
-                    okText: 'View Booking'
+                    okText: t('booking.viewBooking')
                 })) {
                     openBookingModal(venue);
                 }
@@ -372,8 +372,8 @@ function createVenueCard(venue) {
     
     card.innerHTML = `
         <div class="venue-image-container">
-            <img src="${venue.image}" alt="${venue.name}" class="venue-image" loading="lazy" onerror="window.handleImageError(this, '${venue.sport}');">
-            <div class="sport-badge">${venue.sport}</div>
+            <img src="${venue.image}" alt="${escapeHtml(venue.name)}" class="venue-image" loading="lazy" onerror="window.handleImageError(this, '${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}');">
+            <div class="sport-badge">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}</div>
             <button class="favorite-btn ${venue.isFavorite ? 'active' : ''}" data-venue-id="${venue.id}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -382,16 +382,16 @@ function createVenueCard(venue) {
         </div>
         <div class="venue-card-content">
             <div class="venue-header">
-                <h3 class="venue-name">${venue.name}</h3>
-                <span class="venue-price">${escapeHtml(mfMoney(venue.price))}/h</span>
+                <h3 class="venue-name">${escapeHtml(venue.name)}</h3>
+                <span class="venue-price">${escapeHtml(mfMoney(venue.price))}${t('common.perHour')}</span>
             </div>
             <div class="venue-rating">
                 <span class="star">★</span>
-                <span>${venue.rating} (${venue.reviews}) . ${venue.location} . ${venue.distance}</span>
+      <span>${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)}) . ${escapeHtml(venue.location)} . ${escapeHtml(venue.distance)}</span>
             </div>
             <div class="venue-footer-row">
-                <span class="venue-type">${venue.type}</span>
-                <button class="book-btn">Book</button>
+                <span class="venue-type">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.type)) || venue.type)}</span>
+                <button class="book-btn">${t('player.bookShort')}</button>
             </div>
         </div>
     `;
@@ -459,7 +459,7 @@ function consumeDirtyReviewFields() {
 // Toggle favorite status (API + local)
 function toggleFavorite(venueId) {
     if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
-        alert('Please log in to add favorites.');
+        alert(t('player.pleaseLoginFavorites'));
         return;
     }
     var venueIdStr = String(venueId);
@@ -473,7 +473,7 @@ function toggleFavorite(venueId) {
         favoriteBtns.forEach(function(btn) { btn.classList.toggle('active'); });
         saveFavoritesToStorage();
     }).catch(function(err) {
-        alert(err.message || 'Failed to update favorite.');
+        alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('player.favoriteFailed'));
     });
 }
 
@@ -671,9 +671,9 @@ function updateFilterButtonText() {
     const filterSpan = filterBtn.querySelector('span');
     if (filterSpan) {
         if (activeFilters.length > 0) {
-            filterSpan.textContent = `Filter (${activeFilters.length})`;
+            filterSpan.textContent = t('common.filterN', { count: activeFilters.length });
         } else {
-            filterSpan.textContent = 'Filter';
+            filterSpan.textContent = t('common.filter');
         }
     }
 }
@@ -722,7 +722,7 @@ let bookingState = {
 function openBookingModal(venue) {
     const playerData = getPlayerData();
     if (!playerData) {
-        alert('Please log in to book a field.');
+        alert(t('player.pleaseLoginBook'));
         window.location.href = '../auth/login.html';
         return;
     }
@@ -783,16 +783,16 @@ function populateFieldDetails(venue) {
     
     container.innerHTML = `
         <div class="field-preview-card">
-            <img src="${venue.image}" alt="${venue.name}" class="field-preview-image">
+            <img src="${venue.image}" alt="${escapeHtml(venue.name)}" class="field-preview-image">
             <div class="field-preview-info">
-                <h4>${venue.name}</h4>
+                <h4>${escapeHtml(venue.name)}</h4>
                 <div class="field-preview-meta">
-                    <span><i class="fi fi-rr-marker"></i> ${venue.location}</span>
+                    <span><i class="fi fi-rr-marker"></i> ${escapeHtml(venue.location)}</span>
                     <span><i class="fi fi-rs-star"></i> ${venue.rating} (${venue.reviews})</span>
-                    <span><i class="fi fi-rr-tag"></i> ${venue.sport}</span>
+                    <span><i class="fi fi-rr-tag"></i> ${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}</span>
                 </div>
                 <div class="field-preview-price">
-                    <span>Price: <strong>${escapeHtml(mfMoney(venue.price))}/hour</strong></span>
+                    <span>${t('booking.priceLabel')} <strong>${escapeHtml(mfMoney(venue.price))}${t('common.perHourLong')}</strong></span>
                 </div>
             </div>
         </div>
@@ -986,14 +986,14 @@ async function loadTimeSlots() {
 
     if (bookingState.selectedDate && bookingState.field && typeof API !== 'undefined') {
         try {
-            container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+            container.innerHTML = '<p style="text-align: center; padding: 20px;">' + t('booking.loadingAvailability') + '</p>';
             const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
 
             if (!availability.available && availability.lockedByOwner) {
                 container.innerHTML = `
                     <div style="text-align: center; padding: 20px; color: #dc3545;">
                         <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
-                        <p>${availability.message || 'This field is not available on the selected date.'}</p>
+                        <p>${escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.notAvailableDate'))}</p>
                     </div>
                 `;
                 return;
@@ -1003,7 +1003,7 @@ async function loadTimeSlots() {
                 container.innerHTML = `
                     <div style="text-align: center; padding: 20px; color: #dc3545;">
                         <i class="fi fi-rr-calendar" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
-                        <p>${availability.message || 'This field is closed on the selected day.'}</p>
+                        <p>${escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.closedDay'))}</p>
                     </div>
                 `;
                 return;
@@ -1085,13 +1085,13 @@ function updatePlayersList() {
     const organizerName = document.getElementById('organizerName');
 
     if (organizerName && bookingState.organizer) {
-        organizerName.textContent = `${bookingState.organizer.name} (You)`;
+        organizerName.textContent = bookingState.organizer.name + t('booking.youSuffix');
     }
 
     if (!container) return;
     
     if (bookingState.players.length === 0) {
-        container.innerHTML = '<p class="no-players">No players added yet. Add players by username.</p>';
+        container.innerHTML = '<p class="no-players">' + t('booking.noPlayersYet') + '</p>';
         return;
     }
     
@@ -1099,8 +1099,8 @@ function updatePlayersList() {
         <div class="player-item">
             <div class="player-info">
                 <i class="fi fi-rr-user"></i>
-                <span>${player.name}</span>
-                <span class="player-id">ID: ${player.playerCode || player.id}</span>
+                <span>${escapeHtml(player.name)}</span>
+                <span class="player-id">${t('booking.playerIdLabel', { id: escapeHtml(player.playerCode || player.id) })}</span>
             </div>
             <button class="remove-player-btn" data-index="${index}">
                 <i class="fi fi-rr-cross-small"></i>
@@ -1140,7 +1140,7 @@ function loadPaymentStep() {
         summary.innerHTML = `
             <div class="payment-summary">
                 <div class="payment-amount">
-                    <span class="amount-label">Your Share to Pay</span>
+                    <span class="amount-label">${t('booking.shareToPay')}</span>
                     <span class="amount-value">${escapeHtml(mfMoney(paymentAmount))}</span>
                 </div>
             </div>
@@ -1154,10 +1154,10 @@ function showBookingSummary() {
     
     container.innerHTML = `
         <div class="summary-section">
-            <h4>Field Information</h4>
+            <h4>${t('booking.fieldInformation')}</h4>
             <div class="summary-item">
-                <span>Field:</span>
-                <span><strong>${bookingState.field.name}</strong></span>
+                <span>${t('booking.fieldColon')}</span>
+                <span><strong>${escapeHtml(bookingState.field.name)}</strong></span>
             </div>
         </div>
     `;
@@ -1171,11 +1171,11 @@ function validateCurrentStep() {
             return true;
         case 2:
             if (!bookingState.selectedDate) {
-                alert('Please select a date.');
+                alert(t('booking.pleaseSelectDate'));
                 return false;
             }
             if (bookingState.selectedTimeSlots.length === 0) {
-                alert('Please select at least one time slot.');
+                alert(t('booking.pleaseSelectSlot'));
                 return false;
             }
             updateBookingCost();
@@ -1291,7 +1291,7 @@ async function searchUsers(query) {
     const normalizedQuery = normalizePlayerSearchQuery(query);
 
     if (typeof API === 'undefined' || !API.users || !API.users.search) {
-        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">' + t('booking.searchUnavailable') + '</div>';
         resultsContainer.style.display = 'block';
         return [];
     }
@@ -1299,7 +1299,7 @@ async function searchUsers(query) {
     const requestId = ++latestSearchRequestId;
 
     try {
-        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.searching') + '</div>';
         resultsContainer.style.display = 'block';
 
         const response = await API.users.search(normalizedQuery, { playersOnly: true });
@@ -1319,8 +1319,8 @@ async function searchUsers(query) {
                 currentUser && String(user.id) === String(currentUser.id)
             );
             resultsContainer.innerHTML = onlySelfMatch
-                ? '<div style="padding: 12px; text-align: center; color: #666;">You cannot add yourself. Search for another player\'s ID.</div>'
-                : '<div style="padding: 12px; text-align: center; color: #666;">No players found. Use the Player ID from their profile (PLR-...).</div>';
+                ? '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.cannotAddSelf') + '</div>'
+                : '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.searchByPlayerId') + '</div>';
             resultsContainer.style.display = 'block';
             return [];
         }
@@ -1353,7 +1353,7 @@ async function searchUsers(query) {
         return filteredUsers;
     } catch (error) {
         console.error('Search error:', error);
-        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+        resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">' + t('booking.searchFailed') + '</div>';
         resultsContainer.style.display = 'block';
         return [];
     }
@@ -1361,12 +1361,12 @@ async function searchUsers(query) {
 
 function addPlayerFromSearch(user) {
     if (!user || user.role !== 'PLAYER') {
-        alert('Only players can be added to a booking. Field owners and admins cannot be invited as players.');
+        alert(t('booking.onlyPlayers'));
         return;
     }
 
     if (bookingState.players.some(p => p.id === user.id)) {
-        alert('This player is already added.');
+        alert(t('booking.alreadyAdded'));
         return;
     }
 
@@ -1388,7 +1388,7 @@ async function addPlayer() {
 
     const searchValue = normalizePlayerSearchQuery(input.value);
     if (!searchValue) {
-        alert('Please enter a username, email, or Player ID to search.');
+        alert(t('booking.enterSearch'));
         return;
     }
 
@@ -1403,7 +1403,7 @@ async function addPlayer() {
     if (searchValue.length >= getPlayerSearchMinLength(searchValue)) {
         const results = await searchUsers(searchValue);
         if (!results || results.length === 0) {
-            alert('No players found. Try searching by name, email, Player ID (PLR-...), or account ID.');
+            alert(t('booking.noPlayersFound'));
             return;
         }
 
@@ -1414,14 +1414,14 @@ async function addPlayer() {
             return;
         }
 
-        alert('Multiple players found. Please select one from the list.');
+        alert(t('booking.multiplePlayers'));
     } else {
-        alert('Please enter at least 4 characters for a Player ID or account ID, or 2 characters for a name.');
+        alert(t('booking.minSearch'));
     }
 }
 
 function confirmBooking() {
-    alert('Booking functionality would be implemented here. Redirecting to bookings page...');
+    alert(t('booking.redirectPayment'));
     closeBookingModal();
     setTimeout(() => {
         window.location.href = 'bookings.html';

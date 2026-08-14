@@ -7,12 +7,12 @@
     e.preventDefault();
     const email = document.getElementById('email').value.trim();
     const original = submitBtn.textContent;
-    submitBtn.textContent = 'Sending…';
+    submitBtn.textContent = t('common.sending');
     submitBtn.disabled = true;
 
     try {
       const data = await API.auth.forgotPassword(email);
-      const baseMsg = data.message || 'If an account exists, you will receive instructions.';
+      const baseMsg = t('auth.resetSent');
 
       if (data.devResetUrl) {
         const full =
@@ -32,7 +32,7 @@
         }
       }
     } catch (err) {
-      window.alert((err && err.message) || 'Something went wrong. Try again.');
+      window.alert((err && err.message) || t('auth.resetSomethingWrong'));
     } finally {
       submitBtn.textContent = original;
       submitBtn.disabled = false;

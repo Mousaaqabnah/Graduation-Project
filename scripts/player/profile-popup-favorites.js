@@ -24,7 +24,7 @@
       name: field.name,
       image: img,
       location: field.location || '',
-      distance: field.distanceKm != null ? Number(field.distanceKm).toFixed(1) + ' km' : 'N/A'
+      distance: field.distanceKm != null ? t('player.distanceKm', { km: Number(field.distanceKm).toFixed(1) }) : t('common.na')
     };
   }
 
@@ -64,7 +64,7 @@
     var body = document.getElementById('favoriteFieldsModalBody');
     if (!modal || !body) return;
 
-    body.innerHTML = '<div class="favorite-empty-state">Loading favorites...</div>';
+    body.innerHTML = '<div class="favorite-empty-state">' + t('player.loadingFavorites') + '</div>';
     modal.classList.add('active');
 
     try {
@@ -97,7 +97,7 @@
 
       var list = favoriteFields.filter(Boolean);
       if (!list.length) {
-        body.innerHTML = '<div class="favorite-empty-state">No favorite fields yet.</div>';
+        body.innerHTML = '<div class="favorite-empty-state">' + t('player.noFavorites') + '</div>';
         return;
       }
 
@@ -122,7 +122,7 @@
             '</div>' +
             '<button type="button" class="favorite-field-item-action" data-favorite-view-id="' +
             escAttr(field.id) +
-            '">View</button>' +
+            '">' + t('common.view') + '</button>' +
             '</div>'
           );
         })
@@ -135,7 +135,7 @@
         });
       });
     } catch (_) {
-      body.innerHTML = '<div class="favorite-empty-state">Failed to load favorite fields.</div>';
+      body.innerHTML = '<div class="favorite-empty-state">' + t('player.favoritesFailed') + '</div>';
     }
   }
 

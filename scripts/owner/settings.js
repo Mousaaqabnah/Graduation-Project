@@ -40,6 +40,10 @@ function readLocaleFromDom() {
 }
 
 function applyLocaleUi() {
+    if (window.MatchFieldI18n && typeof MatchFieldI18n.applyLanguage === 'function') {
+        MatchFieldI18n.applyLanguage();
+        return;
+    }
     if (window.MatchFieldPrefs) {
         MatchFieldPrefs.applyDocumentLocale(MatchFieldPrefs.getLanguage());
     }
@@ -99,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     function openChangePasswordModal() {
         if (typeof API === 'undefined' || !API.getAuthToken || !API.getAuthToken()) {
-            alert('Please log in to change your password.');
+            alert(t('settings.pleaseLoginPassword'));
             return;
         }
         if (changePasswordModal) {
@@ -124,7 +128,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (!input) return;
             input.type = 'password';
             button.setAttribute('aria-pressed', 'false');
-            button.setAttribute('aria-label', 'Show password');
+            button.setAttribute('aria-label', t('accessibility.showPassword'));
             if (icon) icon.className = 'fi fi-rr-eye';
         });
     }
@@ -154,7 +158,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             var isHidden = input.type === 'password';
             input.type = isHidden ? 'text' : 'password';
             button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
-            button.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            button.setAttribute('aria-label', isHidden ? t('accessibility.hidePassword') : t('accessibility.showPassword'));
             if (icon) icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
         });
     });
@@ -164,7 +168,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             e.preventDefault();
             if (typeof API === 'undefined' || !API.auth || !API.auth.updatePassword) {
                 if (changePasswordError) {
-                    changePasswordError.textContent = 'Password service is unavailable. Please refresh the page.';
+                    changePasswordError.textContent = t('settings.passwordUnavailable');
                 }
                 return;
             }
@@ -176,19 +180,19 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (newPwd.length < 8) {
                 if (changePasswordError) {
-                    changePasswordError.textContent = 'New password must be at least 8 characters.';
+                    changePasswordError.textContent = t('settings.passwordMin');
                 }
                 return;
             }
             if (newPwd !== confirmPwd) {
                 if (changePasswordError) {
-                    changePasswordError.textContent = 'New passwords do not match.';
+                    changePasswordError.textContent = t('settings.passwordMismatch');
                 }
                 return;
             }
             if (newPwd === currentPwd) {
                 if (changePasswordError) {
-                    changePasswordError.textContent = 'New password must be different from current password.';
+                    changePasswordError.textContent = t('settings.passwordDifferent');
                 }
                 return;
             }
@@ -196,25 +200,25 @@ document.addEventListener('DOMContentLoaded', async function() {
             var submitBtn = document.getElementById('changePasswordSubmit');
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Updating...';
+                submitBtn.textContent = t('common.updating');
             }
 
             API.auth.updatePassword(currentPwd, newPwd)
                 .then(function() {
                     closeChangePasswordModal();
-                    alert('Your password has been updated successfully.');
+                    alert(t('settings.passwordUpdated'));
                 })
                 .catch(function(err) {
                     if (changePasswordError) {
                         changePasswordError.textContent =
-                            (err && err.message) ||
-                            'Failed to update password. Check your current password.';
+                            (window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) ||
+                            t('settings.passwordFailed');
                     }
                 })
                 .finally(function() {
                     if (submitBtn) {
                         submitBtn.disabled = false;
-                        submitBtn.textContent = 'Update Password';
+                        submitBtn.textContent = t('auth.updatePassword');
                     }
                 });
         });
@@ -223,50 +227,50 @@ document.addEventListener('DOMContentLoaded', async function() {
     const deleteAccountBtn = document.getElementById('deleteAccountBtn');
     if (deleteAccountBtn) {
         deleteAccountBtn.addEventListener('click', async function() {
-            if (!(await MatchFieldDialog.confirm('Are you sure you want to delete your account? This action cannot be undone.', {
+            if (!(await MatchFieldDialog.confirm(t('settings.deleteConfirm'), {
                 type: 'danger',
-                title: 'Delete account',
-                okText: 'Delete Account'
+                title: t('settings.deleteTitle'),
+                okText: t('settings.deleteAccount')
             }))) return;
-            if (!(await MatchFieldDialog.confirm('This will permanently delete all your data. Are you absolutely sure?', {
+            if (!(await MatchFieldDialog.confirm(t('settings.deleteConfirm2'), {
                 type: 'danger',
-                title: 'Delete account',
-                okText: 'Delete permanently'
+                title: t('settings.deleteTitle'),
+                okText: t('settings.deletePermanently')
             }))) return;
 
             if (typeof API === 'undefined' || !API.auth || !API.auth.deleteAccount) {
-                await MatchFieldDialog.alert('Account deletion service is unavailable. Please refresh the page.', { type: 'danger', title: 'Error' });
+                await MatchFieldDialog.alert(t('settings.deleteUnavailable'), { type: 'danger', title: t('common.error') });
                 return;
             }
 
-            var currentPwd = await MatchFieldDialog.prompt('Please enter your current password to confirm account deletion.', {
+            var currentPwd = await MatchFieldDialog.prompt(t('settings.enterCurrentToDelete'), {
                 type: 'danger',
-                title: 'Confirm password',
+                title: t('auth.confirmPassword'),
                 inputType: 'password',
-                placeholder: 'Current password',
-                okText: 'Continue',
-                cancelText: 'Cancel'
+                placeholder: t('settings.currentPassword'),
+                okText: t('common.continue'),
+                cancelText: t('common.cancel')
             });
             if (currentPwd == null) return;
             currentPwd = String(currentPwd).trim();
             if (!currentPwd) {
-                await MatchFieldDialog.alert('Current password is required to delete your account.', { type: 'warning', title: 'Password required' });
+                await MatchFieldDialog.alert(t('settings.currentRequired'), { type: 'warning', title: t('settings.passwordRequired') });
                 return;
             }
 
             deleteAccountBtn.disabled = true;
-            deleteAccountBtn.textContent = 'Deleting...';
+            deleteAccountBtn.textContent = t('common.deleting');
             API.auth.deleteAccount(currentPwd)
                 .then(async function() {
-                    await MatchFieldDialog.alert('Your account has been deleted successfully.', { type: 'success', title: 'Deleted' });
+                    await MatchFieldDialog.alert(t('settings.deletedOk'), { type: 'success', title: t('settings.deleted') });
                     API.auth.logout();
                 })
                 .catch(async function(err) {
-                    await MatchFieldDialog.alert((err && err.message) ? err.message : 'Failed to delete account.', { type: 'danger', title: 'Error' });
+                    await MatchFieldDialog.alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('settings.deleteFailed'), { type: 'danger', title: t('common.error') });
                 })
                 .finally(function() {
                     deleteAccountBtn.disabled = false;
-                    deleteAccountBtn.textContent = 'Delete Account';
+                    deleteAccountBtn.textContent = t('settings.deleteAccount');
                 });
         });
     }
@@ -468,7 +472,7 @@ function saveOwnerNotificationPreferences(nextPrefs) {
             });
             applyOwnerNotificationPrefsToDom(ownerNotificationPrefsState);
             saveSettings({ skipRemote: true });
-            alert((err && err.message) ? err.message : 'Failed to save notification preferences. Changes were reverted.');
+            alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('settings.saveNotifFailed'));
         })
         .finally(function() {
             ownerNotificationPrefsState.isSaving = false;
@@ -537,7 +541,7 @@ function saveOwnerAccountSettings(nextValues) {
             accountSettingsState.twoFactorAuth = prev.twoFactorAuth;
             applyOwnerAccountSettingsToDom(accountSettingsState);
             saveSettings({ skipRemote: true });
-            alert((err && err.message) ? err.message : 'Failed to save account settings. Changes were reverted.');
+            alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('settings.saveAccountFailed'));
         })
         .finally(function() {
             accountSettingsState.isSaving = false;

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Field Owner Admin - Dashboard | MatchField</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -22,7 +23,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -33,7 +34,7 @@
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span data-i18n="nav.bookings_list">Bookings</span>
+                    <span data-i18n="nav.bookings_list" data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
@@ -45,7 +46,7 @@
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span data-i18n="nav.contact">Contact Us</span>
+                    <span data-i18n="nav.contact" data-i18n="support.contactUs">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item">
                     <i class="fi fi-rr-info nav-icon"></i>
@@ -82,7 +83,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -90,8 +91,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">New booking request</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleRequest">New booking request</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                                 <div class="notification-item">
@@ -99,8 +100,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">Payment received</p>
-                                        <p class="notification-time">5 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.samplePayment">Payment received</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo5">5 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -109,21 +110,21 @@
                     
                     <div class="profile-wrapper">
                         <div class="profile-picture" id="profileBtn">
-                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                         </div>
                         
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>My Account</h3>
+                                <h3 data-i18n="account">My Account</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
                                     <div class="profile-avatar-large">
-                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                                     </div>
                                     <div class="profile-details">
-                                        <p class="profile-name">Fozi Court</p>
+                                        <p class="profile-name" data-i18n="common.user">Fozi Court</p>
                                         <p class="profile-email">fozi@matchfield.com</p>
                                     </div>
                                 </div>
@@ -133,14 +134,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>View Profile</span>
+                                        <span data-i18n="profile.viewProfile">View Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -161,21 +162,21 @@
             <div class="dashboard-content">
                 <!-- Greeting Header -->
                 <div class="greeting-header">
-                    <h1 id="ownerGreeting">Good evening 👋</h1>
-                    <p id="ownerGreetingSub">Here is a quick overview of your fields and today's bookings.</p>
+                    <h1 id="ownerGreeting" data-i18n="owner.goodEvening">Good evening 👋</h1>
+                    <p id="ownerGreetingSub" data-i18n="owner.greetingSub">Here is a quick overview of your fields and today's bookings.</p>
                 </div>
 
                 <!-- Stats Cards (values filled from API.owner.getStats — same pattern as player pages using API.*) -->
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-card-title">Todays bookings</div>
+                        <div class="stat-card-title" data-i18n="owner.todaysBookings">Todays bookings</div>
                         <div class="stat-card-value" id="statValToday">—</div>
-                        <div class="stat-card-subtext" id="statSubToday">On your fields today</div>
+                        <div class="stat-card-subtext" id="statSubToday" data-i18n="owner.onYourFieldsToday">On your fields today</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-card-title">Upcoming bookings</div>
+                        <div class="stat-card-title" data-i18n="owner.upcomingBookings">Upcoming bookings</div>
                         <div class="stat-card-value" id="statValUpcoming">—</div>
-                        <div class="stat-card-subtext" id="statSubUpcoming">Next 7 days</div>
+                        <div class="stat-card-subtext" id="statSubUpcoming" data-i18n="owner.next7days">Next 7 days</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-title">Total Fields</div>
@@ -193,23 +194,23 @@
                 <div class="section-card">
                     <div class="section-header">
                         <div>
-                            <h2 class="section-title">Today's bookings</h2>
-                            <p class="section-subtitle">Matches scheduled for today on your fields</p>
+                            <h2 class="section-title" data-i18n="owner.todaysBookings">Today's bookings</h2>
+                            <p class="section-subtitle" data-i18n="owner.matchesToday">Matches scheduled for today on your fields</p>
                         </div>
                         <div class="section-header-right">
-                            <a href="bookings.html" class="link-btn">View all bookings</a>
+                            <a href="bookings.html" class="link-btn" data-i18n="owner.viewAllBookings">View all bookings</a>
                         </div>
                     </div>
                     
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
-                                <th>Team</th>
-                                <th>Field</th>
-                                <th>Type</th>
-                                <th>Price</th>
-                                <th>Status</th>
+                                <th data-i18n="owner.colTime">Time</th>
+                                <th data-i18n="owner.colTeam">Team</th>
+                                <th data-i18n="owner.colField">Field</th>
+                                <th data-i18n="owner.colType">Type</th>
+                                <th data-i18n="owner.colPrice">Price</th>
+                                <th data-i18n="owner.colStatus">Status</th>
                             </tr>
                         </thead>
                         <tbody id="bookingsTableBody">
@@ -222,7 +223,7 @@
                 <div class="section-card">
                     <div class="section-header">
                         <div>
-                            <h2 class="section-title">My fields</h2>
+                            <h2 class="section-title" data-i18n="owner.myFields">My fields</h2>
                             <p class="section-subtitle">Utilization today and quick actions</p>
                         </div>
                         <div class="section-header-right">
@@ -246,7 +247,7 @@
             <!-- Modal Header -->
             <div class="manage-modal-header">
                 <div>
-                    <h2 class="modal-title">Manage Field</h2>
+                    <h2 class="modal-title" data-i18n="owner.manageField">Manage Field</h2>
                     <div class="field-status-badge" id="fieldStatusBadge">
                         <span class="status-dot approved"></span>
                         <span class="status-text">Approved</span>
@@ -261,7 +262,7 @@
                         <i class="fi fi-rr-edit"></i>
                     </div>
                     <div class="manage-option-content">
-                        <h4>Edit Information</h4>
+                        <h4 data-i18n="owner.editInformation">Edit Information</h4>
                         <p>Update field details, amenities, and photos.</p>
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
@@ -295,7 +296,7 @@
                     </div>
                     <div class="manage-option-content">
                         <h4>Manage Location</h4>
-                        <p>Edit address or adjust the map pin.</p>
+                        <p data-i18n="owner.editAddressHint">Edit address or adjust the map pin.</p>
                     </div>
                     <i class="fi fi-rr-angle-right manage-option-arrow"></i>
                 </button>
@@ -333,7 +334,7 @@
                             <i class="fi fi-rr-angle-left"></i>
                             Back
                         </button>
-                        <h3>Edit Information</h3>
+                        <h3 data-i18n="owner.editInformation">Edit Information</h3>
                     </div>
                     
                     <div class="form-step-content">
@@ -346,39 +347,39 @@
                                 <div class="form-group">
                                     <label>Sport Category</label>
                                     <select id="manageSportCategory">
-                                        <option value="football">Football</option>
-                                        <option value="basketball">Basketball</option>
-                                        <option value="tennis">Tennis</option>
-                                        <option value="padel">Padel</option>
-                                        <option value="futsal">Futsal</option>
-                                        <option value="volleyball">Volleyball</option>
-                                        <option value="badminton">Badminton</option>
-                                        <option value="other">Other</option>
+                                        <option value="football" data-i18n="sports.football">Football</option>
+                                        <option value="basketball" data-i18n="sports.basketball">Basketball</option>
+                                        <option value="tennis" data-i18n="sports.tennis">Tennis</option>
+                                        <option value="padel" data-i18n="sports.padel">Padel</option>
+                                        <option value="futsal" data-i18n="sports.futsal">Futsal</option>
+                                        <option value="volleyball" data-i18n="sports.volleyball">Volleyball</option>
+                                        <option value="badminton" data-i18n="sports.badminton">Badminton</option>
+                                        <option value="other" data-i18n="sports.other">Other</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="form-group" id="manageSportCustomGroup" style="display: none;">
                                 <label for="manageSportCustom">Specify sport <span class="required">*</span></label>
-                                <input type="text" id="manageSportCustom" name="manageSportCustom" placeholder="e.g. Handball, Cricket">
+                                <input type="text" id="manageSportCustom" name="manageSportCustom" placeholder="e.g. Handball, Cricket" data-i18n-placeholder="owner.sportCustomPh">
                             </div>
                             
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Type</label>
                                     <select id="manageFieldType">
-                                        <option selected>Outdoor</option>
-                                        <option>Indoor</option>
+                                        <option value="Outdoor" selected data-i18n="sports.outdoor">Outdoor</option>
+                                        <option value="Indoor" data-i18n="sports.indoor">Indoor</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
                                     <label>Capacity</label>
-                                    <input type="text" id="manageCapacity" value="22 players">
+                                    <input type="text" id="manageCapacity" value="">
                                 </div>
                             </div>
                             
                             <div class="form-group">
                                 <label>Description</label>
-                                <textarea id="manageDescription" rows="4">Professional outdoor football court with high-quality turf and lighting.</textarea>
+                                <textarea id="manageDescription" rows="4"></textarea>
                             </div>
                             
                         </div>
@@ -637,7 +638,7 @@
                             </div>
                             
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label>Select Location on Map <span class="required">*</span></label>
+                                <label><span data-i18n="owner.selectMapLocationLabel">Select Location on Map</span> <span class="required">*</span></label>
                                 <div class="map-container">
                                     <div id="manageLocationMap" class="map-picker">
                                         <div class="map-placeholder">
@@ -778,9 +779,9 @@
             
             <!-- Modal Footer -->
             <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-cancel" onclick="closeModal()" data-i18n="common.cancel">Cancel</button>
                 <button class="btn-secondary" id="manageBackBtn" onclick="backToManageMenu()" style="display: none;">Back to Menu</button>
-                <button class="btn-primary" id="manageSubmitBtn" onclick="submitManageChanges()" style="display: none;">Submit Changes for Approval</button>
+                <button class="btn-primary" id="manageSubmitBtn" onclick="submitManageChanges()" style="display: none;" data-i18n="owner.submitChanges">Submit Changes for Approval</button>
             </div>
         </div>
     </div>
@@ -894,7 +895,7 @@
             
             <!-- Modal Footer -->
             <div class="view-field-modal-footer">
-                <button class="view-field-close-btn" onclick="closeViewModal()">Close</button>
+                <button class="view-field-close-btn" onclick="closeViewModal()" data-i18n="common.close">Close</button>
             </div>
         </div>
     </div>
@@ -906,7 +907,7 @@
             <button class="modal-close" onclick="closeAddFieldModal()">&times;</button>
             
             <!-- Modal Title -->
-            <h2 class="modal-title">Add New Field</h2>
+            <h2 class="modal-title" data-i18n="owner.addNewField">Add New Field</h2>
             
             <!-- Progress Steps -->
             <div class="form-progress">
@@ -991,27 +992,27 @@
                         <div class="form-step-section">
                             <div class="form-group">
                                 <label>Field Name <span class="required">*</span></label>
-                                <input type="text" id="fieldName" name="fieldName" required placeholder="e.g. Fozi Football Court">
+                                <input type="text" id="fieldName" name="fieldName" required placeholder="e.g. Fozi Football Court" data-i18n-placeholder="owner.fieldNamePh">
                             </div>
                             
                             <div class="form-group">
                                 <label>Description <span class="required">*</span></label>
-                                <textarea id="fieldDescription" name="fieldDescription" rows="4" required placeholder="Describe your field..."></textarea>
+                                <textarea id="fieldDescription" name="fieldDescription" rows="4" required placeholder="Describe your field..." data-i18n-placeholder="owner.fieldDescPh"></textarea>
                             </div>
                             
                             <div class="form-row" style="margin-bottom: 0;">
                                 <div class="form-group">
                                     <label>Type of Field <span class="required">*</span></label>
                                     <select id="fieldType" name="fieldType" required>
-                                        <option value="">Select field type</option>
-                                        <option value="football">Football</option>
-                                        <option value="basketball">Basketball</option>
-                                        <option value="tennis">Tennis</option>
-                                        <option value="padel">Padel</option>
-                                        <option value="futsal">Futsal</option>
-                                        <option value="volleyball">Volleyball</option>
-                                        <option value="badminton">Badminton</option>
-                                        <option value="other">Other</option>
+                                        <option value="" data-i18n="owner.selectFieldType">Select field type</option>
+                                        <option value="football" data-i18n="sports.football">Football</option>
+                                        <option value="basketball" data-i18n="sports.basketball">Basketball</option>
+                                        <option value="tennis" data-i18n="sports.tennis">Tennis</option>
+                                        <option value="padel" data-i18n="sports.padel">Padel</option>
+                                        <option value="futsal" data-i18n="sports.futsal">Futsal</option>
+                                        <option value="volleyball" data-i18n="sports.volleyball">Volleyball</option>
+                                        <option value="badminton" data-i18n="sports.badminton">Badminton</option>
+                                        <option value="other" data-i18n="sports.other">Other</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -1021,7 +1022,7 @@
                             </div>
                             <div class="form-group" id="fieldSportCustomGroup" style="display: none;">
                                 <label for="fieldSportCustom">Specify sport <span class="required">*</span></label>
-                                <input type="text" id="fieldSportCustom" name="fieldSportCustom" placeholder="e.g. Handball, Cricket">
+                                <input type="text" id="fieldSportCustom" name="fieldSportCustom" placeholder="e.g. Handball, Cricket" data-i18n-placeholder="owner.sportCustomPh">
                             </div>
                         </div>
                     </div>
@@ -1029,8 +1030,8 @@
 
                 <!-- Step 3: Amenities & Features -->
                 <div class="form-step" data-step="3">
-                    <h3>Amenities & Features</h3>
-                    <p class="step-description">Select amenities and features available at your field</p>
+                    <h3 data-i18n="owner.amenitiesFeatures">Amenities & Features</h3>
+                    <p class="step-description" data-i18n="owner.amenitiesStep">Select amenities and features available at your field</p>
                     
                     <div class="form-step-content">
                         <div class="form-step-section">
@@ -1139,22 +1140,22 @@
                         <div class="form-step-section">
                             <div class="form-group">
                                 <label>Address <span class="required">*</span></label>
-                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="e.g. Al-Irsal St., Ramallah">
+                                <input type="text" id="fieldAddress" name="fieldAddress" required placeholder="e.g. Al-Irsal St., Ramallah" data-i18n-placeholder="owner.addressPh">
                             </div>
                             
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>City <span class="required">*</span></label>
-                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Ramallah (auto-filled from map)">
+                                    <input type="text" id="fieldCity" name="fieldCity" required placeholder="e.g. Ramallah (auto-filled from map)" data-i18n-placeholder="owner.cityPh">
                                 </div>
                                 <div class="form-group">
                                     <label>District</label>
-                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Al-Bireh (auto-filled from map)">
+                                    <input type="text" id="fieldDistrict" name="fieldDistrict" placeholder="e.g. Al-Bireh (auto-filled from map)" data-i18n-placeholder="owner.districtPh">
                                 </div>
                             </div>
                             
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label>Select Exact Pin on Map <span class="required">*</span></label>
+                                <label><span data-i18n="owner.selectExactPin">Select Exact Pin on Map</span> <span class="required">*</span></label>
                                 <div class="map-container">
                                     <div id="locationMap" class="map-picker">
                                         <div class="map-placeholder">
@@ -1351,10 +1352,10 @@
 
             <!-- Modal Footer -->
             <div class="modal-footer">
-                <button type="button" class="btn-cancel" onclick="closeAddFieldModal()">Cancel</button>
+                <button type="button" class="btn-cancel" onclick="closeAddFieldModal()" data-i18n="common.cancel">Cancel</button>
                 <button type="button" class="btn-secondary" id="prevStepBtn" onclick="previousStep()" style="display: none;">Previous</button>
                 <button type="button" class="btn-secondary" id="nextStepBtn" onclick="nextStep()">Next</button>
-                <button type="button" class="btn-primary" id="submitBtn" onclick="submitFieldForm()" style="display: none;">Submit for Approval</button>
+                <button type="button" class="btn-primary" id="submitBtn" onclick="submitFieldForm()" style="display: none;" data-i18n="owner.submitApproval">Submit for Approval</button>
             </div>
         </div>
     </div>
@@ -1363,6 +1364,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/geoDefaults.js"></script>
     <script src="../../scripts/utils/geocodingService.js"></script>

@@ -75,16 +75,17 @@ async function loadDashboardStats() {
         const fmt = (n) => (n ?? 0).toLocaleString();
         els.totalUsers.textContent = fmt(s.totalUsers);
         els.usersSubtext.textContent = s.usersThisWeek > 0
-            ? `+${s.usersThisWeek} this week`
-            : 'No new users this week';
+            ? t('admin.thisWeekUsers', { count: s.usersThisWeek })
+            : t('admin.noNewUsers');
         els.activeOwners.textContent = fmt(s.activeOwners);
         els.ownersSubtext.textContent = s.pendingVerifications > 0
-            ? `${s.pendingVerifications} pending approval`
-            : 'All verified';
+            ? t('admin.pendingApprovalCount', { count: s.pendingVerifications })
+            : t('admin.allVerified');
         els.bookings.textContent = fmt(s.recentBookings);
-        els.bookingsSubtext.textContent = s.bookingsPercent >= 0
-            ? `+${s.bookingsPercent}% vs last week`
-            : `${s.bookingsPercent}% vs last week`;
+        els.bookingsSubtext.textContent = t('admin.vsLastWeekPct', {
+            sign: s.bookingsPercent >= 0 ? '+' : '',
+            percent: s.bookingsPercent
+        });
         const revAmount = Math.round(s.totalRevenue || 0);
         els.revenue.textContent = (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney)
             ? MatchFieldPrefs.formatMoney(revAmount)
@@ -92,7 +93,7 @@ async function loadDashboardStats() {
     } catch (err) {
         console.warn('Dashboard stats load failed:', err);
         els.totalUsers.textContent = '-';
-        els.usersSubtext.textContent = 'Failed to load';
+        els.usersSubtext.textContent = t('admin.loadFailed');
         els.activeOwners.textContent = '-';
         els.ownersSubtext.textContent = '-';
         els.bookings.textContent = '-';
@@ -105,7 +106,7 @@ loadDashboardStats();
 function renderSimpleBarChart(container, rows) {
     if (!container) return;
     if (!Array.isArray(rows) || rows.length === 0) {
-        container.innerHTML = '<div class="bar-chart-item"><div class="bar-chart-label">No data</div><div class="bar-chart-bar-wrapper"><div class="bar-chart-bar" style="width: 0%"></div></div><span class="bar-chart-value">0%</span></div>';
+        container.innerHTML = '<div class="bar-chart-item"><div class="bar-chart-label">' + t('common.noData') + '</div><div class="bar-chart-bar-wrapper"><div class="bar-chart-bar" style="width: 0%"></div></div><span class="bar-chart-value">0%</span></div>';
         return;
     }
     container.innerHTML = rows.map((row) => {
@@ -142,13 +143,13 @@ async function loadNotificationsAudienceChart() {
         });
         const total = counts.players + counts.owners + counts.admins;
         const rows = total > 0 ? [
-            { label: 'Players', percent: Math.round((counts.players / total) * 100) },
-            { label: 'Field owners', percent: Math.round((counts.owners / total) * 100) },
-            { label: 'Admins', percent: Math.round((counts.admins / total) * 100) }
+            { label: t('admin.players'), percent: Math.round((counts.players / total) * 100) },
+            { label: t('admin.fieldOwners'), percent: Math.round((counts.owners / total) * 100) },
+            { label: t('admin.admins'), percent: Math.round((counts.admins / total) * 100) }
         ] : [
-            { label: 'Players', percent: 0 },
-            { label: 'Field owners', percent: 0 },
-            { label: 'Admins', percent: 0 }
+            { label: t('admin.players'), percent: 0 },
+            { label: t('admin.fieldOwners'), percent: 0 },
+            { label: t('admin.admins'), percent: 0 }
         ];
         renderSimpleBarChart(notificationsAudienceChart, rows);
     } catch (err) {
@@ -213,10 +214,16 @@ async function loadRecentNotifications() {
         const list = res.notifications || [];
         recentNotifications.innerHTML = '';
         if (list.length === 0) {
-            recentNotifications.innerHTML = '<div class="no-results"><p>No notifications sent yet.</p></div>';
+            recentNotifications.innerHTML = '<div class="no-results"><p>' + t('admin.noNotifications') + '</p></div>';
             return;
         }
-        const audienceDisplay = { all: 'All users', players: 'Players', owners: 'Field owners', admins: 'Admins', private: 'Private' };
+        const audienceDisplay = {
+            all: t('admin.allUsers'),
+            players: t('admin.players'),
+            owners: t('admin.fieldOwners'),
+            admins: t('admin.admins'),
+            private: t('admin.private')
+        };
         list.forEach((n) => {
             const channels = Array.isArray(n.channels) ? n.channels : ['in-app'];
             const audName = audienceDisplay[n.audience] || n.audience;
@@ -231,14 +238,14 @@ async function loadRecentNotifications() {
                 </div>
                 <div class="notification-list-tags">
                     ${channels.map(c => `<span class="notification-tag">${escapeHtml(formatChannelLabel(c))}</span>`).join('')}
-                    ${n.audience === 'private' ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audName)}</span>`}
+                    ${n.audience === 'private' ? '<span class="notification-tag notification-tag-private">' + t('admin.private') + '</span>' : `<span class="notification-tag">${escapeHtml(audName)}</span>`}
                 </div>
             `;
             recentNotifications.appendChild(item);
         });
     } catch (err) {
         console.warn('Load recent notifications failed:', err);
-        recentNotifications.innerHTML = '<div class="no-results"><p>Failed to load notifications.</p></div>';
+        recentNotifications.innerHTML = '<div class="no-results"><p>' + t('admin.loadNotificationsFailed') + '</p></div>';
     }
 }
 if (document.readyState === 'loading') {
@@ -308,7 +315,7 @@ async function performUserSearch(searchTerm) {
         return;
     }
     
-    userDropdown.innerHTML = '<div class="user-dropdown-loading">Searching...</div>';
+    userDropdown.innerHTML = '<div class="user-dropdown-loading">' + t('common.searching') + '</div>';
     userDropdown.classList.add('active');
     
     let filteredUsers = [];
@@ -338,7 +345,7 @@ async function performUserSearch(searchTerm) {
     }
     
     if (filteredUsers.length === 0) {
-        userDropdown.innerHTML = '<div class="user-dropdown-empty">No users found</div>';
+        userDropdown.innerHTML = '<div class="user-dropdown-empty">' + t('admin.noUsersFound') + '</div>';
         userDropdown.classList.add('active');
         return;
     }
@@ -437,9 +444,9 @@ if (removeUserBtn) {
 // Format user role for display
 function formatUserRole(role) {
     const roleMap = {
-        'player': 'Player',
-        'field-owner': 'Field Owner',
-        'admin': 'Admin'
+        'player': t('admin.playerRole'),
+        'field-owner': t('admin.fieldOwnerRole'),
+        'admin': t('admin.adminRole')
     };
     return roleMap[role] || role;
 }
@@ -453,8 +460,8 @@ function normalizeChannelForApi(channel) {
 
 function formatChannelLabel(channel) {
     const normalized = normalizeChannelForApi(channel);
-    if (normalized === 'in-app') return 'In-app';
-    if (normalized === 'email') return 'Email';
+    if (normalized === 'in-app') return t('admin.inApp');
+    if (normalized === 'email') return t('common.email');
     return String(channel || '');
 }
 
@@ -475,17 +482,17 @@ if (sendNotificationBtn) {
         const selectedUser = selectedUserId ? selectedUserId.value : '';
         
         if (!title || !message) {
-            alert('Please fill in both title and message fields.');
+            alert(t('admin.fillTitleMessage'));
             return;
         }
         
         if (selectedChannels.length === 0) {
-            alert('Please select at least one channel.');
+            alert(t('admin.selectChannel'));
             return;
         }
         
         if (isPrivate && !selectedUser) {
-            alert('Please select a user for private notification.');
+            alert(t('admin.selectPrivateUser'));
             return;
         }
         
@@ -497,7 +504,7 @@ if (sendNotificationBtn) {
         
         const btn = sendNotificationBtn;
         btn.disabled = true;
-        btn.textContent = 'Sending...';
+        btn.textContent = t('common.sending');
         
         try {
             const payload = {
@@ -519,7 +526,7 @@ if (sendNotificationBtn) {
                 channels: selectedChannels,
                 isPrivate,
                 selectedUser: selectedUserData,
-                time: 'Just now'
+                time: t('common.justNow')
             };
                 addNotificationToList(notification);
             
@@ -551,10 +558,10 @@ if (sendNotificationBtn) {
             showNotificationSuccess();
         } catch (err) {
             console.error('Send notification error:', err);
-            alert(err.message || 'Failed to send notification. Please try again.');
+            alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('admin.sendFailed'));
         } finally {
             btn.disabled = false;
-            btn.textContent = 'Send now';
+            btn.textContent = t('admin.sendNow');
         }
     });
 }
@@ -592,15 +599,15 @@ function addNotificationToList(notification) {
     }
     
     const audienceDisplayName = {
-        'all-users': 'All users',
-        'players': 'Players',
-        'field-owners': 'Field owners',
-        'admins': 'Admins',
-        'private': 'Private'
+        'all-users': t('admin.allUsers'),
+        'players': t('admin.players'),
+        'field-owners': t('admin.fieldOwners'),
+        'admins': t('admin.admins'),
+        'private': t('admin.private')
     }[audienceDisplay] || audienceDisplay;
     
     const userInfo = notification.isPrivate && notification.selectedUser 
-        ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>`
+        ? `<span class="notification-tag notification-tag-user">${t('admin.toUser', { name: escapeHtml(notification.selectedUser.name) })}</span>`
         : '';
     
     notificationItem.innerHTML = `
@@ -611,7 +618,7 @@ function addNotificationToList(notification) {
         </div>
         <div class="notification-list-tags">
 ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
-                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">' + t('admin.private') + '</span>' : `<span class="notification-tag">${escapeHtml(audienceDisplayName)}</span>`}
                         ${notification.isPrivate && notification.selectedUser ? userInfo : ''}
         </div>
     `;
@@ -637,7 +644,7 @@ function escapeHtml(text) {
 function showNotificationSuccess() {
     const btn = sendNotificationBtn;
     const originalText = btn.textContent;
-    btn.textContent = 'Sent!';
+    btn.textContent = t('admin.sent');
     btn.style.background = '#007A55';
 
     // Show success toast
@@ -646,7 +653,7 @@ function showNotificationSuccess() {
     const toast = document.createElement('div');
     toast.id = 'successToast';
     toast.className = 'success-toast';
-    toast.innerHTML = '<i class="fi fi-rr-badge-check"></i><span>Notification sent successfully!</span>';
+    toast.innerHTML = '<i class="fi fi-rr-badge-check"></i><span>' + t('admin.notificationSent') + '</span>';
     document.body.appendChild(toast);
     setTimeout(() => {
         toast.style.opacity = '0';
@@ -676,7 +683,7 @@ if (inviteAdminBtn) {
         if (inviteAdminTempPassword) inviteAdminTempPassword.value = '';
         if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = '—';
         if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
-        if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+        if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = t('common.show');
         inviteAdminModal.classList.add('active');
         document.body.style.overflow = 'hidden';
         setTimeout(() => {
@@ -711,8 +718,8 @@ if (copyInviteAdminPasswordBtn) {
         try {
             if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(pwd);
-                copyInviteAdminPasswordBtn.textContent = 'Copied';
-                setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+                copyInviteAdminPasswordBtn.textContent = t('common.copiedShort');
+                setTimeout(() => (copyInviteAdminPasswordBtn.textContent = t('common.copy')), 1200);
             }
         } catch (_) {
             // fallback: select text for manual copy
@@ -728,8 +735,8 @@ if (toggleInviteAdminPasswordBtn && inviteAdminTempPassword) {
     toggleInviteAdminPasswordBtn.addEventListener('click', () => {
         const isHidden = inviteAdminTempPassword.type === 'password';
         inviteAdminTempPassword.type = isHidden ? 'text' : 'password';
-        toggleInviteAdminPasswordBtn.textContent = isHidden ? 'Hide' : 'Show';
-        toggleInviteAdminPasswordBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        toggleInviteAdminPasswordBtn.textContent = isHidden ? t('common.hide') : t('common.show');
+        toggleInviteAdminPasswordBtn.setAttribute('aria-label', isHidden ? t('accessibility.hidePassword') : t('accessibility.showPassword'));
     });
 }
 
@@ -745,14 +752,14 @@ if (inviteAdminForm) {
 
         if (!email || !email.includes('@')) {
             if (inviteAdminError) {
-                inviteAdminError.textContent = 'Please enter a valid email address.';
+                inviteAdminError.textContent = t('admin.invalidEmail');
                 inviteAdminError.style.display = 'block';
             }
             return;
         }
         if (!API?.admin?.inviteAdmin) {
             if (inviteAdminError) {
-                inviteAdminError.textContent = 'API not available. Make sure you opened this page from the backend server.';
+                inviteAdminError.textContent = t('admin.apiFromServer');
                 inviteAdminError.style.display = 'block';
             }
             return;
@@ -760,7 +767,7 @@ if (inviteAdminForm) {
 
         if (submitInviteAdminBtn) {
             submitInviteAdminBtn.disabled = true;
-            submitInviteAdminBtn.textContent = 'Creating...';
+            submitInviteAdminBtn.textContent = t('common.creating');
         }
 
         try {
@@ -771,7 +778,7 @@ if (inviteAdminForm) {
             if (inviteAdminCreatedEmail) inviteAdminCreatedEmail.textContent = createdEmail;
             if (inviteAdminTempPassword) inviteAdminTempPassword.value = pwd;
             if (inviteAdminTempPassword) inviteAdminTempPassword.type = 'password';
-            if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = 'Show';
+            if (toggleInviteAdminPasswordBtn) toggleInviteAdminPasswordBtn.textContent = t('common.show');
 
             if (inviteAdminForm) inviteAdminForm.style.display = 'none';
             if (inviteAdminResult) inviteAdminResult.style.display = 'block';
@@ -781,20 +788,20 @@ if (inviteAdminForm) {
                 try {
                     await navigator.clipboard.writeText(pwd);
                     if (copyInviteAdminPasswordBtn) {
-                        copyInviteAdminPasswordBtn.textContent = 'Copied';
-                        setTimeout(() => (copyInviteAdminPasswordBtn.textContent = 'Copy'), 1200);
+                        copyInviteAdminPasswordBtn.textContent = t('common.copiedShort');
+                        setTimeout(() => (copyInviteAdminPasswordBtn.textContent = t('common.copy')), 1200);
                     }
                 } catch (_) {}
             }
         } catch (err) {
             if (inviteAdminError) {
-                inviteAdminError.textContent = (err && err.message) ? err.message : 'Failed to create admin.';
+                inviteAdminError.textContent = (window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('admin.createAdminFailed');
                 inviteAdminError.style.display = 'block';
             }
         } finally {
             if (submitInviteAdminBtn) {
                 submitInviteAdminBtn.disabled = false;
-                submitInviteAdminBtn.textContent = 'Create admin';
+                submitInviteAdminBtn.textContent = t('admin.createAdmin');
             }
         }
     });
@@ -810,25 +817,25 @@ function formatTimeAgo(date) {
     const days = Math.floor(hours / 24);
     
     if (days > 0) {
-        return days === 1 ? 'Yesterday' : `${days} days ago`;
+        return days === 1 ? t('common.yesterday') : t('common.daysAgo', { count: days });
     } else if (hours > 0) {
-        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        return hours === 1 ? t('common.hourAgo') : t('common.hoursAgo', { count: hours });
     } else if (minutes > 0) {
-        return `${minutes} min ago`;
+        return t('common.minAgo', { count: minutes });
     } else {
-        return 'Just now';
+        return t('common.justNow');
     }
 }
 
 function getGreetingForHour(hour) {
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return t('owner.goodMorning');
+    if (hour < 18) return t('owner.goodAfternoon');
+    return t('owner.goodEvening');
 }
 
 function getDisplayNameFromUser(user) {
     const full = (user && (user.fullName || user.name)) ? String(user.fullName || user.name).trim() : '';
-    if (!full) return 'Admin';
+    if (!full) return t('admin.adminRole');
     // Use first name for compact header greeting
     return full.split(/\s+/)[0] || full;
 }
@@ -1009,7 +1016,7 @@ function renderAllNotifications(filteredNotifications = null) {
         allNotificationsList.innerHTML = `
             <div class="no-results">
                 <i class="fi fi-rr-search-alt"></i>
-                <p>No notifications sent yet.</p>
+                <p>' + t('admin.noNotifications') + '</p>
             </div>
         `;
         return;
@@ -1026,9 +1033,9 @@ function renderAllNotifications(filteredNotifications = null) {
                     </div>
                     <div class="notification-list-tags">
                         ${notification.channels.map(channel => `<span class="notification-tag">${escapeHtml(formatChannelLabel(channel))}</span>`).join('')}
-                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">Private</span>' : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
+                        ${notification.isPrivate ? '<span class="notification-tag notification-tag-private">' + t('admin.private') + '</span>' : `<span class="notification-tag">${escapeHtml(formatAudienceName(notification.audience))}</span>`}
                         ${notification.isPrivate && notification.selectedUser 
-                            ? `<span class="notification-tag notification-tag-user">To: ${escapeHtml(notification.selectedUser.name)}</span>` : ''}
+                            ? `<span class="notification-tag notification-tag-user">${t('admin.toUser', { name: escapeHtml(notification.selectedUser.name) })}</span>` : ''}
                     </div>
                 </div>
             `).join('')}
@@ -1039,12 +1046,12 @@ function renderAllNotifications(filteredNotifications = null) {
 // Format audience name for display
 function formatAudienceName(audience) {
     const audienceMap = {
-        'all-users': 'All users',
-        'players': 'Players',
-        'field-owners': 'Field owners',
-        'admins': 'Admins',
-        'all': 'All users',
-        'private': 'Private'
+        'all-users': t('admin.allUsers'),
+        'players': t('admin.players'),
+        'field-owners': t('admin.fieldOwners'),
+        'admins': t('admin.admins'),
+        'all': t('admin.allUsers'),
+        'private': t('admin.private')
     };
     return audienceMap[audience] || audience;
 }

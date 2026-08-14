@@ -308,8 +308,8 @@ function getPlayerCoordsForDistance() {
 }
 
 function formatDistanceFromKm(km) {
-  if (!Number.isFinite(km)) return 'N/A';
-  return km.toFixed(1) + ' km';
+  if (!Number.isFinite(km)) return t('common.na');
+  return t('player.distanceKm', { km: km.toFixed(1) });
 }
 
 function applyDistanceToVenue(venue, field) {
@@ -322,7 +322,7 @@ function applyDistanceToVenue(venue, field) {
   var flat = field.latitude != null ? Number(field.latitude) : null;
   var flng = field.longitude != null ? Number(field.longitude) : null;
   if (!Number.isFinite(flat) || !Number.isFinite(flng)) {
-    venue.distance = 'N/A';
+    venue.distance = t('common.na');
     return Promise.resolve(venue);
   }
   return getPlayerCoordsForDistance().then(function(coords) {
@@ -361,14 +361,14 @@ function loadFieldFromAPI(fieldId) {
     var reviewCount = field.reviewCount != null ? field.reviewCount : (field._count && field._count.reviews) || 0;
     return {
       id: field.id,
-      name: field.name || 'Field',
-      sport: field.sport || 'Sport',
+      name: field.name || t('booking.fieldColon').replace(':', ''),
+      sport: field.sport || '',
       image: img,
       images: images,
       rating: field.rating != null ? field.rating : 0,
       reviews: reviewCount,
       location: field.location || '',
-      distance: 'N/A',
+      distance: t('common.na'),
       type: (field.type || 'OUTDOOR').toLowerCase(),
       price: field.pricePerHour != null ? field.pricePerHour : 0,
       isFavorite: false,
@@ -428,7 +428,7 @@ function toggleFavorite(venueId) {
     saveBtn.disabled = !!isLoading;
     saveBtn.classList.toggle('is-loading', !!isLoading);
     const textEl = saveBtn.querySelector('span');
-    if (textEl && isLoading) textEl.textContent = 'Saving...';
+    if (textEl && isLoading) textEl.textContent = t('common.saving');
   }
 
   if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken()) {
@@ -464,7 +464,7 @@ function toggleFavorite(venueId) {
         updateSaveButton(false);
         return;
       }
-      alert(err.message || 'Failed to update favorite.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('player.favoriteFailed'));
     }).finally(function() {
       setSaveLoading(false);
       updateSaveButton(venue.isFavorite);
@@ -508,9 +508,9 @@ function renderFieldInfo(venue) {
   if (!venue) {
       document.getElementById('fieldInfoContent').innerHTML = `
           <div class="error-state">
-              <h2>Field not found</h2>
-              <p>The field you're looking for doesn't exist.</p>
-              <a href="../player/home.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">Back to Home</a>
+              <h2>${t('player.fieldNotFound')}</h2>
+              <p>${t('player.fieldMissing')}</p>
+              <a href="../player/home.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">${t('player.backToHome')}</a>
           </div>
       `;
       return;
@@ -518,12 +518,12 @@ function renderFieldInfo(venue) {
 
   // Create field feature tags for display under image
   var typeRaw = venue.type ? String(venue.type) : 'outdoor';
-  var typeLabel = typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1).toLowerCase();
+  var typeLabel = (window.MatchFieldI18n && MatchFieldI18n.sportLabel(typeRaw)) || typeRaw;
   var fieldFeatureTags = [
     typeLabel,
-    venue.sport || 'Sport',
-    'Synthetic',
-    'Available today'
+    (window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || t('sports.other'),
+    t('player.synthetic'),
+    t('player.availableToday')
   ];
   var matchTag = matchFormatLabelFromCapacity(venue.capacity);
   if (matchTag) {
@@ -547,11 +547,11 @@ function renderFieldInfo(venue) {
   // Get images array or use single image (ensure at least one for gallery)
   const images = (venue.images && venue.images.length) ? venue.images : (venue.image ? [venue.image] : ['https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=600&fit=crop']);
   const imagesHTML = images.map((img, index) => `
-      <img src="${safeUrlAttr(img)}" alt="${escapeHtml(venue.name || 'Field')} - Image ${index + 1}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent(venue.sport || 'Sport')}%3C/text%3E%3C/svg%3E'">
+      <img src="${safeUrlAttr(img)}" alt="${escapeHtml(venue.name || t('booking.fieldColon').replace(':', ''))} - ${t('player.imageN', { n: index + 1 })}" class="field-main-image ${index === 0 ? 'active' : ''}" data-index="${index}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'800\\' height=\\'600\\'%3E%3Crect fill=\\'%23f3f4f6\\' width=\\'800\\' height=\\'600\\'/%3E%3Ctext fill=\\'%236b7280\\' font-family=\\'sans-serif\\' font-size=\\'24\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\' dominant-baseline=\\'middle\\'%3E${encodeURIComponent((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || t('sports.other'))}%3C/text%3E%3C/svg%3E'">
   `).join('');
 
   const ownerAvatar = venue.owner && venue.owner.avatar
-    ? '<img src="' + safeUrlAttr(venue.owner.avatar) + '" alt="' + escapeHtml((venue.owner && venue.owner.fullName) || 'Venue Manager') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+    ? '<img src="' + safeUrlAttr(venue.owner.avatar) + '" alt="' + escapeHtml((venue.owner && venue.owner.fullName) || t('player.venueManager')) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
     : escapeHtml(venue.owner && venue.owner.fullName ? venue.owner.fullName.charAt(0).toUpperCase() : 'N');
   const html = `
       <!-- Field Title and Metadata -->
@@ -561,11 +561,11 @@ function renderFieldInfo(venue) {
               <div class="field-actions-top">
                   <button class="action-btn share-btn" onclick="handleShare()">
                       <i class="fi fi-rr-share"></i>
-                      <span>Share</span>
+                      <span>${t('player.share')}</span>
                   </button>
                   <button class="action-btn save-btn" id="saveBtn">
                       <i class="fi fi-rr-heart"></i>
-                      <span>Save</span>
+                      <span>${t('common.save')}</span>
                   </button>
               </div>
           </div>
@@ -578,7 +578,7 @@ function renderFieldInfo(venue) {
               <span class="field-star-yellow">★</span>
               <span>${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)})</span>
               <span class="field-meta-separator">•</span>
-              <span>${escapeHtml(venue.sport)}</span>
+              <span>${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}</span>
           </div>
       </div>
 
@@ -606,20 +606,20 @@ function renderFieldInfo(venue) {
           <!-- Booking Card -->
           <div class="field-booking-card">
               <div class="booking-price-section">
-                  <div class="booking-price">${escapeHtml(mfMoney(venue.price))}<span class="booking-price-unit">/h</span></div>
-                  <div class="booking-price-note">Per hour • Taxes included</div>
+                  <div class="booking-price">${escapeHtml(mfMoney(venue.price))}<span class="booking-price-unit">${t('common.perHour')}</span></div>
+                  <div class="booking-price-note">${t('player.perHourTaxes')}</div>
               </div>
               
               <div class="booking-location-section">
-                  <h3 class="booking-section-title">Location</h3>
-                  <p class="booking-location-text">${escapeHtml(venue.location)} • Approx. ${escapeHtml(venue.distance)} from your current location.</p>
+                  <h3 class="booking-section-title">${t('common.location')}</h3>
+                  <p class="booking-location-text">${escapeHtml(venue.location)} • ${escapeHtml(t('player.approxDistance', { distance: venue.distance }))}</p>
                   <div class="booking-map-placeholder" id="bookingFieldMap"></div>
               </div>
 
-              <button class="booking-btn" onclick="handleBooking('${String(venue.id).replace(/'/g, "\\'")}')">Book now</button>
+              <button class="booking-btn" onclick="handleBooking('${String(venue.id).replace(/'/g, "\\'")}')">${t('player.bookNow')}</button>
               
               <div class="booking-cancellation">
-                  Free cancellation up to 12 hours before your booking.
+                  ${t('player.freeCancellation')}
               </div>
           </div>
       </div>
@@ -631,14 +631,14 @@ function renderFieldInfo(venue) {
               <!-- Description -->
               <div class="field-description-section">
                   <h2 class="section-title">${escapeHtml(venue.name)}</h2>
-                  <p class="field-description">${escapeHtml(venue.description || 'A premium sports facility with excellent amenities and professional-grade equipment.')}</p>
+                  <p class="field-description">${escapeHtml(venue.description || t('player.defaultDescription'))}</p>
               </div>
 
               <!-- Amenities -->
               <div class="field-amenities-section">
-                  <h3 class="section-title">Amenities</h3>
+                  <h3 class="section-title">${t('player.amenities')}</h3>
                   <div class="amenities-grid" id="amenitiesGrid">
-                      ${(venue.features && venue.features.length ? venue.features : ['Flood lights', 'Showers', 'Team benches', 'Changing rooms', 'Parking', 'Wi-Fi']).map(function(f) {
+                      ${(venue.features && venue.features.length ? venue.features : [t('player.amenityFloodLights'), t('player.amenityShowers'), t('player.amenityTeamBenches'), t('player.amenityChangingRooms'), t('player.amenityParking'), t('player.amenityWifi')]).map(function(f) {
                         var label = typeof f === 'string' ? f : (f.name || f);
                         return '<div class="amenity-item"><i class="fi fi-rr-check amenity-icon"></i><span>' + escapeHtml(label) + '</span></div>';
                       }).join('')}
@@ -648,14 +648,14 @@ function renderFieldInfo(venue) {
               <!-- Reviews -->
               <div class="field-reviews-section">
                   <div class="reviews-header-section">
-                      <h3 class="section-title">Reviews</h3>
+                      <h3 class="section-title">${t('player.reviews')}</h3>
                       <div class="reviews-summary-toggle">
                           <div class="reviews-summary">
                               <span class="field-star-yellow">★</span>
-                              <span><span id="reviewsSummaryRating">${escapeHtml(venue.rating)}</span> • <span id="reviewsSummaryCount">${escapeHtml(venue.reviews)} total reviews</span></span>
+                              <span><span id="reviewsSummaryRating">${escapeHtml(venue.rating)}</span> • <span id="reviewsSummaryCount">${escapeHtml(t('player.totalReviews', { count: venue.reviews }))}</span></span>
                           </div>
                           <button class="toggle-reviews-btn" id="toggleReviewsBtn" onclick="toggleReviews()">
-                              <span class="toggle-text">View reviews</span>
+                              <span class="toggle-text">${t('player.viewReviews')}</span>
                               <i class="fi fi-rr-angle-down toggle-icon"></i>
                           </button>
                       </div>
@@ -663,9 +663,9 @@ function renderFieldInfo(venue) {
                   
                   <!-- Add Review Form -->
                   <div class="add-review-form">
-                      <h4 class="add-review-title">Write a review</h4>
+                      <h4 class="add-review-title">${t('player.writeReview')}</h4>
                       <div class="review-rating-input">
-                          <label>Rating:</label>
+                          <label>${t('player.ratingLabel')}</label>
                           <div class="star-rating" id="starRating">
                               <span class="star-input" data-rating="1">★</span>
                               <span class="star-input" data-rating="2">★</span>
@@ -678,10 +678,10 @@ function renderFieldInfo(venue) {
                       <textarea 
                           class="review-textarea" 
                           id="reviewTextarea" 
-                          placeholder="Share your experience..."
+                          placeholder="${t('player.shareExperience')}"
                           rows="4"
                       ></textarea>
-                      <button class="submit-review-btn" onclick="submitReview('${String(venue.id).replace(/'/g, "\\'")}')">Submit Review</button>
+                      <button class="submit-review-btn" onclick="submitReview('${String(venue.id).replace(/'/g, "\\'")}')">${t('player.submitReview')}</button>
                   </div>
 
                   <div class="reviews-list" id="reviewsList" style="display: none;">
@@ -722,12 +722,12 @@ function renderFieldInfo(venue) {
           <!-- Right Column - Venue Contact -->
           <div class="field-content-right">
               <div class="venue-contact-card">
-                  <h3 class="venue-contact-title">Venue contact</h3>
+                  <h3 class="venue-contact-title">${t('player.venueContact')}</h3>
                   <div class="venue-contact-info">
                       <div class="venue-avatar">${ownerAvatar}</div>
                       <div class="venue-details">
-                          <div class="venue-name">${escapeHtml((venue.owner && venue.owner.fullName) || 'Venue Manager')}</div>
-                          <div class="venue-response">${escapeHtml(venue.venueResponse ? venue.venueResponse : 'Responds within a few hours')}</div>
+                          <div class="venue-name">${escapeHtml((venue.owner && venue.owner.fullName) || t('player.venueManager'))}</div>
+                          <div class="venue-response">${escapeHtml(venue.venueResponse ? venue.venueResponse : t('player.respondsHours'))}</div>
                       </div>
                   </div>
               </div>
@@ -765,12 +765,12 @@ function renderBookingLocationMap(venue) {
   const lat = Number(venue && venue.latitude);
   const lng = Number(venue && venue.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || typeof MapService === 'undefined') {
-    mapEl.innerHTML = '<span class="booking-map-empty">Location not available for this field.</span>';
+    mapEl.innerHTML = '<span class="booking-map-empty">' + t('player.locationUnavailable') + '</span>';
     return;
   }
   const map = MapService.init('bookingFieldMap', { center: [lat, lng], zoom: 15 });
   if (!map) {
-    mapEl.innerHTML = '<span class="booking-map-empty">Unable to load map.</span>';
+    mapEl.innerHTML = '<span class="booking-map-empty">' + t('player.unableLoadMap') + '</span>';
     return;
   }
   MapService.clearMarkers();
@@ -794,10 +794,10 @@ function updateSaveButton(isFavorite) {
       saveBtn.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
       if (isFavorite) {
           saveBtn.classList.add('active');
-          if (textEl) textEl.textContent = 'Saved';
+          if (textEl) textEl.textContent = t('player.saved');
       } else {
           saveBtn.classList.remove('active');
-          if (textEl) textEl.textContent = 'Save';
+          if (textEl) textEl.textContent = t('common.save');
       }
   }
 }
@@ -806,15 +806,15 @@ function updateSaveButton(isFavorite) {
 function handleShare() {
   if (navigator.share) {
       navigator.share({
-          title: document.querySelector('.field-title')?.textContent || 'Field Details',
+          title: document.querySelector('.field-title')?.textContent || t('booking.fieldDetails'),
           url: window.location.href
       }).catch(console.error);
   } else {
       // Fallback: copy to clipboard
       navigator.clipboard.writeText(window.location.href).then(() => {
-          alert('Link copied to clipboard!');
+          alert(t('common.copied'));
       }).catch(() => {
-          alert('Share feature not available. Please copy the URL manually.');
+          alert(t('player.shareManual'));
       });
   }
 }
@@ -828,12 +828,12 @@ function handleBooking(venueId) {
           openBookingModal(venue);
       } else {
           // Fallback if function not loaded yet
-          alert('Loading booking system...');
+          alert(t('booking.loadingSystem'));
           setTimeout(() => {
               if (typeof openBookingModal === 'function') {
                   openBookingModal(venue);
               } else {
-                  alert(`Booking ${venue.name}...\n\nPlease refresh the page and try again.`);
+                  alert(t('player.bookingRetry', { name: venue.name }));
               }
           }, 500);
       }
@@ -867,24 +867,26 @@ function formatReviewDate(dateValue) {
   if (!dateValue) return '';
   var date = new Date(dateValue);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatInTimezone)
+    ? MatchFieldPrefs.formatInTimezone(date, { year: 'numeric', month: 'short', day: 'numeric', hour: undefined, minute: undefined })
+    : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function normalizeReviewItem(r) {
   if (!r) return null;
-  var name = (r.reviewerName || (r.user && r.user.fullName) || 'Anonymous').trim();
+  var name = (r.reviewerName || (r.user && r.user.fullName) || t('player.anonymous')).trim();
   var ratingNum = parseInt(r.rating, 10);
   if (!Number.isFinite(ratingNum) || ratingNum < 1) ratingNum = 1;
   if (ratingNum > 5) ratingNum = 5;
   return {
     id: String(r.id || r._id || ('local_' + Date.now() + '_' + Math.random())),
     userId: r.userId ? String(r.userId) : (r.user && r.user.id ? String(r.user.id) : ''),
-    reviewerName: name || 'Anonymous',
+    reviewerName: name || t('player.anonymous'),
     reviewerInitial: (r.reviewerInitial || name.charAt(0) || '?').toUpperCase(),
     reviewerAvatar: (r.reviewerAvatar || (r.user && r.user.avatar) || '').trim(),
     reviewText: String(r.reviewText || '').trim(),
     rating: ratingNum,
-    context: String(r.context || 'Player'),
+    context: String(r.context || t('player.recentBooking')),
     createdAt: r.createdAt || r.date || null,
     dateLabel: formatReviewDate(r.createdAt || r.date)
   };
@@ -923,13 +925,13 @@ function updateReviewsSummaryUI(reviewsToShow, fallbackRating) {
   if (!summaryRatingEl || !summaryCountEl) return;
   if (!reviewsToShow || !reviewsToShow.length) {
     summaryRatingEl.textContent = Number(fallbackRating || 0).toFixed(1);
-    summaryCountEl.textContent = '0 total reviews';
+    summaryCountEl.textContent = t('player.totalReviews', { count: 0 });
     return;
   }
   var sum = reviewsToShow.reduce(function(acc, r) { return acc + (r.rating || 0); }, 0);
   var avg = sum / reviewsToShow.length;
   summaryRatingEl.textContent = avg.toFixed(1);
-  summaryCountEl.textContent = reviewsToShow.length + ' total reviews';
+  summaryCountEl.textContent = t('player.totalReviews', { count: reviewsToShow.length });
 }
 
 function renderReviewsState(message, stateClass) {
@@ -957,14 +959,14 @@ function submitReview(venueId) {
   const rating = parseInt(ratingValue.textContent, 10);
 
   if (rating === 0) {
-      alert('Please select a rating before submitting.');
+      alert(t('player.selectRating'));
       return;
   }
   const submitBtn = document.querySelector('.submit-review-btn');
   function setSubmitLoading(loading) {
     if (!submitBtn) return;
     submitBtn.disabled = !!loading;
-    submitBtn.textContent = loading ? 'Submitting...' : 'Submit Review';
+    submitBtn.textContent = loading ? t('player.submittingReview') : t('player.submitReview');
   }
 
   function doLocalSubmit() {
@@ -976,7 +978,7 @@ function submitReview(venueId) {
       reviewText: reviewText,
       rating: rating,
       date: new Date().toISOString(),
-      context: 'Recent booking'
+      context: t('player.recentBooking')
     };
     reviews.unshift(newReview);
     saveReviews(venueId, reviews);
@@ -987,7 +989,7 @@ function submitReview(venueId) {
       window.dispatchEvent(new CustomEvent('matchfield:reviews-updated', { detail: { fieldId: String(venueId) } }));
     } catch (_) {}
     displayReviews(venueId, null);
-    alert('Thank you for your review!');
+    alert(t('player.reviewThanks'));
   }
 
   if (typeof API !== 'undefined' && API.getAuthToken && API.getAuthToken() && API.reviews && API.reviews.create) {
@@ -996,7 +998,7 @@ function submitReview(venueId) {
       fieldId: venueId,
       rating: rating,
       reviewText: reviewText,
-      context: 'Recent booking'
+      context: t('player.recentBooking')
     }).then(function(res) {
       if (res && res.review) {
         var localReviews = loadReviews(venueId).filter(function(r) {
@@ -1012,9 +1014,9 @@ function submitReview(venueId) {
         window.dispatchEvent(new CustomEvent('matchfield:reviews-updated', { detail: { fieldId: String(venueId) } }));
       } catch (_) {}
       displayReviews(venueId, null);
-      alert('Thank you for your review!');
+      alert(t('player.reviewThanks'));
     }).catch(function(err) {
-      alert(err.message || 'Failed to submit review.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('player.reviewFailed'));
     }).finally(function() {
       setSubmitLoading(false);
     });
@@ -1044,9 +1046,9 @@ function displayReviews(venueId, preloadedApiReviews) {
           var rev = normalizeReviewItem(r);
           if (!rev) return '';
           var avatarHtml = rev.reviewerAvatar && safeUrlAttr(rev.reviewerAvatar)
-            ? ('<img src="' + safeUrlAttr(rev.reviewerAvatar) + '" alt="' + escapeHtml(rev.reviewerName || 'User') + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">')
+            ? ('<img src="' + safeUrlAttr(rev.reviewerAvatar) + '" alt="' + escapeHtml(rev.reviewerName || t('common.user')) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">')
             : escapeHtml(rev.reviewerInitial || '?');
-          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + avatarHtml + '</div><div><div class="reviewer-name">' + escapeHtml(rev.reviewerName || 'Anonymous') + '</div><div class="review-context">' + escapeHtml((rev.context || '') + (rev.dateLabel ? ' · ' + rev.dateLabel : '')) + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div>' + (rev.reviewText ? ('<div class="review-text">' + escapeHtml(rev.reviewText) + '</div>') : '') + '</div>';
+          return '<div class="review-card"><div class="review-header"><div class="reviewer-info"><div class="reviewer-avatar-small">' + avatarHtml + '</div><div><div class="reviewer-name">' + escapeHtml(rev.reviewerName || t('player.anonymous')) + '</div><div class="review-context">' + escapeHtml((rev.context || '') + (rev.dateLabel ? ' · ' + rev.dateLabel : '')) + '</div></div></div><div class="review-rating-display"><span class="star-filled">' + ('★'.repeat(rev.rating || 0)) + ('☆'.repeat(5 - (rev.rating || 0))) + '</span></div></div>' + (rev.reviewText ? ('<div class="review-text">' + escapeHtml(rev.reviewText) + '</div>') : '') + '</div>';
         }).join('')
       : emptyMsg;
     updateReviewsSummaryUI(reviewsToShow, fallbackRating);
@@ -1058,7 +1060,7 @@ function displayReviews(venueId, preloadedApiReviews) {
   var cached = reviewsByFieldCache[String(venueId)] || [];
   var combined = mergeReviewsByKey(preloadedReviews, mergeReviewsByKey(localReviews, cached));
   if (combined.length) render(combined);
-  else renderReviewsState('Loading reviews...', 'loading-state');
+  else renderReviewsState(t('player.loadingReviews'), 'loading-state');
 
   if (typeof API !== 'undefined' && API.reviews && API.reviews.getByField) {
     API.reviews.getByField(venueId, { limit: 20 }).then(function(res) {
@@ -1073,7 +1075,7 @@ function displayReviews(venueId, preloadedApiReviews) {
         render(fallback);
         return;
       }
-      renderReviewsState('Unable to load reviews right now. Please try again.', 'error-state');
+      renderReviewsState(t('player.unableReviewsNow'), 'error-state');
       updateReviewsSummaryUI([], fallbackRating);
     });
     return;
@@ -1242,12 +1244,12 @@ function toggleReviews() {
   
   if (reviewsList.style.display === 'none' || !reviewsList.style.display) {
       reviewsList.style.display = 'flex';
-      toggleText.textContent = 'Hide reviews';
+      toggleText.textContent = t('player.hideReviews');
       toggleIcon.classList.remove('fi-rr-angle-down');
       toggleIcon.classList.add('fi-rr-angle-up');
   } else {
       reviewsList.style.display = 'none';
-      toggleText.textContent = 'View reviews';
+      toggleText.textContent = t('player.viewReviews');
       toggleIcon.classList.remove('fi-rr-angle-up');
       toggleIcon.classList.add('fi-rr-angle-down');
   }
@@ -1285,9 +1287,9 @@ function setupNotificationPopup() {}
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
   function showError(msg, title) {
-    title = title || 'Error';
+    title = title || t('common.error');
     var el = document.getElementById('fieldInfoContent');
-    if (el) el.innerHTML = '<div class="error-state"><h2>' + title + '</h2><p>' + (msg || 'An error occurred.') + '</p><a href="home.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">Back to Home</a></div>';
+    if (el) el.innerHTML = '<div class="error-state"><h2>' + title + '</h2><p>' + (msg || t('common.tryAgain')) + '</p><a href="home.html" class="back-btn" style="display: inline-flex; margin-top: 20px;">' + t('player.backToHome') + '</a></div>';
   }
   try {
     loadFavoritesFromStorage();
@@ -1295,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupNotificationPopup();
     var venueId = getVenueIdFromURL();
     if (!venueId) {
-      showError('Please select a field from the home page.', 'Invalid field ID');
+      showError(t('player.selectFromHome'), t('player.invalidFieldId'));
       return;
     }
     loadFieldFromAPI(venueId).then(function(venue) {
@@ -1312,11 +1314,11 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading field:', err);
       var venue = findVenueById(venueId);
       if (venue) renderFieldInfo(venue);
-      else showError('The field could not be loaded.', 'Error loading field');
+      else showError(t('player.couldNotLoad'), t('player.errorLoadingField'));
     });
   } catch (error) {
     console.error('Error loading field info:', error);
-    showError('An error occurred while loading the field details.', 'Error loading field information');
+    showError(t('player.errorLoadingDetails'), t('player.errorLoadingInfo'));
   }
 });
 

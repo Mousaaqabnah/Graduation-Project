@@ -103,8 +103,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function setNotificationDotVisible(show) {
     badgeEl.classList.toggle('notification-unread-badge--on', !!show);
-    const base = 'Notifications';
-    if (show) notificationBtn.setAttribute('aria-label', base + ', unread');
+    const base = t('accessibility.notifications');
+    if (show) notificationBtn.setAttribute('aria-label', t('player.notificationsUnread'));
     else notificationBtn.setAttribute('aria-label', base);
   }
 
@@ -182,8 +182,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'clear-all-notifications-btn';
-    clearBtn.textContent = 'Clear All';
-    clearBtn.title = 'Clear all notifications';
+    clearBtn.textContent = t('player.clearAll');
+    clearBtn.setAttribute('data-i18n', 'player.clearAll');
+    clearBtn.title = t('player.clearAll');
     clearBtn.style.cssText = 'padding: 6px 12px; font-size: 13px; color: #007BFF; background: transparent; border: 1px solid #007BFF; border-radius: 8px; cursor: pointer; font-weight: 500;';
     clearBtn.onmouseover = function () { this.style.background = '#EFF6FF'; };
     clearBtn.onmouseout = function () { this.style.background = 'transparent'; };
@@ -219,10 +220,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const mins = Math.floor(diff / 60000);
     const hours = Math.floor(mins / 60);
     const days = Math.floor(hours / 24);
-    if (days > 0) return days === 1 ? 'Yesterday' : days + ' days ago';
-    if (hours > 0) return hours + ' hour' + (hours > 1 ? 's' : '') + ' ago';
-    if (mins > 0) return mins + ' min ago';
-    return 'Just now';
+    if (days > 0) return days === 1 ? t('common.yesterday') : t('common.daysAgo', { count: days });
+    if (hours > 0) return hours === 1 ? t('common.hourAgo') : t('common.hoursAgo', { count: hours });
+    if (mins > 0) return t('common.minutesAgo', { count: mins });
+    return t('common.justNow');
   }
 
   let detailModal = document.getElementById('notificationDetailModal');
@@ -233,7 +234,7 @@ document.addEventListener('DOMContentLoaded', function () {
     detailModal.innerHTML = `
       <div class="notification-detail-backdrop"></div>
       <div class="notification-detail-content">
-        <button type="button" class="notification-detail-close" aria-label="Close">&times;</button>
+        <button type="button" class="notification-detail-close" aria-label="${t('common.close')}">&times;</button>
         <h3 class="notification-detail-title"></h3>
         <p class="notification-detail-message"></p>
         <div class="notification-detail-actions"></div>
@@ -373,14 +374,14 @@ document.addEventListener('DOMContentLoaded', function () {
   async function addReplacementPlayer(notification, user, button) {
     const booking = await loadBookingForNotification(notification);
     if (!booking) {
-      alert('Booking not found. Please refresh and try again.');
+      alert(t('player.bookingNotFound'));
       return;
     }
     const bookingId = getBookingIdValue(booking) || getNotificationBookingId(notification);
     const amount = getLeftPlayerShare(notification, booking);
     if (button) {
       button.disabled = true;
-      button.textContent = 'Adding...';
+      button.textContent = t('common.loading');
     }
     try {
       if (window.API && API.bookings && API.bookings.addParticipant && API.getAuthToken && API.getAuthToken()) {
@@ -388,15 +389,15 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       createReplacementPaymentNotification(booking, notification, user, amount);
       removeLocalNotificationById(notification.id);
-      alert((user.fullName || user.name || 'Player') + ' was added and sent a payment request.');
+      alert(t('player.playerAdded', { name: user.fullName || user.name || t('auth.player') }));
       detailModal.classList.remove('active');
       await loadNotifications();
       if (typeof window.matchfieldRefreshNotificationBadge === 'function') window.matchfieldRefreshNotificationBadge();
     } catch (e) {
-      alert((e && e.message) || 'Could not add this player.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('player.couldNotAdd'));
       if (button) {
         button.disabled = false;
-        button.textContent = 'Add';
+        button.textContent = t('common.add');
       }
     }
   }
@@ -404,13 +405,13 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderPlayerSearchResults(container, notification, users) {
     if (!container) return;
     if (!users || !users.length) {
-      container.innerHTML = '<p class="notification-action-note">No players found.</p>';
+      container.innerHTML = '<p class="notification-action-note">' + t('player.noPlayersShort') + '</p>';
       return;
     }
     container.innerHTML = users.map((u, index) => {
       return '<div class="notification-player-result" data-index="' + index + '">' +
         '<span>' + escapeHtml(u.fullName || u.email || 'Player') + '</span>' +
-        '<button type="button">Add</button>' +
+        '<button type="button">' + t('common.add') + '</button>' +
         '</div>';
     }).join('');
     container.querySelectorAll('.notification-player-result button').forEach((btn) => {
@@ -429,15 +430,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const amountText = Number(notification.paymentAmount) > 0 ? ' (' + mfMoney(Number(notification.paymentAmount)) + ')' : '';
     return `
       <button type="button" class="notification-action-btn primary" data-notification-action="add-player">
-        Add Another Player
+        ${escapeHtml(t('player.addAnother'))}
       </button>
       <button type="button" class="notification-action-btn secondary" data-notification-action="cover-share">
-        Pay Missing Player Share${amountText}
+        ${escapeHtml(t('player.payMissingShare'))}${amountText}
       </button>
       <div class="notification-add-player-box">
-        <input type="text" class="notification-add-player-input" placeholder="Search player by name or email">
+        <input type="text" class="notification-add-player-input" placeholder="${escapeHtml(t('player.searchPlayerPlaceholder'))}">
         <div class="notification-player-results"></div>
-        <p class="notification-action-note">The selected player will be added to this booking and receive a payment request.</p>
+        <p class="notification-action-note">${escapeHtml(t('player.selectedPlayerNote'))}</p>
       </div>
     `;
   }
@@ -459,7 +460,7 @@ document.addEventListener('DOMContentLoaded', function () {
       input.addEventListener('input', async function () {
         const q = input.value.trim();
         if (q.length < 2) {
-          if (results) results.innerHTML = '<p class="notification-action-note">Type at least 2 characters.</p>';
+          if (results) results.innerHTML = '<p class="notification-action-note">' + t('player.typeAtLeast2') + '</p>';
           return;
         }
         if (!(window.API && API.users && API.users.search)) return;
@@ -468,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function () {
           const users = (res.users || []).filter((u) => String(u.role || '').toUpperCase() === 'PLAYER');
           renderPlayerSearchResults(results, notification, users);
         } catch (e) {
-          if (results) results.innerHTML = '<p class="notification-action-note">Could not search players.</p>';
+          if (results) results.innerHTML = '<p class="notification-action-note">' + t('player.couldNotSearch') + '</p>';
         }
       });
     }
@@ -479,11 +480,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const amount = getLeftPlayerShare(notification, booking);
         const bookingId = (booking && getBookingIdValue(booking)) || getNotificationBookingId(notification);
         if (!booking || !bookingId) {
-          alert('Booking not found. Please refresh and try again.');
+          alert(t('player.bookingNotFound'));
           return;
         }
         if (typeof window.openPaymentModal !== 'function') {
-          alert('Payment form is not available on this page. Please open My Bookings and try again.');
+          alert(t('payment.formUnavailable'));
           return;
         }
         window.openPaymentModal({
@@ -506,7 +507,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const title = notification && notification.title;
     const message = notification && notification.message;
     const time = formatTime(notification && notification.createdAt);
-    detailModal.querySelector('.notification-detail-title').textContent = title || 'Notification';
+    detailModal.querySelector('.notification-detail-title').textContent = title || t('accessibility.notifications');
     detailModal.querySelector('.notification-detail-message').textContent = message || '';
     detailModal.querySelector('.notification-detail-time').textContent = time || '';
     const actions = detailModal.querySelector('.notification-detail-actions');
@@ -560,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const localNotifications = local.map((n) => ({
       ...n,
       id: n.id || 'local-' + (n.date || ''),
-      title: n.title || 'Booking update',
+      title: n.title || t('player.bookingUpdate'),
       message: n.message || '',
       createdAt: n.createdAt || n.date,
       source: 'local'
@@ -571,12 +572,12 @@ document.addEventListener('DOMContentLoaded', function () {
     );
 
     if (combined.length === 0) {
-      content.innerHTML = '<div style="padding:16px;text-align:center;color:#6B7280;font-size:14px;">No notifications yet.</div>';
+      content.innerHTML = '<div style="padding:16px;text-align:center;color:#6B7280;font-size:14px;">' + t('player.notificationsEmpty') + '</div>';
       return;
     }
 
     content.innerHTML = combined.map((n, i) => {
-      const title = n.title || 'Notification';
+      const title = n.title || t('accessibility.notifications');
       const time = formatTime(n.createdAt);
       return `
         <div class="notification-item" data-index="${i}">
@@ -616,8 +617,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const msg = (e && e.message) ? String(e.message) : '';
         alert(
           msg
-            ? 'Could not clear notifications: ' + msg
-            : 'Could not clear notifications on the server. Please try again.'
+            ? t('player.couldNotClear') + ' ' + ((window.MatchFieldI18n && MatchFieldI18n.localizeError(msg)) || msg)
+            : t('player.couldNotClear')
         );
         return;
       }

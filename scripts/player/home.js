@@ -137,12 +137,12 @@ function mapFieldToVenue(field, favoriteIdSet) {
   return {
     id: id,
     name: field.name,
-    sport: field.sport || 'Sport',
+    sport: field.sport || '',
     image: img,
     rating: field.rating != null ? field.rating : 0,
     reviews: field.reviewCount != null ? field.reviewCount : 0,
     location: field.location || '',
-    distance: field.distanceKm != null ? field.distanceKm.toFixed(1) + ' km' : 'N/A',
+    distance: field.distanceKm != null ? t('player.distanceKm', { km: field.distanceKm.toFixed(1) }) : t('common.na'),
     distanceKm: field.distanceKm != null && Number.isFinite(Number(field.distanceKm)) ? Number(field.distanceKm) : null,
     type: (field.type || 'OUTDOOR').toLowerCase(),
     price: field.pricePerHour != null ? field.pricePerHour : 0,
@@ -168,7 +168,7 @@ function readSelectedLocation() {
 
 function updateLocationLabel() {
   var label = document.querySelector('.location-selector span');
-  if (label && activeLocation) label.textContent = activeLocation.name || 'Selected location';
+  if (label && activeLocation) label.textContent = activeLocation.name || t('geo.selectedLocation');
 }
 
 function getCurrentCoords() {
@@ -190,7 +190,7 @@ function resolveActiveLocation() {
     navigator.geolocation.getCurrentPosition(
       function(pos) {
         activeLocation = {
-          name: 'My Location',
+          name: t('geo.myLocation'),
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           source: 'geolocation'
@@ -301,7 +301,7 @@ function chooseLocationFromSelector(option) {
       if (!navigator.geolocation) return resolve();
       navigator.geolocation.getCurrentPosition(function(pos) {
         activeLocation = {
-          name: 'My Location',
+          name: t('geo.myLocation'),
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           source: 'selected'
@@ -365,9 +365,9 @@ function handleInviteLink() {
     if (venue) {
       // Show invitation message
       setTimeout(async () => {
-        if (await MatchFieldDialog.confirm(`You've been invited to book ${venue.name}. Would you like to view the booking?`, {
+        if (await MatchFieldDialog.confirm(t('booking.invitedToBook', { name: venue.name }), {
           type: 'info',
-          okText: 'View Booking'
+          okText: t('booking.viewBooking')
         })) {
           openBookingModal(venue);
         }
@@ -433,7 +433,7 @@ function createVenueCard(venue) {
   card.innerHTML = `
       <div class="venue-image-container">
           <img src="${safeUrlAttr(venue.image)}" alt="${escapeHtml(venue.name)}" class="venue-image" loading="lazy" onerror="window.handleImageError(this, '${escapeHtml(venue.sport)}');">
-          <div class="sport-badge">${escapeHtml(venue.sport)}</div>
+          <div class="sport-badge">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}</div>
           <button class="favorite-btn ${venue.isFavorite ? 'active' : ''}" data-venue-id="${escapeHtml(venue.id)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -443,15 +443,15 @@ function createVenueCard(venue) {
       <div class="venue-card-content">
           <div class="venue-header">
               <h3 class="venue-name">${escapeHtml(venue.name)}</h3>
-              <span class="venue-price">${escapeHtml(mfMoney(venue.price))}/h</span>
+              <span class="venue-price">${escapeHtml(mfMoney(venue.price))}${t('common.perHour')}</span>
           </div>
           <div class="venue-rating">
               <span class="star">★</span>
               <span>${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)}) . ${escapeHtml(venue.location)} . ${escapeHtml(venue.distance)}</span>
           </div>
           <div class="venue-footer-row">
-              <span class="venue-type">${escapeHtml(venue.type)}</span>
-              <button class="book-btn">Book</button>
+              <span class="venue-type">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.type)) || venue.type)}</span>
+              <button class="book-btn">${t('player.bookShort')}</button>
           </div>
       </div>
   `;
@@ -480,7 +480,7 @@ function createVenueCard(venue) {
 // Toggle favorite status (API + local state)
 function toggleFavorite(venueId) {
   if (typeof API === 'undefined' || !API.getAuthToken()) {
-    alert('Please log in to add favorites.');
+    alert(t('player.pleaseLoginFavorites'));
     return;
   }
   var venueIdStr = String(venueId);
@@ -498,7 +498,7 @@ function toggleFavorite(venueId) {
     else set.delete(venueIdStr);
     persistFavoriteIdsSet(set);
   }).catch(function(err) {
-    alert(err.message || 'Failed to update favorite.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('player.favoriteFailed'));
   });
 }
 
@@ -529,7 +529,7 @@ function openBookingModal(venue) {
   // Check authentication
   const playerData = getPlayerData();
   if (!playerData) {
-    alert('Please log in to book a field.');
+    alert(t('player.pleaseLoginBook'));
     window.location.href = '../auth/login.html';
     return;
   }
@@ -614,10 +614,10 @@ function populateFieldDetails(venue) {
         <div class="field-preview-meta">
           <span><i class="fi fi-rr-marker"></i> ${escapeHtml(venue.location)}</span>
           <span><i class="fi fi-rs-star"></i> ${escapeHtml(venue.rating)} (${escapeHtml(venue.reviews)})</span>
-          <span><i class="fi fi-rr-tag"></i> ${escapeHtml(venue.sport)}</span>
+          <span><i class="fi fi-rr-tag"></i> ${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(venue.sport)) || venue.sport || '')}</span>
         </div>
         <div class="field-preview-price">
-          <span>Price: <strong>${escapeHtml(mfMoney(venue.price))}/hour</strong></span>
+          <span>${t('booking.priceLabel')} <strong>${escapeHtml(mfMoney(venue.price))}${t('common.perHourLong')}</strong></span>
         </div>
       </div>
     </div>
@@ -737,21 +737,21 @@ function loadPaymentStep() {
   if (bookingState.paymentMethod === 'organizer') {
     // Organizer pays full amount
     paymentAmount = bookingState.totalCost;
-    paymentLabel = 'Full Amount';
+    paymentLabel = t('booking.fullAmount');
   } else if (bookingState.paymentMethod === 'split') {
     // Organizer pays their share
     const totalPlayers = bookingState.players.length + 1; // +1 for organizer
     paymentAmount = Math.round(bookingState.totalCost / totalPlayers);
-    paymentLabel = 'Your Share';
+    paymentLabel = t('booking.yourShare');
   } else if (bookingState.paymentMethod === 'mixed') {
     // Organizer pays their assigned amount from mixed payment
     paymentAmount = bookingState.mixedPaymentDistribution['organizer'] || 0;
-    paymentLabel = 'Your Assigned Amount';
+    paymentLabel = t('booking.yourAssigned');
     
     // Validate mixed payment distribution
     const totalAssigned = Object.values(bookingState.mixedPaymentDistribution).reduce((sum, amount) => sum + amount, 0);
     if (Math.abs(totalAssigned - bookingState.totalCost) > 0.01) {
-      alert(`Please ensure the total payment distribution equals ${mfMoney(bookingState.totalCost)}. Currently assigned: ${mfMoney(totalAssigned.toFixed(2))}`);
+      alert(t('booking.distributionMismatch', { money: mfMoney(bookingState.totalCost), assigned: mfMoney(totalAssigned.toFixed(2)) }));
       return;
     }
   }
@@ -762,13 +762,13 @@ function loadPaymentStep() {
     summary.innerHTML = `
       <div class="payment-summary">
         <div class="payment-amount">
-          <span class="amount-label">${paymentLabel} to Pay</span>
+          <span class="amount-label">${t('booking.labelToPay', { label: paymentLabel })}</span>
           <span class="amount-value">${escapeHtml(mfMoney(paymentAmount))}</span>
         </div>
         ${bookingState.paymentMethod === 'split' ? `
           <div class="payment-note">
             <i class="fi fi-rr-info"></i>
-            <span>You're paying your share. Other players will pay separately when they accept the invitation.</span>
+            <span>${t('booking.splitNote')}</span>
           </div>
         ` : ''}
         <div class="payment-details">
@@ -811,7 +811,7 @@ async function loadTimeSlots() {
   
   if (bookingState.selectedDate && typeof API !== 'undefined') {
     try {
-      container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading availability...</p>';
+      container.innerHTML = '<p style="text-align: center; padding: 20px;">' + t('booking.loadingAvailability') + '</p>';
       console.log('Fetching availability for field:', bookingState.field.id, 'date:', bookingState.selectedDate);
       const availability = await API.fields.getAvailability(bookingState.field.id, bookingState.selectedDate);
       console.log('Availability response:', availability);
@@ -822,7 +822,7 @@ async function loadTimeSlots() {
         container.innerHTML = `
           <div style="text-align: center; padding: 20px; color: #dc3545;">
             <i class="fi fi-rr-lock" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
-            <p>${availability.message || 'This field is not available on the selected date.'}</p>
+            <p>${escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.notAvailableDate'))}</p>
           </div>
         `;
         return;
@@ -832,7 +832,7 @@ async function loadTimeSlots() {
         container.innerHTML = `
           <div style="text-align: center; padding: 20px; color: #dc3545;">
             <i class="fi fi-rr-calendar" style="font-size: 24px; display: block; margin-bottom: 10px;"></i>
-            <p>${availability.message || 'This field is closed on the selected day.'}</p>
+            <p>${escapeHtml((availability.message && window.MatchFieldI18n && MatchFieldI18n.localizeError(availability.message)) || t('booking.closedDay'))}</p>
           </div>
         `;
         return;
@@ -927,13 +927,13 @@ function updatePlayersList() {
   const organizerName = document.getElementById('organizerName');
   
   if (organizerName && bookingState.organizer) {
-    organizerName.textContent = `${bookingState.organizer.name} (You)`;
+    organizerName.textContent = bookingState.organizer.name + t('booking.youSuffix');
   }
 
   if (!container) return;
 
   if (bookingState.players.length === 0) {
-    container.innerHTML = '<p class="no-players">No players added yet. Add players by username.</p>';
+    container.innerHTML = '<p class="no-players">' + t('booking.noPlayersYet') + '</p>';
     return;
   }
 
@@ -945,10 +945,10 @@ function updatePlayersList() {
           : `<i class="fi fi-rr-user" style="color: #666;"></i>`}
       </div>
       <div class="player-info" style="flex: 1;">
-        <div style="font-weight: 500; color: #333;">${player.name}</div>
+        <div style="font-weight: 500; color: #333;">${escapeHtml(player.name)}</div>
       </div>
       <div class="player-payment-status" style="margin-right: 12px; padding: 4px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px;">
-        <i class="fi fi-rr-clock" style="font-size: 10px;"></i> Payment Pending
+        <i class="fi fi-rr-clock" style="font-size: 10px;"></i> ${t('status.paymentPending')}
       </div>
       <button class="remove-player-btn" data-index="${index}" style="background: none; border: none; color: #dc3545; cursor: pointer; padding: 4px;">
         <i class="fi fi-rr-cross-small"></i>
@@ -1027,7 +1027,7 @@ function createMixedPaymentItem(id, name, amount, isOrganizer) {
     <div class="mixed-payment-item-info">
       <div class="mixed-payment-item-name">
         ${isOrganizer ? '<i class="fi fi-rr-crown"></i>' : '<i class="fi fi-rr-user"></i>'}
-        <span>${name}${isOrganizer ? ' (You)' : ''}</span>
+        <span>${escapeHtml(name)}${isOrganizer ? t('booking.youSuffix') : ''}</span>
       </div>
     </div>
     <div class="mixed-payment-item-input">
@@ -1110,94 +1110,94 @@ function showBookingSummary() {
   const totalPlayers = bookingState.players.length + 1;
   const costPerPlayer = Math.round(bookingState.totalCost / totalPlayers);
   const paymentMethodText = {
-    'split': 'Each player pays their share',
-    'organizer': 'Organizer pays full amount',
-    'mixed': 'Mixed payment'
+    'split': t('booking.splitPays'),
+    'organizer': t('booking.organizerPays'),
+    'mixed': t('booking.mixedPays')
   };
 
   container.innerHTML = `
     <div class="summary-section">
-      <h4>Field Information</h4>
+      <h4>${t('booking.fieldInformation')}</h4>
       <div class="summary-item">
-        <span>Field:</span>
+        <span>${t('booking.fieldColon')}</span>
         <span><strong>${escapeHtml(bookingState.field.name)}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Location:</span>
+        <span>${t('booking.locationColon')}</span>
         <span>${escapeHtml(bookingState.field.location)}</span>
       </div>
       <div class="summary-item">
-        <span>Sport:</span>
-        <span>${escapeHtml(bookingState.field.sport)}</span>
+        <span>${t('booking.sportColon')}</span>
+        <span>${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.sportLabel(bookingState.field.sport)) || bookingState.field.sport || '')}</span>
       </div>
     </div>
     <div class="summary-section">
-      <h4>Booking Details</h4>
+      <h4>${t('payment.bookingDetails')}</h4>
       <div class="summary-item">
-        <span>Date:</span>
+        <span>${t('booking.dateLabel')}</span>
         <span><strong>${formatDate(bookingState.selectedDate)}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Time:</span>
+        <span>${t('booking.timeColon')}</span>
         <span><strong>${bookingState.selectedTimeSlots.map(slot => {
           const hour = parseInt(slot.split(':')[0]);
           return `${slot} - ${(hour + 1).toString().padStart(2, '0')}:00`;
         }).join(', ')}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Duration:</span>
-        <span>${bookingState.selectedTimeSlots.length} hour(s)</span>
+        <span>${t('booking.duration')}</span>
+        <span>${t('booking.hoursCount', { count: bookingState.selectedTimeSlots.length })}</span>
       </div>
     </div>
     <div class="summary-section">
-      <h4>Players</h4>
+      <h4>${t('booking.players')}</h4>
       <div class="summary-item">
-        <span>Organizer:</span>
-        <span><strong>${bookingState.organizer.name}</strong></span>
+        <span>${t('booking.organizer')}:</span>
+        <span><strong>${escapeHtml(bookingState.organizer.name)}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Total Players:</span>
+        <span>${t('booking.totalPlayersLabel')}</span>
         <span><strong>${totalPlayers}</strong></span>
       </div>
       ${bookingState.players.length > 0 ? `
         <div class="summary-players">
-          ${bookingState.players.map(p => `<div class="player-summary-item">${p.name}</div>`).join('')}
+          ${bookingState.players.map(p => `<div class="player-summary-item">${escapeHtml(p.name)}</div>`).join('')}
         </div>
       ` : ''}
     </div>
     <div class="summary-section">
-      <h4>Payment</h4>
+      <h4>${t('booking.payment')}</h4>
       <div class="summary-item">
-        <span>Total Cost:</span>
+        <span>${t('booking.totalCostLabel')}</span>
         <span><strong>${escapeHtml(mfMoney(bookingState.totalCost))}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Cost per Player:</span>
+        <span>${t('booking.costPerPlayer')}</span>
         <span><strong>${escapeHtml(mfMoney(costPerPlayer))}</strong></span>
       </div>
       <div class="summary-item">
-        <span>Payment Method:</span>
+        <span>${t('booking.paymentMethodLabel')}</span>
         <span><strong>${paymentMethodText[bookingState.paymentMethod]}</strong></span>
       </div>
       ${bookingState.paymentData ? `
         <div class="summary-item">
-          <span>Your Payment:</span>
-          <span><strong style="color: #10B981;">✓ Paid (${escapeHtml(mfMoney(bookingState.paymentAmount || bookingState.totalCost))})</strong></span>
+          <span>${t('booking.yourPayment')}</span>
+          <span><strong style="color: #10B981;">${t('booking.paidAmount', { money: escapeHtml(mfMoney(bookingState.paymentAmount || bookingState.totalCost)) })}</strong></span>
         </div>
       ` : bookingState.paymentMethod === 'split' ? `
         <div class="summary-item">
-          <span>Your Payment:</span>
-          <span><strong style="color: #F59E0B;">Pending (${escapeHtml(mfMoney(Math.round(bookingState.totalCost / (bookingState.players.length + 1))))})</strong></span>
+          <span>${t('booking.yourPayment')}</span>
+          <span><strong style="color: #F59E0B;">${t('booking.pendingAmount', { money: escapeHtml(mfMoney(Math.round(bookingState.totalCost / (bookingState.players.length + 1)))) })}</strong></span>
         </div>
       ` : bookingState.paymentMethod === 'mixed' ? `
         <div class="summary-item">
-          <span>Your Payment:</span>
-          <span><strong style="color: ${bookingState.paymentData ? '#10B981' : '#F59E0B'};">${bookingState.paymentData ? '✓ Paid' : 'Pending'} (${escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0))})</strong></span>
+          <span>${t('booking.yourPayment')}</span>
+          <span><strong style="color: ${bookingState.paymentData ? '#10B981' : '#F59E0B'};">${bookingState.paymentData ? t('booking.paidAmount', { money: escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0)) }) : t('booking.pendingAmount', { money: escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0)) })}</strong></span>
         </div>
         <div class="summary-section" style="margin-top: 12px; padding: 12px;">
-          <h5 style="font-size: 14px; font-weight: 600; margin: 0 0 8px 0; color: #212529;">Payment Distribution:</h5>
+          <h5 style="font-size: 14px; font-weight: 600; margin: 0 0 8px 0; color: #212529;">${t('booking.paymentDistribution')}</h5>
           <div class="summary-item" style="padding: 4px 0;">
-            <span>You:</span>
+            <span>${t('booking.you')}:</span>
             <span>${escapeHtml(mfMoney(bookingState.mixedPaymentDistribution['organizer'] || 0))}</span>
           </div>
           ${bookingState.players.map(p => `
@@ -1214,9 +1214,12 @@ function showBookingSummary() {
 
 // Format date for display
 function formatDate(dateString) {
-  if (!dateString) return 'Not selected';
+  if (!dateString) return t('booking.notSelected');
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatInTimezone) {
+    return MatchFieldPrefs.formatInTimezone(date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: undefined, minute: undefined });
+  }
+  return date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 // Close booking modal
@@ -1283,7 +1286,7 @@ function initializeBookingModal() {
         }
       } catch (error) {
         console.error('Error moving to next step:', error);
-        alert('An error occurred. Please try again.');
+        alert(t('common.tryAgain'));
       }
     });
   }
@@ -1434,11 +1437,11 @@ function validateCurrentStep() {
       console.log('Step 2 validation: checking date and time slots');
       if (!bookingState.selectedDate) {
         console.log('Step 2 validation failed: no date selected');
-        alert('Please select a date.');
+        alert(t('booking.pleaseSelectDate'));
         return false;
       }
       if (bookingState.selectedTimeSlots.length === 0) {
-        alert('Please select at least one time slot.');
+        alert(t('booking.pleaseSelectSlot'));
         return false;
       }
       updateBookingCost();
@@ -1451,7 +1454,7 @@ function validateCurrentStep() {
       if (bookingState.paymentMethod === 'mixed') {
         const totalAssigned = Object.values(bookingState.mixedPaymentDistribution).reduce((sum, amount) => sum + amount, 0);
         if (Math.abs(totalAssigned - bookingState.totalCost) > 0.01) {
-          alert(`Please ensure the total payment distribution equals ${mfMoney(bookingState.totalCost)}. Currently assigned: ${mfMoney(totalAssigned.toFixed(2))}`);
+          alert(t('booking.distributionMismatch', { money: mfMoney(bookingState.totalCost), assigned: mfMoney(totalAssigned.toFixed(2)) }));
           return false;
         }
       }
@@ -1510,13 +1513,13 @@ function validatePaymentForm() {
   
   // Validate card number
   if (!validateCardNumber(cardNumber)) {
-    alert('Invalid card number. Please check and try again.');
+    alert(t('payment.invalidCard'));
     return false;
   }
   
   // Validate expiry date
   if (!validateExpiryDate(expiryDate)) {
-    alert('Invalid expiry date. Please check and try again.');
+    alert(t('payment.invalidExpiry'));
     return false;
   }
   
@@ -1617,7 +1620,7 @@ async function searchUsers(query) {
   const normalizedQuery = normalizePlayerSearchQuery(query);
 
   if (typeof API === 'undefined' || !API.users || !API.users.search) {
-    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search is currently unavailable.</div>';
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">' + t('booking.searchUnavailable') + '</div>';
     resultsContainer.style.display = 'block';
     return [];
   }
@@ -1625,7 +1628,7 @@ async function searchUsers(query) {
   const requestId = ++latestSearchRequestId;
   
   try {
-    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">Searching...</div>';
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.searching') + '</div>';
     resultsContainer.style.display = 'block';
     
     const response = await API.users.search(normalizedQuery, { playersOnly: true });
@@ -1648,8 +1651,8 @@ async function searchUsers(query) {
         currentUser && String(user.id) === String(currentUser.id)
       );
       resultsContainer.innerHTML = onlySelfMatch
-        ? '<div style="padding: 12px; text-align: center; color: #666;">You cannot add yourself. Search for another player\'s ID.</div>'
-        : '<div style="padding: 12px; text-align: center; color: #666;">No players found. Use the Player ID from their profile (PLR-...).</div>';
+        ? '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.cannotAddSelf') + '</div>'
+        : '<div style="padding: 12px; text-align: center; color: #666;">' + t('booking.searchByPlayerId') + '</div>';
       resultsContainer.style.display = 'block';
       return [];
     }
@@ -1685,7 +1688,7 @@ async function searchUsers(query) {
     return filteredUsers;
   } catch (error) {
     console.error('Search error:', error);
-    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">Search failed. Try again.</div>';
+    resultsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #dc3545;">' + t('booking.searchFailed') + '</div>';
     resultsContainer.style.display = 'block';
     return [];
   }
@@ -1694,13 +1697,13 @@ async function searchUsers(query) {
 // Add player from search result
 function addPlayerFromSearch(user) {
   if (!user || user.role !== 'PLAYER') {
-    alert('Only players can be added to a booking. Field owners and admins cannot be invited as players.');
+    alert(t('booking.onlyPlayers'));
     return;
   }
 
   // Check if player already added
   if (bookingState.players.some(p => p.id === user.id)) {
-    alert('This player is already added.');
+    alert(t('booking.alreadyAdded'));
     return;
   }
   
@@ -1725,7 +1728,7 @@ async function addPlayer() {
 
   const searchValue = normalizePlayerSearchQuery(input.value);
   if (!searchValue) {
-    alert('Please enter a username, email, or Player ID to search.');
+    alert(t('booking.enterSearch'));
     return;
   }
   
@@ -1742,7 +1745,7 @@ async function addPlayer() {
   if (searchValue.length >= getPlayerSearchMinLength(searchValue)) {
     const results = await searchUsers(searchValue);
     if (!results || results.length === 0) {
-      alert('No players found. Try searching by name, email, Player ID (PLR-...), or account ID.');
+      alert(t('booking.noPlayersFound'));
       return;
     }
 
@@ -1753,9 +1756,9 @@ async function addPlayer() {
       return;
     }
 
-    alert('Multiple players found. Please select one from the list.');
+    alert(t('booking.multiplePlayers'));
   } else {
-    alert('Please enter at least 4 characters for a Player ID or account ID, or 2 characters for a name.');
+    alert(t('booking.minSearch'));
   }
 }
 
@@ -1824,7 +1827,7 @@ var isBookingSubmissionInProgress = false;
 // Save booking via API and show confirmation
 function saveBookingAndSendInvitations(booking) {
   if (typeof API === 'undefined' || !API.getAuthToken()) {
-    alert('Please log in to create a booking.');
+    alert(t('player.pleaseLoginBooking'));
     return;
   }
   if (isBookingSubmissionInProgress) {
@@ -1832,13 +1835,13 @@ function saveBookingAndSendInvitations(booking) {
   }
   var slots = (bookingState.selectedTimeSlots || []).slice().sort();
   if (slots.length === 0) {
-    alert('Please select at least one time slot.');
+    alert(t('booking.pleaseSelectSlot'));
     return;
   }
   isBookingSubmissionInProgress = true;
   var confirmBtn = document.getElementById('confirmBookingBtn');
   var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
-  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Creating...'; }
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = t('common.creating'); }
   if (submitPaymentBtn) { submitPaymentBtn.disabled = true; }
 
   // Group consecutive hours into ranges (supports non-contiguous: e.g. 13:00-14:00 and 20:00-21:00)
@@ -1932,9 +1935,9 @@ function saveBookingAndSendInvitations(booking) {
       isBookingSubmissionInProgress = false;
       var confirmBtn = document.getElementById('confirmBookingBtn');
       var submitPaymentBtn = document.querySelector('#paymentForm button[type="submit"], .payment-step .btn-primary');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Booking'; }
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = t('booking.confirmBooking'); }
       if (submitPaymentBtn) { submitPaymentBtn.disabled = false; }
-      alert(err.message || 'Failed to create booking.');
+      alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err.message)) || t('booking.createFailed'));
     });
 }
 
@@ -1942,8 +1945,8 @@ function saveBookingAndSendInvitations(booking) {
 function createPaymentNotifications(booking, players) {
   const totalPlayers = players.length + 1; // +1 for organizer
   const equalShare = Math.round(booking.totalCost / totalPlayers);
-  const organizerName = bookingState.organizer?.name || 'The organizer';
-  const fieldName = bookingState.field?.name || booking.field?.name || 'the field';
+  const organizerName = bookingState.organizer?.name || t('booking.theOrganizer');
+  const fieldName = bookingState.field?.name || booking.field?.name || t('booking.theField');
   const fieldImage = bookingState.field?.image
     || (booking.field && booking.field.images && booking.field.images[0])
     || booking.fieldImage
@@ -1963,8 +1966,8 @@ function createPaymentNotifications(booking, players) {
       bookingId: booking.id,
       fieldName: fieldName,
       fieldImage: fieldImage,
-      title: 'Payment Required',
-      message: `${organizerName} invited you to a booking at ${fieldName}. Your share is ${mfMoney(amount)}.`,
+      title: t('status.paymentRequired'),
+      message: t('booking.invitePaymentMsg', { organizer: organizerName, field: fieldName, money: mfMoney(amount) }),
       date: bookingState.selectedDate,
       time: bookingState.selectedTimeSlots.join(', '),
       paymentAmount: amount,
@@ -2239,9 +2242,9 @@ function showBookingConfirmation(booking, isFullyPaid) {
       <div class="confirmation-icon success">
         <i class="fi fi-rr-check-circle"></i>
       </div>
-      <h2 class="confirmation-title">Booking Confirmed!</h2>
+      <h2 class="confirmation-title">${t('booking.bookingConfirmed')}</h2>
       <p class="confirmation-message">
-        Your booking at <strong>${booking.fieldName}</strong> has been confirmed.
+        ${escapeHtml(t('booking.confirmedAtField', { name: booking.fieldName }))}
       </p>
       <div class="confirmation-details">
         <div class="confirmation-detail-item">
@@ -2262,11 +2265,11 @@ function showBookingConfirmation(booking, isFullyPaid) {
       </div>
       <p class="confirmation-note">
         ${booking.paymentMethod === 'organizer' 
-          ? 'Full payment has been received. The booking is confirmed.' 
-          : 'Your payment has been received. Other players will pay their share separately.'}
+          ? t('booking.fullPaymentConfirmed') 
+          : t('booking.yourPaymentReceivedOthers')}
       </p>
       <button class="confirmation-btn" onclick="closeConfirmationModal()">
-        View My Bookings
+        ${t('booking.viewMyBookings')}
       </button>
     </div>
   ` : `
@@ -2274,9 +2277,9 @@ function showBookingConfirmation(booking, isFullyPaid) {
       <div class="confirmation-icon pending">
         <i class="fi fi-rr-hourglass"></i>
       </div>
-      <h2 class="confirmation-title">Booking Created!</h2>
+      <h2 class="confirmation-title">${t('booking.created')}</h2>
       <p class="confirmation-message">
-        Your booking at <strong>${booking.fieldName}</strong> has been created.
+        ${escapeHtml(t('booking.createdAtField', { name: booking.fieldName }))}
       </p>
       <div class="confirmation-details">
         <div class="confirmation-detail-item">
@@ -2292,10 +2295,10 @@ function showBookingConfirmation(booking, isFullyPaid) {
         </div>
       </div>
       <p class="confirmation-note">
-        Invitations have been sent to all players. The booking will be confirmed once all payments are received.
+        ${t('booking.invitesSentPending')}
       </p>
       <button class="confirmation-btn" onclick="closeConfirmationModal()">
-        View My Bookings
+        ${t('booking.viewMyBookings')}
       </button>
     </div>
   `;
@@ -2333,15 +2336,15 @@ window.closeConfirmationModal = closeConfirmationModal;
 function notifyOrganizerOfPayment(booking, payerData, amount) {
   const organizerId = String((booking.organizer && booking.organizer.id) || booking.organizerId || '');
   if (!organizerId) return;
-  const fieldName = (booking.field && booking.field.name) || booking.fieldName || 'the field';
-  const payerName = payerData && (payerData.fullName || payerData.name || payerData.email || 'A player');
+  const fieldName = (booking.field && booking.field.name) || booking.fieldName || t('booking.theField');
+  const payerName = payerData && (payerData.fullName || payerData.name || payerData.email || t('booking.aPlayer'));
   const notification = {
     id: 'notif_' + Date.now(),
     type: 'player_paid_booking',
     playerId: organizerId,
     bookingId: booking.id,
-    title: 'Player Paid Their Share',
-    message: payerName + ' has paid ' + mfMoney(amount) + ' for your booking at ' + fieldName + '.',
+    title: t('booking.playerPaidShare'),
+    message: t('booking.playerPaidMsg', { name: payerName, money: mfMoney(amount), field: fieldName }),
     date: booking.date,
     status: 'unread',
     createdAt: new Date().toISOString()
@@ -2374,7 +2377,9 @@ function notifyFieldOwner(booking) {
     totalCost: booking.totalCost,
     status: booking.status,
     playerCount: playerCount,
-    message: `${booking.organizerName} has ${booking.status === 'confirmed' ? 'confirmed' : 'created'} a booking at ${booking.fieldName}`,
+    message: booking.status === 'confirmed'
+      ? t('booking.ownerNotifConfirmed', { organizer: booking.organizerName, field: booking.fieldName })
+      : t('booking.ownerNotifCreated', { organizer: booking.organizerName, field: booking.fieldName }),
     createdAt: new Date().toISOString(),
     read: false
   };
@@ -2397,7 +2402,7 @@ function sendPlayerInvitations(booking) {
       type: 'booking_invitation',
       playerId: player.id,
       bookingId: booking.id,
-      message: `${booking.organizerName} invited you to a booking at ${booking.fieldName}`,
+      message: t('booking.inviteMsg', { organizer: booking.organizerName, field: booking.fieldName }),
       date: booking.date,
       time: booking.timeSlots.join(', '),
       cost: booking.costPerPlayer,
@@ -2443,12 +2448,12 @@ function openPaymentModal(options) {
     summary.innerHTML = `
       <div class="payment-summary">
         <div class="payment-amount">
-          <span class="amount-label">Amount to Pay</span>
+          <span class="amount-label">${t('booking.amountToPay')}</span>
           <span class="amount-value">${escapeHtml(mfMoney(paymentState.amount))}</span>
         </div>
         ${paymentState.booking ? `
           <div class="payment-details">
-            <p><strong>${escapeHtml((paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || 'Field')}</strong></p>
+            <p><strong>${escapeHtml((paymentState.booking.field && paymentState.booking.field.name) || paymentState.booking.fieldName || t('booking.fieldColon').replace(':', ''))}</strong></p>
             <p>${formatDate(paymentState.booking.date)}</p>
             <p>${(paymentState.booking.timeSlots && paymentState.booking.timeSlots.length
               ? paymentState.booking.timeSlots.map(slot => {
@@ -2457,7 +2462,7 @@ function openPaymentModal(options) {
                 }).join(', ')
               : (paymentState.booking.timeSlotStart && paymentState.booking.timeSlotEnd)
                 ? (paymentState.booking.timeSlotStart + ' - ' + paymentState.booking.timeSlotEnd)
-                : paymentState.booking.time || 'Not specified')}</p>
+                : paymentState.booking.time || t('common.notSpecified'))}</p>
           </div>
         ` : ''}
       </div>
@@ -2606,7 +2611,7 @@ function handlePaymentSubmission() {
     if (window.API && typeof window.API.getCurrentUser === 'function') {
       const currentUser = window.API.getCurrentUser();
       if (currentUser && currentUser.status && String(currentUser.status).toUpperCase() !== 'ACTIVE') {
-        alert('Your account is suspended. You cannot complete payments. Please contact support to resolve this.');
+        alert(t('payment.suspended'));
         return;
       }
     }
@@ -2632,10 +2637,10 @@ function handlePaymentSubmission() {
   };
 
   const submitBtns = document.querySelectorAll('#submitPaymentBtn');
-  const payBtnLabel = 'Pay & Confirm Booking';
+  const payBtnLabel = t('payment.payConfirm');
   submitBtns.forEach(function (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<i class="fi fi-rr-spinner"></i> Processing...';
+    btn.innerHTML = '<i class="fi fi-rr-spinner"></i> ' + t('common.processing');
   });
 
   function resetPaySubmitButtons() {
@@ -2652,7 +2657,7 @@ function handlePaymentSubmission() {
         processPayment(formData);
       } catch (err) {
         console.error('Payment failed:', err);
-        alert('Payment could not be completed. Please try again. If this keeps happening, refresh the page.');
+        alert(t('payment.couldNotComplete'));
       } finally {
         resetPaySubmitButtons();
       }
@@ -2674,7 +2679,7 @@ function handlePaymentSubmission() {
         successMsg.className = 'payment-success';
         successMsg.innerHTML = `
           <i class="fi fi-rr-check-circle"></i>
-          <span>Payment successful! Proceeding to confirmation...</span>
+          <span>${t('booking.proceedingConfirm')}</span>
         `;
         paymentSummary.appendChild(successMsg);
       }
@@ -2721,7 +2726,7 @@ function markOrganizerCoveredLeftSharePayment(bookingId, coverLeftShare) {
   covered[notificationId] = {
     bookingId: String(bookingId),
     amount: Number(coverLeftShare.amount || paymentState.amount || 0),
-    leftPlayerName: coverLeftShare.leftPlayerName || 'Player',
+    leftPlayerName: coverLeftShare.leftPlayerName || t('booking.playerFallback'),
     coveredAt: new Date().toISOString()
   };
   localStorage.setItem('organizerCoveredLeftPlayerShares', JSON.stringify(covered));
@@ -2745,7 +2750,7 @@ function processPayment(paymentData) {
 
   const bookingId = String(paymentState.bookingId || '');
   if (!bookingId || typeof API === 'undefined' || !API.bookings || !API.bookings.manualSettle) {
-    alert('Unable to settle payment on the server. Please refresh and try again.');
+    alert(t('payment.settleFailed'));
     return;
   }
 
@@ -2777,8 +2782,8 @@ function processPayment(paymentData) {
         }
         alert(
           isCoveringLeftShare
-            ? 'Payment successful! Missing player share has been paid.'
-            : 'Payment successful! Your share has been paid.'
+            ? t('booking.paymentSuccessfulCover')
+            : t('booking.paymentSuccessfulShare')
         );
         window.location.href = 'bookings.html';
       }
@@ -2813,7 +2818,7 @@ function processPayment(paymentData) {
     })
     .catch(function (err) {
       console.error('Server payment settle failed', err);
-      alert((err && err.message) || 'Payment could not be completed on the server.');
+      alert((window.MatchFieldI18n && err && MatchFieldI18n.localizeError(err.message)) || t('payment.serverFailed'));
     });
 }
 
@@ -2999,7 +3004,7 @@ async function openFavoriteFieldsModal() {
   const modal = document.getElementById('favoriteFieldsModal');
   const body = document.getElementById('favoriteFieldsModalBody');
   if (!modal || !body) return;
-  body.innerHTML = '<div class="favorite-empty-state">Favorite fields are unavailable.</div>';
+  body.innerHTML = '<div class="favorite-empty-state">' + t('player.favoritesUnavailable') + '</div>';
   modal.classList.add('active');
 }
 

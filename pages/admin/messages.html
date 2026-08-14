@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Messages | MatchField</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -20,7 +21,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -52,7 +53,7 @@
                 </a>
                 <a href="messages.html" class="nav-item active">
                     <i class="fi fi-rr-messages nav-icon"></i>
-                    <span data-i18n="nav.messages">Messages</span>
+                    <span data-i18n="nav.messages" data-i18n="admin.messages">Messages</span>
                 </a>
             </nav>
             
@@ -81,7 +82,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -89,8 +90,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">System update</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleSystem">System update</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -105,7 +106,7 @@
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>Profile</h3>
+                                <h3 data-i18n="nav.profile">Profile</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
@@ -122,14 +123,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>My Profile</span>
+                                        <span data-i18n="profile.myProfile">My Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -151,7 +152,7 @@
                 <!-- Page Header -->
                 <div class="page-header">
                     <div>
-                        <h1 class="page-title">Messages</h1>
+                        <h1 class="page-title" data-i18n="admin.messages">Messages</h1>
                         <p class="page-subtitle">Support inbox: Contact Us submissions and support chat threads. Refreshes automatically about every 45 seconds.</p>
                     </div>
                 </div>
@@ -162,7 +163,7 @@
                         <input 
                             type="text" 
                             id="messageSearch" 
-                            placeholder="Search By Name Or Email..."
+                            placeholder="Search By Name Or Email..." data-i18n-placeholder="admin.searchNameEmail2"
                             class="search-input"
                         >
                         <i class="fi fi-rr-search search-icon"></i>
@@ -170,17 +171,17 @@
                     
                     <div class="filter-group">
                         <select id="statusFilter" class="filter-dropdown">
-                            <option value="all">All</option>
-                            <option value="unread">Unread</option>
-                            <option value="read">Read</option>
-                            <option value="starred">Starred</option>
-                            <option value="replied">Replied</option>
-                            <option value="pending">Pending</option>
+                            <option value="all" data-i18n="common.all">All</option>
+                            <option value="unread" data-i18n="status.UNREAD">Unread</option>
+                            <option value="read" data-i18n="status.READ">Read</option>
+                            <option value="starred" data-i18n="status.STARRED">Starred</option>
+                            <option value="replied" data-i18n="status.REPLIED">Replied</option>
+                            <option value="pending" data-i18n="status.PENDING">Pending</option>
                         </select>
                         
                         <button class="btn-spam-blocked" id="spamBlockedBtn">
                             <i class="fi fi-rs-shield"></i>
-                            Spam/Blocked Message
+                            <span data-i18n="admin.spamBlocked">Spam/Blocked Message</span>
                         </button>
                     </div>
                 </div>
@@ -189,14 +190,14 @@
                 <div class="messages-section">
                     <div class="messages-list" id="messagesList">
                         <!-- Messages will be dynamically loaded here -->
-                        <div id="loadingIndicator" style="text-align: center; padding: 40px; color: #6B7280;">
+                        <div id="loadingIndicator" style="text-align: center; padding: 40px; color: #6B7280;" data-i18n="admin.loadingInbox">
                             Loading messages...
                         </div>
                     </div>
                     <div class="messages-inbox-footer" id="messagesInboxFooter">
-                        <button type="button" class="btn-inbox-primary" id="refreshInboxBtn">Refresh now</button>
-                        <button type="button" class="btn-inbox-secondary" id="loadMoreInboxBtn">Load more</button>
-                        <p class="inbox-footer-hint">Load more increases how many threads and contact rows are fetched (up to caps).</p>
+                        <button type="button" class="btn-inbox-primary" id="refreshInboxBtn" data-i18n="admin.refreshNow">Refresh now</button>
+                        <button type="button" class="btn-inbox-secondary" id="loadMoreInboxBtn" data-i18n="admin.loadMore">Load more</button>
+                        <p class="inbox-footer-hint" data-i18n="admin.inboxHint">Load more increases how many threads and contact rows are fetched (up to caps).</p>
                     </div>
                 </div>
             </div>
@@ -213,7 +214,7 @@
                 </svg>
             </button>
             
-            <div class="modal-title">Message Details</div>
+            <div class="modal-title" data-i18n="admin.messageDetails">Message Details</div>
             
             <div class="message-content-modal" id="messageContent">
                 <!-- Message content will be dynamically loaded here -->
@@ -224,6 +225,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>

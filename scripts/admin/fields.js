@@ -40,14 +40,10 @@ function escapeHtml(text) {
 }
 
 function formatSport(sport) {
-    const s = String(sport || '').toLowerCase();
-    const sportMap = {
-        'football': 'Football',
-        'basketball': 'Basketball',
-        'tennis': 'Tennis',
-        'volleyball': 'Volleyball'
-    };
-    return sportMap[s] || (sport ? String(sport) : '—');
+    if (window.MatchFieldI18n && MatchFieldI18n.sportLabel) {
+        return MatchFieldI18n.sportLabel(sport) || (sport ? String(sport) : '—');
+    }
+    return sport ? String(sport) : '—';
 }
 
 function displayStatus(field) {
@@ -60,7 +56,12 @@ function displayStatus(field) {
 }
 
 function formatStatus(status) {
-    if (!status) return 'Pending';
+    if (!status) return t('status.PENDING');
+    const code = String(status).toUpperCase();
+    if (window.MatchFieldI18n && MatchFieldI18n.statusLabel) {
+        const labeled = MatchFieldI18n.statusLabel(code);
+        if (labeled && labeled !== code) return labeled;
+    }
     return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -69,7 +70,7 @@ function formatDateTime(value) {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '—';
     try {
-        return d.toLocaleString('en-GB', {
+        return d.toLocaleString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-GB', {
             year: 'numeric',
             month: 'short',
             day: '2-digit',
@@ -93,23 +94,23 @@ function formatScheduleForAdmin(schedule) {
         'sunday'
     ];
     const labels = {
-        monday: 'Mon',
-        tuesday: 'Tue',
-        wednesday: 'Wed',
-        thursday: 'Thu',
-        friday: 'Fri',
-        saturday: 'Sat',
-        sunday: 'Sun'
+        monday: t('days.mon'),
+        tuesday: t('days.tue'),
+        wednesday: t('days.wed'),
+        thursday: t('days.thu'),
+        friday: t('days.fri'),
+        saturday: t('days.sat'),
+        sunday: t('days.sun')
     };
     const rows = days
         .map((day) => {
             const d = schedule[day];
             if (!d || typeof d !== 'object') return '';
             const enabled = !!d.enabled;
-            if (!enabled) return labels[day] + ': closed';
+            if (!enabled) return t('admin.scheduleClosed', { day: labels[day] });
             const open = d.opening ? String(d.opening) : '—';
             const close = d.closing ? String(d.closing) : '—';
-            return labels[day] + ': ' + open + ' - ' + close;
+            return t('admin.scheduleHours', { day: labels[day], open: open, close: close });
         })
         .filter(Boolean);
     return rows.join('\n');
@@ -119,9 +120,9 @@ function formatScheduleForAdmin(schedule) {
 function formatPricePerHour(pricePerHour) {
     const n = Number(pricePerHour || 0);
     if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
-        return MatchFieldPrefs.formatMoney(n) + '/h';
+        return MatchFieldPrefs.formatMoney(n) + t('common.perHour');
     }
-    return '₪' + n.toLocaleString('en-IL') + '/h';
+    return '₪' + n.toLocaleString('en-IL') + t('common.perHour');
 }
 
 function escapeAttr(s) {
@@ -229,9 +230,8 @@ function buildAdminFieldDocumentsSection(field) {
     if (!own && !lic) {
         return (
             '<div class="field-info-item">' +
-            '<div class="field-info-label">Ownership &amp; license documents</div>' +
-            '<div class="field-info-muted">No document URLs on file for this field. ' +
-            '(Owners can attach links when the upload flow saves them.)</div>' +
+            '<div class="field-info-label">' + t('admin.ownershipLicenseDocs') + '</div>' +
+            '<div class="field-info-muted">' + t('admin.noDocUrls') + '</div>' +
             '</div>'
         );
     }
@@ -251,7 +251,7 @@ function buildAdminFieldDocumentsSection(field) {
                 escapeAttr(url) +
                 '" data-doc-filename="' +
                 escapeAttr(filename) +
-                '">Download file</a></div>'
+                '">' + t('admin.openFile') + '</a></div>'
             );
         }
         if (isApi) {
@@ -264,7 +264,7 @@ function buildAdminFieldDocumentsSection(field) {
                 escapeAttr(url) +
                 '" data-doc-filename="' +
                 escapeAttr(filename) +
-                '">Open file</a></div>'
+                '">' + t('admin.openFile') + '</a></div>'
             );
         }
         return (
@@ -274,14 +274,14 @@ function buildAdminFieldDocumentsSection(field) {
             '</span>' +
             '<a class="admin-doc-link" href="' +
             escapeAttr(url) +
-            '" target="_blank" rel="noopener noreferrer">Open file</a></div>'
+            '" target="_blank" rel="noopener noreferrer">' + t('admin.openFile') + '</a></div>'
         );
     }
-    if (own) inner += docLink('Ownership / rental', own, 'ownership-document');
-    if (lic) inner += docLink('Licenses / permits', lic, 'license-document');
+    if (own) inner += docLink(t('admin.ownershipRental'), own, 'ownership-document');
+    if (lic) inner += docLink(t('admin.licensesPermits'), lic, 'license-document');
     return (
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Ownership &amp; license documents</div>' +
+        '<div class="field-info-label">' + t('admin.ownershipLicenseDocs') + '</div>' +
         '<div class="admin-field-docs">' +
         inner +
         '</div></div>'
@@ -294,8 +294,8 @@ function buildAdminFieldPicturesSection(field) {
     if (!imgs.length) {
         return (
             '<div class="field-info-item field-images-section">' +
-            '<div class="field-info-label">Field photos</div>' +
-            '<div class="field-info-muted">No images uploaded for this field.</div>' +
+            '<div class="field-info-label">' + t('admin.fieldPhotos') + '</div>' +
+            '<div class="field-info-muted">' + t('admin.noImages') + '</div>' +
             '</div>'
         );
     }
@@ -330,8 +330,8 @@ function buildAdminFieldPicturesSection(field) {
                 fid +
                 "', " +
                 i +
-                ')" title="Photo ' +
-                (i + 1) +
+                ')" title="' +
+                t('admin.photoN', { n: i + 1 }) +
                 '">' +
                 '<img src="' +
                 escapeAttr(url) +
@@ -341,7 +341,7 @@ function buildAdminFieldPicturesSection(field) {
         .join('');
     return (
         '<div class="field-info-item field-images-section">' +
-        '<div class="field-info-label">Field photos</div>' +
+        '<div class="field-info-label">' + t('admin.fieldPhotos') + '</div>' +
         '<div class="field-image-carousel" data-field-id="' +
         fid +
         '">' +
@@ -355,7 +355,9 @@ function buildAdminFieldPicturesSection(field) {
         '<div class="carousel-image-container">' +
         '<img src="' +
         first +
-        '" alt="Field photo 1" class="carousel-image" onclick="openImageModal(' +
+        '" alt="' +
+        t('admin.fieldPhotoN', { n: 1 }) +
+        '" class="carousel-image" onclick="openImageModal(' +
         JSON.stringify(imgs[0]) +
         ')">' +
         dots +
@@ -383,8 +385,8 @@ function buildAdminUnavailableDatesSection(field) {
     if (!dates.length) {
         return (
             '<div class="field-info-item">' +
-            '<div class="field-info-label">Unavailable dates</div>' +
-            '<div class="field-info-muted">No blocked dates submitted by the owner.</div>' +
+            '<div class="field-info-label">' + t('owner.unavailableDates') + '</div>' +
+            '<div class="field-info-muted">' + t('admin.noBlockedDates') + '</div>' +
             '</div>'
         );
     }
@@ -393,13 +395,13 @@ function buildAdminUnavailableDatesSection(field) {
             const raw = row && row.date != null ? row.date : row;
             const d = new Date(raw);
             if (Number.isNaN(d.getTime())) return '';
-            return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+            return d.toLocaleDateString((document.documentElement && document.documentElement.lang === 'ar') ? 'ar' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
         })
         .filter(Boolean)
         .join(', ');
     return (
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Unavailable dates</div>' +
+        '<div class="field-info-label">' + t('owner.unavailableDates') + '</div>' +
         '<div class="field-info-value">' +
         (formatted || '—') +
         '</div></div>'
@@ -408,17 +410,17 @@ function buildAdminUnavailableDatesSection(field) {
 
 function formatPendingFieldLabel(key) {
     const labels = {
-        name: 'Field name',
-        sport: 'Sport',
-        type: 'Court type',
-        location: 'Location',
-        address: 'Address',
-        city: 'City',
-        district: 'District',
-        latitude: 'Latitude',
-        longitude: 'Longitude',
-        ownershipDocumentUrl: 'Ownership document',
-        licensesDocumentUrl: 'Licenses document'
+        name: t('owner.fieldName'),
+        sport: t('owner.sportType'),
+        type: t('admin.courtType'),
+        location: t('common.location'),
+        address: t('common.address'),
+        city: t('payment.city'),
+        district: t('admin.cityDistrict'),
+        latitude: t('admin.coordinates'),
+        longitude: t('admin.longitude'),
+        ownershipDocumentUrl: t('owner.ownershipDocument'),
+        licensesDocumentUrl: t('owner.licenseDocument')
     };
     return labels[key] || key;
 }
@@ -432,25 +434,25 @@ function buildAdminPendingChangesSection(field) {
     const rows = keys.map(function(key) {
         let value = pending[key];
         if (value === null || value === undefined || value === '') {
-            value = 'Removed';
+            value = t('admin.removed');
         } else if (typeof value === 'object') {
             value = JSON.stringify(value);
         } else {
             value = String(value);
         }
         if (key === 'ownershipDocumentUrl' || key === 'licensesDocumentUrl') {
-            value = value === 'Removed' ? 'Removed' : 'Updated file submitted';
+            value = value === t('admin.removed') ? t('admin.removed') : t('admin.updatedFile');
         }
         return (
-            '<div class="field-info-item"><div class="field-info-label">Pending change: ' +
-            escapeHtml(formatPendingFieldLabel(key)) +
+            '<div class="field-info-item"><div class="field-info-label">' + t('admin.pendingChange', { label: 
+            escapeHtml(formatPendingFieldLabel(key)) }) +
             '</div><div class="field-info-value">' +
             escapeHtml(value) +
             '</div></div>'
         );
     }).join('');
     return (
-        '<div class="field-info-item"><div class="field-info-label">Owner requested changes</div><div class="field-info-value">These edits are waiting for admin approval.</div></div>' +
+        '<div class="field-info-item"><div class="field-info-label">' + t('admin.ownerRequestedChanges') + '</div><div class="field-info-value">' + t('admin.editsWaiting') + '</div></div>' +
         rows
     );
 }
@@ -463,128 +465,128 @@ function buildAdminFieldInfoMarkup(field) {
         buildAdminUnavailableDatesSection(field) +
         buildAdminPendingChangesSection(field) +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Field name</div>' +
+        '<div class="field-info-label">' + t('owner.fieldName') + '</div>' +
         '<div class="field-info-value">' +
         escapeHtml(field.fieldName) +
         '</div></div>' +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Location</div>' +
+        '<div class="field-info-label">' + t('common.location') + '</div>' +
         '<div class="field-info-value">' +
         escapeHtml(field.location) +
         '</div></div>' +
         (field.address
-            ? '<div class="field-info-item"><div class="field-info-label">Address</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('common.address') + '</div><div class="field-info-value">' +
               escapeHtml(field.address) +
               '</div></div>'
             : '') +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Owner</div>' +
+        '<div class="field-info-label">' + t('admin.colOwner') + '</div>' +
         '<div class="field-info-value">' +
         escapeHtml(field.owner) +
         '</div></div>' +
         (field.ownerEmail
-            ? '<div class="field-info-item"><div class="field-info-label">Owner email</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.ownerEmail') + '</div><div class="field-info-value">' +
               escapeHtml(field.ownerEmail) +
               '</div></div>'
             : '') +
         (field.phone
-            ? '<div class="field-info-item"><div class="field-info-label">Field phone</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.fieldPhone') + '</div><div class="field-info-value">' +
               escapeHtml(field.phone) +
               '</div></div>'
             : '') +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Sport</div>' +
+        '<div class="field-info-label">' + t('owner.sportType') + '</div>' +
         '<div class="field-info-value"><span class="sport-badge ' +
         escapeHtml(field.sport) +
         '">' +
         formatSport(field.sport) +
         '</span></div></div>' +
         (field.type
-            ? '<div class="field-info-item"><div class="field-info-label">Court type</div><div class="field-info-value">' +
-              escapeHtml(String(field.type)) +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.courtType') + '</div><div class="field-info-value">' +
+              escapeHtml(String(field.type).toUpperCase() === 'INDOOR' ? t('sports.indoor') : String(field.type).toUpperCase() === 'OUTDOOR' ? t('sports.outdoor') : String(field.type)) +
               '</div></div>'
             : '') +
         (field.capacity != null
-            ? '<div class="field-info-item"><div class="field-info-label">Capacity</div><div class="field-info-value">' +
-              escapeHtml(String(field.capacity)) +
-              ' players</div></div>'
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('owner.capacity') + '</div><div class="field-info-value">' +
+              escapeHtml(Number(field.capacity) === 1 ? t('booking.playerCountOne') : t('booking.playersCount', { count: field.capacity })) +
+              '</div></div>'
             : '') +
         (field.city || field.district
-            ? '<div class="field-info-item"><div class="field-info-label">City / District</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.cityDistrict') + '</div><div class="field-info-value">' +
               escapeHtml([field.city, field.district].filter(Boolean).join(' / ') || '—') +
               '</div></div>'
             : '') +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Price per hour</div>' +
+        '<div class="field-info-label">' + t('owner.pricePerHour') + '</div>' +
         '<div class="field-info-value">' +
         escapeHtml(field.price) +
         '</div></div>' +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Coordinates</div>' +
+        '<div class="field-info-label">' + t('admin.coordinates') + '</div>' +
         '<div class="field-info-value">' +
         (field.latitude != null && field.longitude != null
             ? escapeHtml(String(field.latitude) + ', ' + String(field.longitude))
             : '—') +
         '</div></div>' +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Submitted at</div>' +
+        '<div class="field-info-label">' + t('admin.submittedAt') + '</div>' +
         '<div class="field-info-value">' +
         escapeHtml(formatDateTime(field.createdAt)) +
         '</div></div>' +
         '<div class="field-info-item">' +
-        '<div class="field-info-label">Status</div>' +
+        '<div class="field-info-label">' + t('common.status') + '</div>' +
         '<div class="field-info-value"><span class="status-badge ' +
         field.status +
         '">' +
         formatStatus(field.status) +
         '</span></div></div>' +
         (field.moderationReason
-            ? '<div class="field-info-item"><div class="field-info-label">Moderation note</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.moderationNote') + '</div><div class="field-info-value">' +
               escapeHtml(field.moderationReason) +
               '</div></div>'
             : '') +
         (field.description
-            ? '<div class="field-info-item"><div class="field-info-label">Description</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('common.description') + '</div><div class="field-info-value">' +
               escapeHtml(field.description) +
               '</div></div>'
             : '') +
         (field.amenities && field.amenities.length
-            ? '<div class="field-info-item"><div class="field-info-label">Amenities</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('owner.amenities') + '</div><div class="field-info-value">' +
               field.amenities.map((a) => escapeHtml(a)).join(', ') +
               '</div></div>'
             : '') +
         (field.features && field.features.length
-            ? '<div class="field-info-item"><div class="field-info-label">Field features</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.fieldFeatures') + '</div><div class="field-info-value">' +
               field.features.map((a) => escapeHtml(a)).join(', ') +
               '</div></div>'
             : '') +
         (field.highlights && field.highlights.length
-            ? '<div class="field-info-item"><div class="field-info-label">Highlights</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.highlights') + '</div><div class="field-info-value">' +
               field.highlights.map((h) => escapeHtml(h)).join(', ') +
               '</div></div>'
             : '') +
         (field.bookingType
-            ? '<div class="field-info-item"><div class="field-info-label">Booking type</div><div class="field-info-value">' +
-              escapeHtml(String(field.bookingType)) +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.bookingType') + '</div><div class="field-info-value">' +
+              escapeHtml(String(field.bookingType).toLowerCase() === 'request' ? t('admin.bookingRequest') : String(field.bookingType).toLowerCase() === 'instant' ? t('admin.bookingInstant') : String(field.bookingType)) +
               '</div></div>'
             : '') +
         (field.advanceBooking
-            ? '<div class="field-info-item"><div class="field-info-label">Advance booking</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.advanceBooking') + '</div><div class="field-info-value">' +
               escapeHtml(String(field.advanceBooking)) +
               '</div></div>'
             : '') +
         (field.cancellationPolicy
-            ? '<div class="field-info-item"><div class="field-info-label">Cancellation policy</div><div class="field-info-value">' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.cancellationPolicy') + '</div><div class="field-info-value">' +
               escapeHtml(String(field.cancellationPolicy)) +
               '</div></div>'
             : '') +
         (field.visibilityRequested != null
-            ? '<div class="field-info-item"><div class="field-info-label">Owner visibility request</div><div class="field-info-value">' +
-              (field.visibilityRequested ? 'Visible in search' : 'Hidden from search') +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.ownerVisibility') + '</div><div class="field-info-value">' +
+              (field.visibilityRequested ? t('admin.visibleInSearch') : t('admin.hiddenFromSearch')) +
               '</div></div>'
             : '') +
         (scheduleText
-            ? '<div class="field-info-item"><div class="field-info-label">Submitted schedule</div><div class="field-info-value"><code>' +
+            ? '<div class="field-info-item"><div class="field-info-label">' + t('admin.submittedSchedule') + '</div><div class="field-info-value"><code>' +
               scheduleText +
               '</code></div></div>'
             : '') +
@@ -592,18 +594,18 @@ function buildAdminFieldInfoMarkup(field) {
         (field.status === 'pending'
             ? '<button type="button" class="btn-approve" onclick="approveFieldFromModal(\'' +
               escapeHtml(field.id) +
-              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Approve field</button>' +
+              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>' + t('admin.approveField') + '</button>' +
               '<button type="button" class="btn-reject" onclick="rejectFieldFromModal(\'' +
               escapeHtml(field.id) +
-              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Reject field</button>'
+              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' + t('admin.rejectField') + '</button>'
             : field.status === 'approved'
             ? '<button type="button" class="btn-reject" onclick="rejectFieldFromModal(\'' +
               escapeHtml(field.id) +
-              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Reject field</button>'
+              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' + t('admin.rejectField') + '</button>'
             : field.status === 'rejected'
             ? '<button type="button" class="btn-approve" onclick="approveFieldFromModal(\'' +
               escapeHtml(field.id) +
-              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Approve field</button>'
+              '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>' + t('admin.approveField') + '</button>'
             : '') +
         '</div>'
     );
@@ -680,11 +682,11 @@ async function loadFieldsFromAPI() {
     if (isLoading) return;
     isLoading = true;
     if (fieldsTableBody) {
-        fieldsTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#6B7280">Loading fields...</td></tr>';
+        fieldsTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#6B7280">' + t('admin.loadingFields') + '</td></tr>';
     }
     try {
         if (!window.API || !API.admin || !API.admin.getFields) {
-            throw new Error('API not available.');
+            throw new Error(t('common.apiUnavailable'));
         }
         const params = { limit: 200, page: 1 };
         const sport = fieldFilter && fieldFilter.value && fieldFilter.value !== 'all' ? fieldFilter.value : '';
@@ -700,7 +702,7 @@ async function loadFieldsFromAPI() {
         console.warn('Load fields failed:', e);
         allFields = [];
         if (fieldsTableBody) {
-            fieldsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#DC2626">${escapeHtml(e && e.message ? e.message : 'Failed to load fields')}</td></tr>`;
+            fieldsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#DC2626">${escapeHtml((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('admin.failedLoadFields'))}</td></tr>`;
         }
     } finally {
         isLoading = false;
@@ -715,7 +717,7 @@ function renderFields(fields = allFields) {
         fieldsTableBody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; padding: 40px; color: #6B7280;">
-                    ${isLoading ? 'Loading fields...' : 'No fields found matching your criteria.'}
+                    ${isLoading ? t('admin.loadingFields') : t('admin.noFieldsMatch')}
                 </td>
             </tr>
         `;
@@ -745,30 +747,30 @@ function renderFields(fields = allFields) {
             <td>
                 <div class="actions-cell">
                     <div class="action-buttons">
-                        <button type="button" class="action-icon-btn info" onclick="showFieldInfo('${escapeHtml(field.id)}')" title="View field info">
+                        <button type="button" class="action-icon-btn info" onclick="showFieldInfo('${escapeHtml(field.id)}')" title="${t('admin.viewFieldInfo')}">
                             <i class="fi fi-rr-info"></i>
                         </button>
                         ${field.status === 'pending' 
-                            ? `<button type="button" class="action-icon-btn approve" onclick="approveField('${escapeHtml(field.id)}')" title="Approve field">
+                            ? `<button type="button" class="action-icon-btn approve" onclick="approveField('${escapeHtml(field.id)}')" title="${t('admin.approveField')}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="20 6 9 17 4 12"></polyline>
                                 </svg>
                             </button>
-                            <button type="button" class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="Reject field">
+                            <button type="button" class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="${t('admin.rejectField')}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
                                 </svg>
                             </button>`
                             : field.status === 'approved'
-                            ? `<button type="button" class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="Reject field">
+                            ? `<button type="button" class="action-icon-btn reject" onclick="rejectField('${escapeHtml(field.id)}')" title="${t('admin.rejectField')}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"></line>
                                     <line x1="6" y1="6" x2="18" y2="18"></line>
                                 </svg>
                             </button>`
                             : field.status === 'rejected'
-                            ? `<button type="button" class="action-icon-btn approve" onclick="approveField('${escapeHtml(field.id)}')" title="Approve field">
+                            ? `<button type="button" class="action-icon-btn approve" onclick="approveField('${escapeHtml(field.id)}')" title="${t('admin.approveField')}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="20 6 9 17 4 12"></polyline>
                                 </svg>
@@ -808,30 +810,30 @@ async function moderateFieldAction(fieldId, status, closeModalOnSuccess) {
     if (!field) return;
 
     if (!window.API || !API.admin || !API.admin.moderateField) {
-        alert('Admin moderation API is not available.');
+        alert(t('admin.moderationUnavailable'));
         return;
     }
 
     const statusUpper = String(status || '').toUpperCase();
     const actionWord = statusUpper === 'APPROVED' ? 'approve' : 'reject';
-    if (!(await MatchFieldDialog.confirm(`Are you sure you want to ${actionWord} "${field.fieldName}"?`, {
+    if (!(await MatchFieldDialog.confirm(t('admin.moderateConfirm', { action: t('admin.' + actionWord), name: field.fieldName }), {
         type: statusUpper === 'REJECTED' ? 'danger' : 'warning',
-        okText: statusUpper === 'APPROVED' ? 'Approve' : 'Reject'
+        okText: statusUpper === 'APPROVED' ? t('owner.approve') : t('admin.rejectField')
     }))) return;
 
     let reason = '';
     if (statusUpper === 'REJECTED') {
         if (typeof MatchFieldDialog !== 'undefined' && MatchFieldDialog.prompt) {
-            const r = await MatchFieldDialog.prompt('Reason for rejection (optional):', {
-                title: 'Reason for rejection',
+            const r = await MatchFieldDialog.prompt(t('admin.rejectReasonShort'), {
+                title: t('admin.reasonTitle'),
                 type: 'warning',
-                okText: 'OK',
-                cancelText: 'Cancel',
-                placeholder: 'Optional note…'
+                okText: t('common.ok'),
+                cancelText: t('common.cancel'),
+                placeholder: t('admin.optionalNote')
             });
             reason = r != null ? String(r).trim() : '';
         } else {
-            reason = prompt('Reason for rejection (optional):') || '';
+            reason = prompt(t('admin.rejectReasonShort')) || '';
         }
     }
 
@@ -840,7 +842,7 @@ async function moderateFieldAction(fieldId, status, closeModalOnSuccess) {
         await loadFieldsFromAPI();
         if (closeModalOnSuccess) closeFieldInfoModalOnly();
     } catch (e) {
-        alert(e && e.message ? e.message : `Failed to ${actionWord} field.`);
+        alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(e && e.message)) || t('admin.fieldActionFailed', { action: t('admin.' + actionWord) }));
     }
 }
 
@@ -870,7 +872,7 @@ async function showFieldInfo(fieldId) {
     if (!row || !fieldInfoContent) return;
 
     fieldInfoContent.innerHTML =
-        '<div class="field-info-item"><div class="field-info-value field-info-loading">Loading field details\u2026</div></div>';
+        '<div class="field-info-item"><div class="field-info-value field-info-loading">' + t('admin.loadingFieldDetails') + '</div></div>';
     if (fieldInfoModal) {
         fieldInfoModal.classList.add('active');
         document.body.style.overflow = 'hidden';
@@ -944,7 +946,7 @@ if (fieldInfoContent) {
                     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
                 })
                 .catch(() => {
-                    alert('Could not open document. Please try again.');
+                    alert(t('admin.couldNotOpenDoc'));
                 });
             return;
         }
@@ -986,7 +988,7 @@ function navigateImage(fieldId, direction) {
     const image = carousel.querySelector('.carousel-image');
     if (image) {
         image.src = field.images[currentIndex];
-        image.alt = `Field image ${currentIndex + 1}`;
+        image.alt = t('admin.fieldPhotoN', { n: currentIndex + 1 });
         image.setAttribute('onclick', 'openImageModal(' + JSON.stringify(field.images[currentIndex]) + ')');
     }
 
@@ -1028,7 +1030,7 @@ function goToImage(fieldId, index) {
     const image = carousel.querySelector('.carousel-image');
     if (image) {
         image.src = field.images[index];
-        image.alt = `Field image ${index + 1}`;
+        image.alt = t('admin.fieldPhotoN', { n: index + 1 });
         image.setAttribute('onclick', 'openImageModal(' + JSON.stringify(field.images[index]) + ')');
     }
 
@@ -1068,7 +1070,7 @@ function openImageModal(imageUrl) {
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
-                <img src="${imageUrl}" alt="Field image" class="full-size-image">
+                <img src="${imageUrl}" alt="${t('admin.fieldImage')}" class="full-size-image">
             </div>
         `;
         document.body.appendChild(imageModal);

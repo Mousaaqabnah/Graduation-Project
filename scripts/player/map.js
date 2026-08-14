@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (coords) {
           userLocation = coords;
           var locationSpan = document.querySelector('.location-indicator span');
-          if (locationSpan) locationSpan.textContent = 'Your location';
+          if (locationSpan) locationSpan.textContent = t('geo.yourLocation');
         }
         renderFieldList(fieldsData);
       });
@@ -82,7 +82,7 @@ function createFieldCard(field) {
   card.dataset.fieldId = field.id;
   card.dataset.sport = field.sport;
 
-  var priceStr = (field.price != null && field.price > 0) ? (escapeHtml(mfMoney(field.price)) + '/h') : 'Price N/A';
+  var priceStr = (field.price != null && field.price > 0) ? (escapeHtml(mfMoney(field.price)) + t('common.perHour')) : t('player.priceNA');
   var rating = field.rating != null ? field.rating.toFixed(1) : '0';
   var reviews = field.reviews || 0;
 
@@ -90,7 +90,7 @@ function createFieldCard(field) {
     '<div class="field-icon"><i class="fi fi-rr-football"></i></div>',
     '<div class="field-content">',
       '<h3 class="field-name">' + escapeHtml(field.name) + '</h3>',
-      '<div class="field-location"><i class="fi fi-rr-marker"></i><span>' + escapeHtml(field.location || 'Location') + '</span></div>',
+      '<div class="field-location"><i class="fi fi-rr-marker"></i><span>' + escapeHtml(field.location || t('common.location')) + '</span></div>',
       '<div class="field-details">',
         '<span class="field-price">' + priceStr + '</span>',
         '<div class="field-rating"><i class="fi fi-rr-star"></i><span>' + rating + ' (' + reviews + ')</span></div>',
@@ -101,7 +101,7 @@ function createFieldCard(field) {
     '</div>',
     '<div class="field-actions">',
       '<span class="field-distance">' + escapeHtml(field.distance || '—') + '</span>',
-      '<button class="btn-view" data-field-id="' + field.id + '">View</button>',
+      '<button class="btn-view" data-field-id="' + field.id + '">' + t('common.view') + '</button>',
     '</div>'
   ].join('');
 
@@ -231,7 +231,7 @@ function highlightFieldCard(fieldId) {
 
 function updateFieldCount(count) {
   var el = document.getElementById('fieldCount');
-  if (el) el.textContent = count + ' field' + (count !== 1 ? 's' : '') + ' found';
+  if (el) el.textContent = count === 1 ? t('player.fieldFound') : t('player.fieldsFound', { count: count });
 }
 
 function viewField(fieldId) {
@@ -244,11 +244,11 @@ function setupUseLocation() {
   if (!btn) return;
   btn.addEventListener('click', function() {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      alert(t('geo.unsupported'));
       return;
     }
     btn.disabled = true;
-    btn.textContent = 'Locating...';
+    btn.textContent = t('geo.locating');
     navigator.geolocation.getCurrentPosition(
       function(position) {
         userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
@@ -256,15 +256,15 @@ function setupUseLocation() {
           FieldMapData.applyDistancesFromPoint(allFieldsData, userLocation.lat, userLocation.lng);
         }
         if (MapService) MapService.setCenter(userLocation.lat, userLocation.lng, 14);
-        if (locationSpan) locationSpan.textContent = 'Your location';
+        if (locationSpan) locationSpan.textContent = t('geo.yourLocation');
         btn.disabled = false;
-        btn.textContent = 'Use my location';
+        btn.textContent = t('geo.useMyLocation');
         renderFieldList(fieldsData);
       },
       function() {
-        alert('Unable to retrieve your location. Please enable location services.');
+        alert(t('geo.unable'));
         btn.disabled = false;
-        btn.textContent = 'Use my location';
+        btn.textContent = t('geo.useMyLocation');
       }
     );
   });

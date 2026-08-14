@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings - MatchField Admin</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -21,7 +22,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -53,7 +54,7 @@
                 </a>
                 <a href="messages.html" class="nav-item">
                     <i class="fi fi-rr-messages nav-icon"></i>
-                    <span data-i18n="nav.messages">Messages</span>
+                    <span data-i18n="nav.messages" data-i18n="admin.messages">Messages</span>
                 </a>
             </nav>
             
@@ -75,7 +76,7 @@
             <header class="main-header">
                 <a href="dashboard.html" class="back-btn">
                     <i class="fi fi-rr-arrow-left"></i>
-                    <span>Back</span>
+                    <span data-i18n="common.back">Back</span>
                 </a>
                 
                 <div class="header-actions">
@@ -87,7 +88,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -95,8 +96,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">System update</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleSystem">System update</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -111,7 +112,7 @@
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>Profile</h3>
+                                <h3 data-i18n="nav.profile">Profile</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
@@ -128,14 +129,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>My Profile</span>
+                                        <span data-i18n="profile.myProfile">My Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -169,20 +170,20 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rr-user"></i>
-                                <h2>Account Settings</h2>
+                                <h2 data-i18n="settings.accountSettings">Account Settings</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Change Password</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.changePassword">Change Password</h3>
                                     <p class="settings-item-description">Update your password to keep your account secure</p>
                                 </div>
-                                <button class="btn btn-secondary" id="changePasswordBtn">Change</button>
+                                <button class="btn btn-secondary" id="changePasswordBtn" data-i18n="common.change">Change</button>
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Email Notifications</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.emailNotifications">Email Notifications</h3>
                                     <p class="settings-item-description">Receive email notifications for system updates and alerts</p>
                                 </div>
                                 <label class="toggle-switch">
@@ -192,7 +193,7 @@
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Two-Factor Authentication</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.twoFactor">Two-Factor Authentication</h3>
                                     <p class="settings-item-description">Add an extra layer of security to your admin account</p>
                                 </div>
                                 <label class="toggle-switch">
@@ -224,7 +225,7 @@
                             </div>
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Verification Requests</h3>
+                                    <h3 class="settings-item-title" data-i18n="admin.verificationRequests">Verification Requests</h3>
                                     <p class="settings-item-description">Notifications for field verification requests</p>
                                 </div>
                                 <label class="toggle-switch">
@@ -325,16 +326,16 @@
                         <div class="settings-card-header">
                             <div class="settings-card-title">
                                 <i class="fi fi-rr-exclamation-triangle"></i>
-                                <h2>Danger Zone</h2>
+                                <h2 data-i18n="settings.dangerZone">Danger Zone</h2>
                             </div>
                         </div>
                         <div class="settings-card-body">
                             <div class="settings-item">
                                 <div class="settings-item-info">
-                                    <h3 class="settings-item-title">Delete Account</h3>
+                                    <h3 class="settings-item-title" data-i18n="settings.deleteAccount">Delete Account</h3>
                                     <p class="settings-item-description">Permanently delete your admin account and data</p>
                                 </div>
-                                <button class="btn btn-danger" id="deleteAccountBtn">Delete Account</button>
+                                <button class="btn btn-danger" id="deleteAccountBtn" data-i18n="settings.deleteAccount">Delete Account</button>
                             </div>
                         </div>
                     </div>
@@ -347,7 +348,7 @@
     <div class="change-password-modal-overlay" id="changePasswordModal">
         <div class="change-password-modal">
             <div class="change-password-modal-header">
-                <h2>Change Password</h2>
+                <h2 data-i18n="settings.changePassword">Change Password</h2>
                 <button type="button" class="change-password-modal-close" id="changePasswordModalClose" aria-label="Close">
                     <i class="fi fi-rr-cross"></i>
                 </button>
@@ -355,20 +356,20 @@
             <form id="changePasswordForm" class="change-password-modal-body">
                 <div class="form-group">
                     <label for="currentPassword">Current Password</label>
-                    <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" required autocomplete="current-password">
+                    <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" data-i18n-placeholder="settings.currentPasswordPh" required autocomplete="current-password">
                 </div>
                 <div class="form-group">
                     <label for="newPassword">New Password</label>
-                    <input type="password" id="newPassword" name="newPassword" placeholder="Enter new password (min 8 characters)" required minlength="8" autocomplete="new-password">
+                    <input type="password" id="newPassword" name="newPassword" placeholder="Enter new password (min 8 characters)" data-i18n-placeholder="settings.newPasswordPh" required minlength="8" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label for="confirmPassword">Confirm New Password</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
+                    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password" data-i18n-placeholder="settings.confirmPasswordPh" required minlength="8" autocomplete="new-password">
                 </div>
                 <p class="change-password-error" id="changePasswordError"></p>
                 <div class="change-password-modal-footer">
-                    <button type="button" class="btn btn-secondary" id="changePasswordCancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="changePasswordSubmit">Update Password</button>
+                    <button type="button" class="btn btn-secondary" id="changePasswordCancel" data-i18n="common.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="changePasswordSubmit" data-i18n="settings.updatePassword">Update Password</button>
                 </div>
             </form>
         </div>
@@ -377,6 +378,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/admin-guard.js"></script>

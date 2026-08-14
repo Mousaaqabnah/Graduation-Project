@@ -40,9 +40,9 @@ function escapeHtml(str) {
 function formatPrice(n) {
   if (n == null || n === '') return '—';
   if (typeof MatchFieldPrefs !== 'undefined' && MatchFieldPrefs.formatMoney) {
-    return MatchFieldPrefs.formatMoney(n) + '/h';
+    return MatchFieldPrefs.formatMoney(n) + t('common.perHour');
   }
-  return '₪' + n + '/h';
+  return '₪' + n + t('common.perHour');
 }
 
 function mfMapCenter() {
@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (coords) {
           userLocation = coords;
           var locationSpan = document.querySelector('.location-indicator span');
-          if (locationSpan) locationSpan.textContent = 'Your location';
+          if (locationSpan) locationSpan.textContent = t('geo.yourLocation');
         }
         renderFieldList(fieldsData);
       });
@@ -101,8 +101,8 @@ function renderFieldList(fields) {
     fieldList.innerHTML =
       '<div class="empty-state">' +
       '<i class="fi fi-rr-map-marker"></i>' +
-      '<p>No fields yet</p>' +
-      '<a href="fields.html" class="btn-add-field-link">Add your first field</a>' +
+      '<p>' + t('owner.noFieldsMap') + '</p>' +
+      '<a href="fields.html" class="btn-add-field-link">' + t('owner.addFirstField') + '</a>' +
       '</div>';
     return;
   }
@@ -121,7 +121,9 @@ function createFieldCard(field) {
   var priceStr = field.price != null && field.price > 0 ? formatPrice(field.price) : '—';
   var rating = field.rating != null ? Number(field.rating).toFixed(1) : '0';
   var reviews = field.reviews || 0;
-  var statusLabel = field.isActive ? 'Active' : 'Inactive';
+  var statusLabel = field.isActive
+    ? ((window.MatchFieldI18n && MatchFieldI18n.statusLabel) ? MatchFieldI18n.statusLabel('ACTIVE') : t('status.ACTIVE'))
+    : ((window.MatchFieldI18n && MatchFieldI18n.statusLabel) ? MatchFieldI18n.statusLabel('INACTIVE') : t('status.INACTIVE'));
   var statusClass = field.isActive ? 'active' : 'inactive';
 
   card.innerHTML = [
@@ -147,8 +149,8 @@ function createFieldCard(field) {
     '</div>',
     '<div class="field-actions">',
     '<span class="field-distance">' + escapeHtml(field.distance || '—') + '</span>',
-    '<button type="button" class="btn-view" data-field-id="' + escapeHtml(field.id) + '">View</button>',
-    '<button type="button" class="btn-manage" data-field-id="' + escapeHtml(field.id) + '">Manage</button>',
+    '<button type="button" class="btn-view" data-field-id="' + escapeHtml(field.id) + '">' + t('common.view') + '</button>',
+    '<button type="button" class="btn-manage" data-field-id="' + escapeHtml(field.id) + '">' + t('owner.manage') + '</button>',
     '</div>'
   ].join('');
 
@@ -247,7 +249,7 @@ function highlightFieldCard(fieldId) {
 
 function updateFieldCount(count) {
   var el = document.getElementById('fieldCount');
-  if (el) el.textContent = count + ' field' + (count !== 1 ? 's' : '');
+  if (el) el.textContent = count === 1 ? t('owner.fieldCountOne') : t('owner.fieldCount', { count: count });
 }
 
 function viewField(fieldId) {
@@ -257,7 +259,7 @@ function viewField(fieldId) {
   }
   openViewFieldModalForFieldId(fieldId).catch(function (err) {
     console.error('viewField', err);
-    alert((err && err.message) || 'Could not load field details.');
+    alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(err && err.message)) || t('owner.couldNotLoadField'));
     if (typeof closeViewModal === 'function') closeViewModal();
   });
 }
@@ -272,12 +274,12 @@ function setupUseLocation() {
   if (!btn) return;
   btn.addEventListener('click', function () {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      alert(t('geo.unsupported'));
       return;
     }
     btn.disabled = true;
     var prev = btn.textContent;
-    btn.textContent = 'Locating...';
+    btn.textContent = t('geo.locating');
     navigator.geolocation.getCurrentPosition(
       function (position) {
         userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
@@ -285,13 +287,13 @@ function setupUseLocation() {
           FieldMapData.applyDistancesFromPoint(allFieldsData, userLocation.lat, userLocation.lng);
         }
         if (typeof MapService !== 'undefined') MapService.setCenter(userLocation.lat, userLocation.lng, 14);
-        if (locationSpan) locationSpan.textContent = 'Your location';
+        if (locationSpan) locationSpan.textContent = t('geo.yourLocation');
         btn.disabled = false;
         btn.textContent = prev;
         renderFieldList(fieldsData);
       },
       function () {
-        alert('Unable to retrieve your location. Please enable location services.');
+        alert(t('geo.unable'));
         btn.disabled = false;
         btn.textContent = prev;
       }

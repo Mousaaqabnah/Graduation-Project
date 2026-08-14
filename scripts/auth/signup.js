@@ -49,7 +49,7 @@ function initPasswordToggles() {
             const isHidden = passwordField.type === 'password';
             passwordField.type = isHidden ? 'text' : 'password';
             icon.className = isHidden ? 'fi fi-rr-eye-crossed' : 'fi fi-rr-eye';
-            this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            this.setAttribute('aria-label', isHidden ? t('accessibility.hidePassword') : t('accessibility.showPassword'));
         });
     });
 }
@@ -71,7 +71,7 @@ function clearFormFields() {
     // Clear password strength indicator
     const strengthValue = document.getElementById('strengthValue');
     if (strengthValue) {
-        strengthValue.textContent = 'Weak';
+        strengthValue.textContent = t('auth.weak');
         strengthValue.className = 'strength-value weak';
     }
     
@@ -190,7 +190,7 @@ confirmPasswordInput.addEventListener('input', checkPasswordMatch);
 
 function checkPasswordStrength(password) {
     if (password.length === 0) {
-        return { text: 'Weak', class: 'weak' };
+        return { text: t('auth.weak'), class: 'weak' };
     }
     
     let strength = 0;
@@ -206,11 +206,11 @@ function checkPasswordStrength(password) {
     if (/[^a-zA-Z0-9]/.test(password)) strength++;
     
     if (strength <= 2) {
-        return { text: 'Weak', class: 'weak' };
+        return { text: t('auth.weak'), class: 'weak' };
     } else if (strength <= 4) {
-        return { text: 'Medium', class: 'medium' };
+        return { text: t('auth.medium'), class: 'medium' };
     } else {
-        return { text: 'Strong', class: 'strong' };
+        return { text: t('auth.strong'), class: 'strong' };
     }
 }
 
@@ -224,13 +224,13 @@ document.getElementById('signupForm').addEventListener('submit', async function(
     
     // Check if passwords match
     if (password !== confirmPassword) {
-        alert('Passwords do not match. Please try again.');
+        alert(t('auth.passwordsMismatch'));
         return;
     }
     
     // Check if terms are accepted
     if (!document.getElementById('terms').checked) {
-        alert('Please agree to the Terms and Privacy Policy.');
+        alert(t('auth.agreeRequired'));
         return;
     }
     
@@ -248,7 +248,7 @@ document.getElementById('signupForm').addEventListener('submit', async function(
     
     const signupButton = document.querySelector('.btn-primary');
     const originalText = signupButton.textContent;
-    signupButton.textContent = 'Creating account...';
+    signupButton.textContent = t('common.creating');
     signupButton.disabled = true;
     
     try {
@@ -258,7 +258,7 @@ document.getElementById('signupForm').addEventListener('submit', async function(
         clearSignupDraft();
 
         // Show success message
-        alert('Account created successfully! Redirecting to login...');
+        alert(t('auth.signupSuccess'));
         
         // Store token and user if login is automatic
         if (response.token && response.user) {
@@ -278,7 +278,7 @@ document.getElementById('signupForm').addEventListener('submit', async function(
             window.location.href = '/pages/auth/login.html';
         }
     } catch (error) {
-        alert(error.message || 'Signup failed. Please try again.');
+        alert((window.MatchFieldI18n && MatchFieldI18n.localizeError(error.message)) || t('auth.signupFailed'));
         signupButton.textContent = originalText;
         signupButton.disabled = false;
     }

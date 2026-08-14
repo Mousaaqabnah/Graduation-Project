@@ -5,12 +5,12 @@
  */
 (function() {
     function getAvatarUrl(fullName, size) {
-        var name = (fullName || 'User').trim() || 'User';
+        var name = (fullName || t('common.user')).trim() || t('common.user');
         return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=007BFF&color=fff&size=' + (size || 128);
     }
 
     function applyUserToHeader(user) {
-        var fullName = user.fullName || user.name || 'Player';
+        var fullName = user.fullName || user.name || t('auth.player');
         var email = user.email || '';
         var avatarSrc = user.avatar || (user.id && typeof localStorage !== 'undefined' && localStorage.getItem('userAvatar_' + user.id)) || getAvatarUrl(fullName, 128);
 

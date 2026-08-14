@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MatchField - Sign up</title>
+    <title data-i18n="auth.pageSignup">MatchField - Sign up</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,23 +14,24 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons/css/all/all.css">
     <link rel="stylesheet" href="../../styles/shared/base.css">
     <link rel="stylesheet" href="../../styles/auth/signup.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
 </head>
 <body>
     <div class="container">
         <!-- Left Section - Promotional Content -->
         <div class="left-section">
             <div class="logo">
-                <img src="../../logo/logo's icon.png" alt="MatchField" class="logo-icon">
+                <img src="../../logo/logo's icon.png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-icon">
             </div>
             
             <div class="promo-card">
-                <h1 class="headline">Get started now</h1>
-                <p class="description">Book and manage sports fields in seconds. Join as a player to find nearby matches, or as a field owner to showcase your venue and handle bookings effortlessly.</p>
+                <h1 class="headline" data-i18n="auth.getStarted">Get started now</h1>
+                <p class="description" data-i18n="auth.signupDescription">Book and manage sports fields in seconds. Join as a player to find nearby matches, or as a field owner to showcase your venue and handle bookings effortlessly.</p>
                 
                 <ul class="features-list">
-                    <li>Smart search and filters</li>
-                    <li>Secure payments and receipts</li>
-                    <li>Real-time availability</li>
+                    <li data-i18n="auth.featureSearch">Smart search and filters</li>
+                    <li data-i18n="auth.featurePayments">Secure payments and receipts</li>
+                    <li data-i18n="auth.featureAvailability">Real-time availability</li>
                 </ul>
             </div>
         </div>
@@ -41,11 +43,11 @@
                 <div class="user-type-tabs">
                     <button type="button" class="tab-btn active" data-type="player" id="playerTab">
                         <i class="fi fi-rr-user" style="display: inline-block;"></i>
-                        Player
+                        <span data-i18n="auth.player">Player</span>
                     </button>
                     <button type="button" class="tab-btn" data-type="owner" id="ownerTab">
                         <i class="fi fi-rr-court-sport" style="display: inline-block;"></i>
-                        Field owner
+                        <span data-i18n="auth.fieldOwner">Field owner</span>
                     </button>
                 </div>
                 
@@ -53,18 +55,18 @@
                     <div class="form-fields-container">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="fullName">Full name</label>
+                                <label for="fullName" data-i18n="auth.fullName">Full name</label>
                                 <input 
                                     type="text" 
                                     id="fullName" 
                                     name="fullName" 
-                                    placeholder="Alex Morgan"
+                                    placeholder="Alex Morgan" data-i18n-placeholder="support.nameExample"
                                     required
                                 >
                             </div>
                             
                             <div class="form-group">
-                                <label for="phone">Phone</label>
+                                <label for="phone" data-i18n="auth.phone">Phone</label>
                                 <input 
                                     type="tel" 
                                     id="phone" 
@@ -77,7 +79,7 @@
                         
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="dateOfBirth">Date of birth</label>
+                                <label for="dateOfBirth" data-i18n="auth.dateOfBirth">Date of birth</label>
                                 <input 
                                     type="date" 
                                     id="dateOfBirth" 
@@ -87,7 +89,7 @@
                             </div>
                             
                             <div class="form-group">
-                                <label for="email">Email</label>
+                                <label for="email" data-i18n="auth.email">Email</label>
                                 <input 
                                     type="email" 
                                     id="email" 
@@ -100,21 +102,22 @@
                         
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="gender">Gender</label>
+                                <label for="gender" data-i18n="auth.gender">Gender</label>
                                 <select id="gender" name="gender" required>
-                                    <option value="">Select gender</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
+                                    <option value="" data-i18n="auth.selectGender">Select gender</option>
+                                    <option value="Male" data-i18n="auth.male">Male</option>
+                                    <option value="Female" data-i18n="auth.female">Female</option>
                                 </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="location">City</label>
+                                <label for="location" data-i18n="auth.city">City</label>
                                 <input 
                                     type="text" 
                                     id="location" 
                                     name="location" 
                                     placeholder="Ramallah"
+                                    data-i18n-placeholder="geo.ramallah"
                                     required
                                 >
                             </div>
@@ -122,36 +125,38 @@
                         
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="password">Password</label>
+                                <label for="password" data-i18n="auth.password">Password</label>
                                 <div class="password-input-wrapper">
                                     <input 
                                         type="password" 
                                         id="password" 
                                         name="password" 
                                         placeholder="Enter your password"
+                                        data-i18n-placeholder="auth.enterPassword"
                                         required
                                     >
-                                    <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password">
+                                    <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword">
                                         <i class="fi fi-rr-eye"></i>
                                     </button>
                                 </div>
                                 <div class="password-strength" id="passwordStrength">
-                                    <span class="strength-label">Password strength: </span>
-                                    <span class="strength-value" id="strengthValue">Weak</span>
+                                    <span class="strength-label" data-i18n="auth.passwordStrength">Password strength: </span>
+                                    <span class="strength-value" id="strengthValue" data-i18n="auth.weak">Weak</span>
                                 </div>
                             </div>
                             
                             <div class="form-group">
-                                <label for="confirmPassword">Confirm password</label>
+                                <label for="confirmPassword" data-i18n="auth.confirmPassword">Confirm password</label>
                                 <div class="password-input-wrapper">
                                     <input 
                                         type="password" 
                                         id="confirmPassword" 
                                         name="confirmPassword" 
                                         placeholder="Re-enter password"
+                                        data-i18n-placeholder="auth.reenterPassword"
                                         required
                                     >
-                                    <button type="button" class="password-toggle-btn" data-target="confirmPassword" aria-label="Show password">
+                                    <button type="button" class="password-toggle-btn" data-target="confirmPassword" aria-label="Show password" data-i18n-aria-label="accessibility.showPassword">
                                         <i class="fi fi-rr-eye"></i>
                                     </button>
                                 </div>
@@ -161,16 +166,21 @@
                         <div class="form-group checkbox-group">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="terms" name="terms" required>
-                                <span>I agree to the <a href="terms.html" class="link" rel="noopener noreferrer">Terms of Service</a> and <a href="privacy.html" class="link" rel="noopener noreferrer">Privacy Policy</a>.</span>
+                                <span>
+                                    <span data-i18n="auth.agreePrefix">I agree to the</span>
+                                    <a href="terms.html" class="link" rel="noopener noreferrer" data-i18n="auth.termsOfService">Terms of Service</a>
+                                    <span data-i18n="auth.and">and</span>
+                                    <a href="privacy.html" class="link" rel="noopener noreferrer" data-i18n="auth.privacyPolicy">Privacy Policy</a>.
+                                </span>
                             </label>
                         </div>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">Sign up</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="auth.signUp">Sign up</button>
                 </form>
                 
                 <p class="login-text">
-                    Already have an account? <a href="login.html" class="login-link">Log in</a>
+                    <span data-i18n="auth.alreadyAccount">Already have an account?</span> <a href="login.html" class="login-link" data-i18n="auth.logIn">Log in</a>
                 </p>
             </div>
         </div>
@@ -178,6 +188,9 @@
     
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/auth/signup.js"></script>
 </body>
 </html>

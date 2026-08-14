@@ -1,10 +1,16 @@
 /**
  * RTL layout support when documentElement.dir = rtl (Arabic).
- * Prefer logical adjustments over mirroring every icon.
+ * Prefer logical adjustments over mirroring photos, logos, or maps.
  */
 
+html[lang="ar"],
 [dir="rtl"] body {
-  text-align: right;
+  font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", Arial, sans-serif;
+  line-height: 1.6;
+}
+
+[dir="rtl"] body {
+  text-align: start;
 }
 
 [dir="rtl"] .settings-item {
@@ -12,7 +18,7 @@
 }
 
 [dir="rtl"] .settings-item-info {
-  text-align: right;
+  text-align: start;
 }
 
 [dir="rtl"] .settings-card-title {
@@ -21,24 +27,26 @@
 
 [dir="rtl"] .settings-card-title h2,
 [dir="rtl"] .settings-section-title {
-  text-align: right;
+  text-align: start;
 }
 
 [dir="rtl"] .back-btn,
 [dir="rtl"] .settings-back,
-[dir="rtl"] a.back-link {
+[dir="rtl"] a.back-link,
+[dir="rtl"] .legal-back {
   flex-direction: row-reverse;
 }
 
 [dir="rtl"] .back-btn i,
 [dir="rtl"] .back-btn .fi-rr-arrow-small-left,
-[dir="rtl"] .settings-back i {
+[dir="rtl"] .settings-back i,
+[dir="rtl"] .profile-menu-arrow {
   transform: scaleX(-1);
 }
 
 [dir="rtl"] .sidebar,
 [dir="rtl"] .settings-sidebar {
-  text-align: right;
+  text-align: start;
   left: auto;
   right: 15px;
 }
@@ -65,6 +73,8 @@
 
   [dir="rtl"] .sidebar {
     right: auto;
+    left: auto;
+    inset-inline-start: 0;
     transform: translateX(100%);
   }
 
@@ -74,8 +84,7 @@
 }
 
 [dir="rtl"] .settings-select {
-  text-align: right;
-  direction: rtl;
+  text-align: start;
 }
 
 [dir="rtl"] .toggle-switch {
@@ -83,10 +92,99 @@
 }
 
 [dir="rtl"] .profile-popup,
-[dir="rtl"] .notification-popup {
-  text-align: right;
+[dir="rtl"] .notification-popup,
+[dir="rtl"] .location-menu {
+  text-align: start;
 }
 
 [dir="rtl"] .settings-item-description {
-  text-align: right;
+  text-align: start;
+}
+
+[dir="rtl"] .container {
+  direction: rtl;
+}
+
+[dir="rtl"] .left-section,
+[dir="rtl"] .right-section {
+  text-align: start;
+  align-items: flex-start;
+}
+
+[dir="rtl"] .form-group label,
+[dir="rtl"] .login-title,
+[dir="rtl"] .welcome-text,
+[dir="rtl"] .headline,
+[dir="rtl"] .description {
+  text-align: start;
+}
+
+[dir="rtl"] .page-header,
+[dir="rtl"] .page-title,
+[dir="rtl"] .page-description,
+[dir="rtl"] .section-title {
+  text-align: start;
+}
+
+[dir="rtl"] table th,
+[dir="rtl"] table td {
+  text-align: start;
+}
+
+[dir="rtl"] .modal,
+[dir="rtl"] .booking-modal,
+[dir="rtl"] .payment-modal,
+[dir="rtl"] .mf-dialog-card {
+  text-align: start;
+}
+
+[dir="rtl"] .booking-steps,
+[dir="rtl"] .stepper,
+[dir="rtl"] .wizard-steps {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .filter-bar,
+[dir="rtl"] .tabs,
+[dir="rtl"] .user-type-tabs,
+[dir="rtl"] .header-actions,
+[dir="rtl"] .search-container {
+  direction: rtl;
+}
+
+[dir="rtl"] .search-input {
+  text-align: start;
+}
+
+[dir="rtl"] .alert,
+[dir="rtl"] .empty-state,
+[dir="rtl"] .kpi-card,
+[dir="rtl"] .stat-box,
+[dir="rtl"] .dashboard-card {
+  text-align: start;
+}
+
+[dir="rtl"] .password-toggle-btn {
+  right: auto;
+  left: 12px;
+  inset-inline-end: 12px;
+  inset-inline-start: auto;
+}
+
+[dir="rtl"] .password-input-wrapper input {
+  padding-right: 14px;
+  padding-left: 46px;
+  padding-inline-end: 46px;
+  padding-inline-start: 14px;
+}
+
+[dir="rtl"] .map-sidebar,
+[dir="rtl"] .leaflet-popup-content {
+  text-align: start;
+}
+
+[dir="rtl"] .pagination,
+[dir="rtl"] .form-row,
+[dir="rtl"] .settings-card-body {
+  direction: rtl;
 }

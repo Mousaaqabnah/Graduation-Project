@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Field Owner - About Us | MatchField</title>
     <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
@@ -21,7 +22,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" class="logo-image">
+                    <img src="../../assets/images/logo/A modern logo for a .png" alt="MatchField" data-i18n-alt="accessibility.logo" class="logo-image">
                 </div>
             </div>
             
@@ -32,7 +33,7 @@
                 </a>
                 <a href="bookings.html" class="nav-item">
                     <i class="fi fi-rr-calendar-day nav-icon"></i>
-                    <span data-i18n="nav.bookings_list">Bookings</span>
+                    <span data-i18n="nav.bookings_list" data-i18n="nav.bookings_list">Bookings</span>
                 </a>
                 <a href="fields.html" class="nav-item">
                     <i class="fi fi-rr-court-sport nav-icon"></i>
@@ -44,7 +45,7 @@
                 </a>
                 <a href="contact-us.html" class="nav-item">
                     <i class="fi fi-rs-headset nav-icon"></i>
-                    <span data-i18n="nav.contact">Contact Us</span>
+                    <span data-i18n="nav.contact" data-i18n="support.contactUs">Contact Us</span>
                 </a>
                 <a href="about-us.html" class="nav-item active">
                     <i class="fi fi-rr-info nav-icon"></i>
@@ -77,7 +78,7 @@
                         <!-- Notification Popup -->
                         <div class="notification-popup" id="notificationPopup">
                             <div class="notification-popup-header">
-                                <h3>Notifications</h3>
+                                <h3 data-i18n="notifications">Notifications</h3>
                             </div>
                             <div class="notification-popup-content">
                                 <div class="notification-item">
@@ -85,8 +86,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">New booking request</p>
-                                        <p class="notification-time">2 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleRequest">New booking request</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo2">2 hours ago</p>
                                     </div>
                                 </div>
                                 <div class="notification-item">
@@ -94,8 +95,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">Payment received</p>
-                                        <p class="notification-time">5 hours ago</p>
+                                        <p class="notification-title" data-i18n="notifications.samplePayment">Payment received</p>
+                                        <p class="notification-time" data-i18n="notifications.hoursAgo5">5 hours ago</p>
                                     </div>
                                 </div>
                                 <div class="notification-item">
@@ -103,8 +104,8 @@
                                         <i class="fi fi-rs-bell"></i>
                                     </div>
                                     <div class="notification-text">
-                                        <p class="notification-title">Field availability update</p>
-                                        <p class="notification-time">1 day ago</p>
+                                        <p class="notification-title" data-i18n="notifications.sampleFieldAvailability">Field availability update</p>
+                                        <p class="notification-time" data-i18n="notifications.dayAgo1">1 day ago</p>
                                     </div>
                                 </div>
                             </div>
@@ -113,21 +114,21 @@
                     
                     <div class="profile-wrapper">
                         <div class="profile-picture" id="profileBtn">
-                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                            <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                         </div>
                         
                         <!-- Profile Popup -->
                         <div class="profile-popup" id="profilePopup">
                             <div class="profile-popup-header">
-                                <h3>My Account</h3>
+                                <h3 data-i18n="account">My Account</h3>
                             </div>
                             <div class="profile-popup-content">
                                 <div class="profile-info">
                                     <div class="profile-avatar-large">
-                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile">
+                                        <img src="https://ui-avatars.com/api/?name=Fozi+Court&background=007BFF&color=fff&size=128" alt="Profile" data-i18n-alt="accessibility.profile">
                                     </div>
                                     <div class="profile-details">
-                                        <p class="profile-name">Fozi Court</p>
+                                        <p class="profile-name" data-i18n="common.user">Fozi Court</p>
                                         <p class="profile-email">fozi@matchfield.com</p>
                                     </div>
                                 </div>
@@ -137,14 +138,14 @@
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-user"></i>
                                         </div>
-                                        <span>View Profile</span>
+                                        <span data-i18n="profile.viewProfile">View Profile</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="settings.html" class="profile-menu-item">
                                         <div class="profile-menu-icon">
                                             <i class="fi fi-rr-settings"></i>
                                         </div>
-                                        <span>Settings</span>
+                                        <span data-i18n="settings">Settings</span>
                                         <i class="fi fi-rr-angle-right profile-menu-arrow"></i>
                                     </a>
                                     <a href="../auth/login.html" class="profile-menu-item profile-menu-item-logout">
@@ -164,32 +165,32 @@
             <!-- About Us Content -->
             <div class="about-content">
                 <div class="about-header">
-                    <h1 class="page-title">About MatchField</h1>
-                    <p class="page-description">MatchField makes it simple for players and venues to connect. As a field owner, you can manage your fields, bookings, and revenue all in one place. Spend less time on administration and more time growing your business. The platform is implemented as a capstone graduation project (full-stack booking and venue management).</p>
+                    <h1 class="page-title" data-i18n="about.title">About MatchField</h1>
+                    <p class="page-description" data-i18n="about.ownerIntro">MatchField makes it simple for players and venues to connect. As a field owner, you can manage your fields, bookings, and revenue all in one place. Spend less time on administration and more time growing your business. The platform is implemented as a capstone graduation project (full-stack booking and venue management).</p>
                 </div>
 
                 <div class="about-wrapper">
                     <!-- Our Mission Card -->
                     <div class="about-card">
-                        <h2 class="card-title">Our mission</h2>
-                        <p class="card-text">We want to remove the frustration of group chats, phone calls, and double bookings. MatchField gives players a single, clean place to discover nearby fields, compare prices, and reserve the perfect time slot instantly. For venue owners like you, we provide powerful tools to manage schedules, avoid no-shows, maximize field utilization, and keep every hour on the field active and profitable.</p>
+                        <h2 class="card-title" data-i18n="about.mission">Our mission</h2>
+                        <p class="card-text" data-i18n="about.missionBodyOwner">We want to remove the frustration of group chats, phone calls, and double bookings. MatchField gives players a single, clean place to discover nearby fields, compare prices, and reserve the perfect time slot instantly. For venue owners like you, we provide powerful tools to manage schedules, avoid no-shows, maximize field utilization, and keep every hour on the field active and profitable.</p>
                     </div>
 
                     <!-- How MatchField Works for Owners Card -->
                     <div class="about-card">
-                        <h2 class="card-title">How MatchField works for field owners</h2>
+                        <h2 class="card-title" data-i18n="about.howOwnerTitle">How MatchField works for field owners</h2>
                         <ol class="works-list">
-                            <li>List your fields with photos, pricing, and availability schedules.</li>
-                            <li>Receive booking requests and manage reservations in real-time.</li>
-                            <li>Track revenue, view analytics, and get paid automatically.</li>
-                            <li>Communicate with players, update field status, and manage everything from one dashboard.</li>
+                            <li data-i18n="about.ownerHow1">List your fields with photos, pricing, and availability schedules.</li>
+                            <li data-i18n="about.ownerHow2">Receive booking requests and manage reservations in real-time.</li>
+                            <li data-i18n="about.ownerHow3">Track revenue, view analytics, and get paid automatically.</li>
+                            <li data-i18n="about.ownerHow4">Communicate with players, update field status, and manage everything from one dashboard.</li>
                         </ol>
                     </div>
 
                     <!-- The Team Behind MatchField Card -->
                     <div class="about-card team-card">
-                        <h2 class="card-title">The team behind MatchField</h2>
-                        <p class="card-text">We're a small team of sports lovers, designers, and engineers focused on building the best experience for booking fields. We work closely with venue owners and players to keep improving every detail of the platform.</p>
+                        <h2 class="card-title" data-i18n="about.teamTitle">The team behind MatchField</h2>
+                        <p class="card-text" data-i18n="about.teamBody">We're a small team of sports lovers, designers, and engineers focused on building the best experience for booking fields. We work closely with venue owners and players to keep improving every detail of the platform.</p>
                         
                         <div class="team-grid">
                             <div class="team-member">
@@ -197,7 +198,7 @@
                                     <img src="https://ui-avatars.com/api/?name=Mousa+Aqabnah&background=007BFF&color=fff&size=128" alt="Mousa Aqabnah">
                                 </div>
                                 <h3 class="team-name">Mousa Aqabnah</h3>
-                                <p class="team-role">Co-founder &amp; CEO</p>
+                                <p class="team-role" data-i18n="about.roleCeoOnly">Co-founder &amp; CEO</p>
                             </div>
                             
                             <div class="team-member">
@@ -205,7 +206,7 @@
                                     <img src="https://ui-avatars.com/api/?name=Baraa+Qasem&background=007BFF&color=fff&size=128" alt="Baraa Qasem">
                                 </div>
                                 <h3 class="team-name">Baraa Qasem</h3>
-                                <p class="team-role">Co-founder &amp; CTO</p>
+                                <p class="team-role" data-i18n="about.roleCto">Co-founder &amp; CTO</p>
                             </div>
                             
                             <div class="team-member">
@@ -213,7 +214,7 @@
                                     <img src="https://ui-avatars.com/api/?name=Wesam+Tomize&background=007BFF&color=fff&size=128" alt="Wesam Tomize">
                                 </div>
                                 <h3 class="team-name">Wesam Tomize</h3>
-                                <p class="team-role">Support &amp; Coordination</p>
+                                <p class="team-role" data-i18n="about.roleSupport">Support &amp; Coordination</p>
                             </div>
                         </div>
                     </div>
@@ -225,6 +226,7 @@
     <script src="../../scripts/utils/runtime-api-port.js"></script>
     <script src="../../scripts/utils/api.js"></script>
     <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
     <script src="../../scripts/utils/i18n.js"></script>
     <script src="../../scripts/utils/auth-guard.js"></script>
     <script src="../../scripts/utils/owner-guard.js"></script>
