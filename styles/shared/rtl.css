@@ -13,6 +13,19 @@ html[lang="ar"],
   text-align: start;
 }
 
+[dir="rtl"] .btn-google {
+  direction: rtl;
+}
+
+[dir="rtl"] .google-auth-hint,
+[dir="rtl"] .oauth-callback-card {
+  text-align: center;
+}
+
+[dir="rtl"] .oauth-error {
+  text-align: start;
+}
+
 [dir="rtl"] .settings-item {
   flex-direction: row-reverse;
 }

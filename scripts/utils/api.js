@@ -541,6 +541,48 @@ const authAPI = {
     return data;
   },
 
+  /** Resolves true only when the backend has Google OAuth enabled (route 404s otherwise). */
+  isGoogleEnabled: async () => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/auth/google/config`, {
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+      if (!response.ok) return false;
+      const data = await response.json();
+      return !!(data && data.enabled);
+    } catch (_) {
+      return false;
+    }
+  },
+
+  /** Full-page navigation target; role is re-validated server-side and never ADMIN. */
+  googleStartUrl: (intent, role) => {
+    const params = new URLSearchParams({ intent: intent === 'signup' ? 'signup' : 'login' });
+    if (intent === 'signup') {
+      params.set('role', role === 'OWNER' ? 'OWNER' : 'PLAYER');
+      params.set('terms', 'accepted');
+    } else {
+      params.set('role', 'PLAYER');
+    }
+    return `${getApiBaseUrl()}/auth/google/start?${params.toString()}`;
+  },
+
+  /** Redeems the single-use HttpOnly exchange cookie set by the OAuth callback. */
+  googleExchange: async () => {
+    const data = await apiRequest('/auth/google/exchange', {
+      method: 'POST',
+      credentials: 'include',
+      body: {}
+    });
+    if (data.token && data.user) {
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
+    }
+    return data;
+  },
+
   refresh: async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) throw new Error('No refresh token');

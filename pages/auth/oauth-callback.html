@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="../../scripts/utils/locale-boot.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title data-i18n="auth.google.pageTitle">MatchField - Signing in with Google</title>
+    <link rel="icon" type="image/png" href="../../assets/images/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../styles/shared/base.css">
+    <link rel="stylesheet" href="../../styles/shared/rtl.css">
+</head>
+<body>
+    <div class="container oauth-callback-container">
+        <div class="login-card oauth-callback-card">
+            <div class="oauth-spinner" id="oauthSpinner" aria-hidden="true"></div>
+            <h2 class="login-title" id="oauthTitle" data-i18n="auth.google.loadingTitle">Signing you in</h2>
+            <p class="welcome-text" id="oauthStatus" role="status" aria-live="polite" data-i18n="auth.google.loading">Completing Google sign-in, please wait…</p>
+            <div class="oauth-error" id="oauthErrorBox" role="alert" hidden></div>
+            <a href="login.html" class="btn btn-primary oauth-back-link" id="oauthBackLink" hidden data-i18n="auth.google.backToLogin">Back to log in</a>
+        </div>
+    </div>
+
+    <script src="../../scripts/utils/runtime-api-port.js"></script>
+    <script src="../../scripts/utils/api.js"></script>
+    <script src="../../scripts/utils/preferences.js"></script>
+    <script src="../../scripts/utils/i18n-catalog.js"></script>
+    <script src="../../scripts/utils/i18n.js"></script>
+    <script src="../../scripts/utils/auth-redirect.js"></script>
+    <script src="../../scripts/auth/oauth-callback.js"></script>
+</body>
+</html>

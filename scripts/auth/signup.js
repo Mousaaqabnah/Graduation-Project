@@ -264,15 +264,7 @@ document.getElementById('signupForm').addEventListener('submit', async function(
         if (response.token && response.user) {
             API.setAuthToken(response.token);
             API.setCurrentUser(response.user);
-            
-            // Redirect based on role
-            if (response.user.role === 'ADMIN') {
-                window.location.href = '/pages/admin/dashboard.html';
-            } else if (response.user.role === 'OWNER') {
-                window.location.href = '/pages/owner/dashboard.html';
-            } else {
-                window.location.href = '/pages/player/home.html';
-            }
+            await redirectAfterAuth(response.user);
         } else {
             // Redirect to login page
             window.location.href = '/pages/auth/login.html';
@@ -296,6 +288,33 @@ document.querySelectorAll('input, select').forEach(element => {
 });
 
 restoreSignupDraft();
+
+(function initGoogleSignup() {
+    const btn = document.getElementById('googleSignupBtn');
+    const wrap = document.getElementById('googleAuthSection');
+    if (!btn || !wrap || typeof API === 'undefined' || !API.auth || !API.auth.isGoogleEnabled) return;
+    API.auth.isGoogleEnabled().then(function(enabled) {
+        if (!enabled) return;
+        wrap.hidden = false;
+        btn.addEventListener('click', function() {
+            const terms = document.getElementById('terms');
+            if (!terms || !terms.checked) {
+                alert(t('auth.agreeRequired'));
+                if (terms) terms.focus();
+                return;
+            }
+            const role = ownerTab.classList.contains('active') ? 'OWNER' : 'PLAYER';
+            btn.disabled = true;
+            btn.querySelector('.btn-google-label').textContent = t('auth.google.creatingAccount');
+            window.location.href = API.auth.googleStartUrl('signup', role);
+        });
+        window.addEventListener('pageshow', function(e) {
+            if (!e.persisted) return;
+            btn.disabled = false;
+            btn.querySelector('.btn-google-label').textContent = t('auth.google.continueSignup');
+        });
+    });
+})();
 
 signupForm.addEventListener('input', saveSignupDraft);
 signupForm.addEventListener('change', saveSignupDraft);

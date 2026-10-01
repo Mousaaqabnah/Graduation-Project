@@ -18,35 +18,63 @@ function initPasswordToggles() {
 
 initPasswordToggles();
 
-async function redirectAfterAuth(user) {
-    if (!user) return;
-    if (String(user.status || '').toUpperCase() === 'SUSPENDED') {
-        var contactPath =
-            String(user.role || '').toUpperCase() === 'OWNER'
-                ? '/pages/owner/contact-us.html'
-                : '/pages/shared/contact-us.html';
-        if (window.MatchFieldDialog && typeof MatchFieldDialog.alert === 'function') {
-            await MatchFieldDialog.alert(
-                t('auth.accountSuspended'),
-                { type: 'warning', title: t('auth.accountSuspendedTitle') }
-            );
-        }
-        try {
-            sessionStorage.setItem('matchfield_suspended_notice_shown', '1');
-        } catch (_) {
-            /* ignore */
-        }
-        window.location.href = contactPath;
+var OAUTH_ERROR_KEYS = {
+    cancelled: 'auth.google.errorCancelled',
+    state_mismatch: 'auth.google.errorStateMismatch',
+    email_unverified: 'auth.google.errorEmailUnverified',
+    account_exists: 'auth.google.errorAccountExists',
+    no_account: 'auth.google.errorNoAccount',
+    suspended: 'auth.google.errorSuspended',
+    not_allowed: 'auth.google.errorNotAllowed',
+    generic: 'auth.google.errorGeneric'
+};
+
+(function initGoogleLogin() {
+    var btn = document.getElementById('googleLoginBtn');
+    var wrap = document.getElementById('googleAuthSection');
+    if (!btn || !wrap || typeof API === 'undefined' || !API.auth || !API.auth.isGoogleEnabled) return;
+    API.auth.isGoogleEnabled().then(function(enabled) {
+        if (!enabled) return;
+        wrap.hidden = false;
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            btn.querySelector('.btn-google-label').textContent = t('auth.google.signingIn');
+            window.location.href = API.auth.googleStartUrl('login');
+        });
+        window.addEventListener('pageshow', function(e) {
+            if (!e.persisted) return;
+            btn.disabled = false;
+            btn.querySelector('.btn-google-label').textContent = t('auth.google.continue');
+        });
+    });
+})();
+
+(function showOAuthError() {
+    var params;
+    try {
+        params = new URLSearchParams(window.location.search);
+    } catch (_) {
         return;
     }
-    if (user.role === 'ADMIN') {
-        window.location.href = '/pages/admin/dashboard.html';
-    } else if (user.role === 'OWNER') {
-        window.location.href = '/pages/owner/dashboard.html';
-    } else {
-        window.location.href = '/pages/player/home.html';
+    var code = params.get('oauth_error');
+    if (!code) return;
+    var key = Object.prototype.hasOwnProperty.call(OAUTH_ERROR_KEYS, code)
+        ? OAUTH_ERROR_KEYS[code]
+        : OAUTH_ERROR_KEYS.generic;
+    var box = document.getElementById('oauthErrorBox');
+    if (box) {
+        box.setAttribute('data-i18n', key);
+        box.textContent = t(key);
+        box.hidden = false;
     }
-}
+    try {
+        params.delete('oauth_error');
+        var rest = params.toString();
+        history.replaceState(history.state, '', window.location.pathname + (rest ? '?' + rest : ''));
+    } catch (_) {
+        /* ignore */
+    }
+})();
 
 // Form submission handler
 document.getElementById('loginForm').addEventListener('submit', async function(e) {

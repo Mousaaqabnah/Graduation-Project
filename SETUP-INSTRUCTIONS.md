@@ -104,6 +104,7 @@ The server will start on `http://localhost:3000`
 - `POST /api/auth/login` - Login user
 - `GET /api/auth/me` - Get current user (requires auth)
 - `PUT /api/auth/password` - Update password (requires auth)
+- `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/google/exchange` - Google OAuth (see "Google OAuth" below)
 
 ### Users
 - `GET /api/users` - Get all users (Admin only)
@@ -258,6 +259,70 @@ node scripts/migrate-storage-to-supabase.js --apply
 ```
 
 `--apply` uploads and updates DB refs. It does **not** delete local source files.
+
+## Google OAuth (optional)
+
+MatchField supports "Continue with Google" for login and signup using a server-side
+Authorization Code flow with PKCE (S256), `state`, and `nonce`. Google is only used to
+prove identity; MatchField then issues its normal JWT access token + refresh token.
+
+### 1. Google Cloud Console
+
+1. Create (or select) a Google Cloud project for MatchField.
+2. **APIs & Services → OAuth consent screen**: choose **External**, fill in the app name,
+   support email, and developer contact. Scopes needed: `openid`, `email`, `profile` only.
+3. While the consent screen is in **Testing** mode, only accounts listed under
+   **Test users** can sign in. Add every Google account you test with.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
+   - Application type: **Web application**
+   - Authorized redirect URIs:
+     - Development: `http://localhost:3000/api/auth/google/callback`
+     - Production: `https://YOUR_DOMAIN/api/auth/google/callback` (HTTPS is required)
+   - Authorized JavaScript origins are not required (the browser never talks to Google APIs directly).
+5. Copy the client ID and client secret into the backend `.env` file only.
+
+### 2. Environment variables (backend `.env` only)
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_OAUTH_ENABLED` | `true` to enable; anything else disables every `/api/auth/google/*` route (404) |
+| `GOOGLE_CLIENT_ID` | OAuth client ID from the console |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret — **backend only** |
+| `GOOGLE_REDIRECT_URI` | Must exactly match a console redirect URI; path `/api/auth/google/callback` |
+| `OAUTH_STATE_SECRET` | Random value, at least 32 characters, used to sign the OAuth state cookie |
+| `APP_BASE_URL` | Frontend base URL for post-OAuth redirects (required in production) |
+
+When `GOOGLE_OAUTH_ENABLED=true` the server refuses to start if any value is missing, the
+state secret is too short, or (in production) the redirect URI is not HTTPS or
+`APP_BASE_URL` is unset. Only variable names are reported, never values.
+
+> **Security:** the Google client secret and `OAUTH_STATE_SECRET` must never be placed in
+> frontend code, HTML, Git, logs, or screenshots. `.env` is git-ignored — keep it that way.
+> Rotate the client secret in the Google console if it is ever exposed.
+
+### 3. Endpoints
+
+- `GET /api/auth/google/config` — returns `{ enabled: true }` (404 when disabled); the login/signup pages use it to show the Google button
+- `GET /api/auth/google/start?intent=login|signup&role=PLAYER|OWNER` — signup also requires `terms=accepted`; `ADMIN` is always rejected
+- `GET /api/auth/google/callback` — Google redirect target; never returns tokens
+- `POST /api/auth/google/exchange` — redeems a single-use HttpOnly cookie (60 s) for `{ token, refreshToken, user }`
+
+### 4. Account rules
+
+- A Google account already linked to a MatchField user signs that user in.
+- If the Google email matches an existing MatchField account that is **not** linked, sign-in is refused (`account_exists`). Accounts are never linked automatically by email; linking from Settings is planned for a later phase.
+- Unknown Google accounts can only be created from the signup page (Player or Field owner). Owners still go through document verification.
+- Google can never create or sign in an `ADMIN` account.
+- Errors return to `/pages/auth/login.html?oauth_error=<code>` with one of: `cancelled`, `state_mismatch`, `email_unverified`, `account_exists`, `no_account`, `suspended`, `not_allowed`, `generic`.
+
+### 5. Tests
+
+```bash
+npm run test:oauth
+```
+
+Google is fully mocked (locally signed ID tokens); no network calls to Google are made.
+The suite needs `DATABASE_URL` / `JWT_SECRET` like the other test suites.
 
 ---
 

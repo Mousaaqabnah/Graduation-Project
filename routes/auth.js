@@ -13,6 +13,15 @@ const { invalidateUserSessions, revokeAllRefreshTokens } = require('../lib/sessi
 const { createRateLimiter } = require('../lib/security/rateLimit');
 const { setNoStore } = require('../lib/security/errors');
 const { strongPassword, strongNewPassword } = require('../lib/security/validate');
+const {
+  GoogleOAuthError,
+  isGoogleOAuthEnabled,
+  randomToken,
+  createPkcePair,
+  buildAuthorizationUrl,
+  exchangeAndVerify
+} = require('../lib/oauth/google');
+const oauthState = require('../lib/oauth/stateCookie');
 
 const router = express.Router();
 
@@ -506,7 +515,7 @@ router.put(
 
       const user = await prisma.user.findUnique({ where: { id: req.user.id } });
       if (!user || !user.passwordHash) {
-        return res.status(400).json({ error: 'Account has no password on file.' });
+        return res.status(400).json({ error: 'Account has no password on file.', code: 'NO_PASSWORD' });
       }
 
       const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
@@ -549,7 +558,8 @@ router.delete(
       const user = await prisma.user.findUnique({ where: { id: req.user.id } });
       if (!user || !user.passwordHash) {
         return res.status(400).json({
-          error: 'Account has no password on file. Unable to verify account deletion request.'
+          error: 'Account has no password on file. Unable to verify account deletion request.',
+          code: 'NO_PASSWORD'
         });
       }
 
@@ -571,6 +581,7 @@ router.delete(
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: new Date() }
       });
+      await prisma.authAccount.deleteMany({ where: { userId: user.id } });
 
       await writeAuditLog({
         actorId: user.id,
@@ -587,5 +598,266 @@ router.delete(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// Google OAuth (Authorization Code + PKCE). All routes 404 unless enabled.
+// Never log codes, tokens, state, nonce, verifier, cookies, or Google identity data.
+// ---------------------------------------------------------------------------
+
+const OAUTH_ERROR_CODES = new Set([
+  'cancelled',
+  'state_mismatch',
+  'email_unverified',
+  'account_exists',
+  'no_account',
+  'suspended',
+  'not_allowed',
+  'generic'
+]);
+const OAUTH_INTENTS = new Set(['login', 'signup']);
+const OAUTH_SIGNUP_ROLES = new Set(['PLAYER', 'OWNER']);
+const OAUTH_EXCHANGE_FAILED = 'Google sign-in session expired. Please try again.';
+
+function frontendUrl(pathname) {
+  const base = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
+  return `${base}${pathname}`;
+}
+
+function redirectOAuthError(res, code) {
+  const safeCode = OAUTH_ERROR_CODES.has(code) ? code : 'generic';
+  setNoStore(res);
+  return res.redirect(302, frontendUrl(`/pages/auth/login.html?oauth_error=${safeCode}`));
+}
+
+function requireGoogleOAuth(req, res, next) {
+  if (!isGoogleOAuthEnabled()) {
+    return res.status(404).json({ error: 'Route not found' });
+  }
+  return next();
+}
+
+/** Phase 1: Google sign-in is for active PLAYER/OWNER accounts only. */
+function googleLoginBlockReason(user) {
+  if (!user || user.deletedAt) return 'not_allowed';
+  if (user.status === 'SUSPENDED') return 'suspended';
+  if (user.status !== 'ACTIVE') return 'not_allowed';
+  if (!OAUTH_SIGNUP_ROLES.has(user.role)) return 'not_allowed';
+  return null;
+}
+
+/**
+ * Account matching rules:
+ * A. Linked GOOGLE AuthAccount (by sub) -> log in that user (status/ADMIN checks).
+ * B. No link but email belongs to an existing user -> account_exists (never auto-link).
+ * C. No link, no user, intent=signup -> create PLAYER/OWNER + AuthAccount transactionally.
+ * D. No link, no user, intent=login -> no_account.
+ */
+async function resolveGoogleAccount(identity, stored, req) {
+  const linked = await prisma.authAccount.findUnique({
+    where: {
+      provider_providerAccountId: { provider: 'GOOGLE', providerAccountId: identity.sub }
+    },
+    include: { user: true }
+  });
+
+  if (linked) {
+    const blocked = googleLoginBlockReason(linked.user);
+    if (blocked) return { error: blocked };
+    if (linked.user.role === 'PLAYER') {
+      await ensurePlayerCodeForUser(linked.user.id);
+    }
+    await prisma.user.update({
+      where: { id: linked.user.id },
+      data: { lastLoginAt: new Date() }
+    });
+    await writeAuditLog({
+      actorId: linked.user.id,
+      action: 'LOGIN',
+      entityType: 'User',
+      entityId: linked.user.id,
+      metadata: { method: 'google' },
+      req
+    });
+    return { user: linked.user, isNewUser: false };
+  }
+
+  const emailOwner = await prisma.user.findUnique({
+    where: { email: identity.email },
+    select: { id: true }
+  });
+  if (emailOwner) return { error: 'account_exists' };
+
+  if (stored.intent !== 'signup') return { error: 'no_account' };
+  if (!OAUTH_SIGNUP_ROLES.has(stored.role)) return { error: 'not_allowed' };
+
+  const role = stored.role;
+  const fullName = identity.name || identity.email.split('@')[0];
+  const username = await createUniqueUsername(prisma, identity.email.split('@')[0] || fullName);
+  const playerCode = await createUniquePlayerCode();
+
+  let user;
+  try {
+    user = await prisma.$transaction(async (tx) =>
+      tx.user.create({
+        data: {
+          email: identity.email,
+          username,
+          passwordHash: null,
+          fullName: String(fullName).trim().slice(0, 120),
+          role,
+          playerCode,
+          emailVerifiedAt: new Date(),
+          lastLoginAt: new Date(),
+          ownerProfile:
+            role === 'OWNER' ? { create: { verificationStatus: 'NOT_SUBMITTED' } } : undefined,
+          authAccounts: {
+            create: {
+              provider: 'GOOGLE',
+              providerAccountId: identity.sub,
+              providerEmail: identity.email
+            }
+          }
+        }
+      })
+    );
+  } catch (error) {
+    if (error && error.code === 'P2002') return { error: 'account_exists' };
+    throw error;
+  }
+
+  await writeAuditLog({
+    actorId: user.id,
+    action: 'CREATE',
+    entityType: 'User',
+    entityId: user.id,
+    metadata: { method: 'google' },
+    req
+  });
+  return { user, isNewUser: true };
+}
+
+// Lets the frontend show the Google button only when the feature is enabled.
+router.get('/google/config', requireGoogleOAuth, (req, res) => {
+  setNoStore(res);
+  res.json({ enabled: true });
+});
+
+router.get('/google/start', requireGoogleOAuth, authStrictLimiter, (req, res) => {
+  try {
+    setNoStore(res);
+    const intent = typeof req.query.intent === 'string' ? req.query.intent : '';
+    const roleParam = typeof req.query.role === 'string' ? req.query.role.trim().toUpperCase() : '';
+
+    if (!OAUTH_INTENTS.has(intent)) return redirectOAuthError(res, 'not_allowed');
+    if (roleParam && !OAUTH_SIGNUP_ROLES.has(roleParam)) return redirectOAuthError(res, 'not_allowed');
+    if (intent === 'signup') {
+      if (!roleParam) return redirectOAuthError(res, 'not_allowed');
+      if (req.query.terms !== 'accepted') return redirectOAuthError(res, 'not_allowed');
+    }
+
+    const state = randomToken(32);
+    const nonce = randomToken(32);
+    const { codeVerifier, codeChallenge } = createPkcePair();
+
+    oauthState.setStateCookie(
+      res,
+      oauthState.createStateCookieValue({
+        state,
+        nonce,
+        codeVerifier,
+        intent,
+        role: intent === 'signup' ? roleParam : 'PLAYER'
+      })
+    );
+    return res.redirect(302, buildAuthorizationUrl({ state, nonce, codeChallenge }));
+  } catch {
+    console.error('Google OAuth start failed');
+    return redirectOAuthError(res, 'generic');
+  }
+});
+
+router.get('/google/callback', requireGoogleOAuth, authStrictLimiter, async (req, res) => {
+  setNoStore(res);
+  const stored = oauthState.verifyStateCookieValue(oauthState.readStateCookie(req));
+  oauthState.clearStateCookie(res);
+
+  const stateParam = typeof req.query.state === 'string' ? req.query.state : '';
+  const stateMatches = !!stored && !!stateParam && oauthState.timingSafeEqualStr(stateParam, stored.state);
+
+  if (typeof req.query.error === 'string' && req.query.error) {
+    if (stateMatches) oauthState.consumeState(stored.state, stored.expiresAt);
+    return redirectOAuthError(res, req.query.error === 'access_denied' ? 'cancelled' : 'generic');
+  }
+
+  if (!stateMatches) return redirectOAuthError(res, 'state_mismatch');
+  if (!oauthState.consumeState(stored.state, stored.expiresAt)) {
+    return redirectOAuthError(res, 'state_mismatch');
+  }
+  if (!OAUTH_INTENTS.has(stored.intent) || !OAUTH_SIGNUP_ROLES.has(stored.role)) {
+    return redirectOAuthError(res, 'not_allowed');
+  }
+
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!code || code.length > 2048) return redirectOAuthError(res, 'generic');
+
+  let identity;
+  try {
+    identity = await exchangeAndVerify({
+      code,
+      codeVerifier: stored.codeVerifier,
+      expectedNonce: stored.nonce
+    });
+  } catch (error) {
+    return redirectOAuthError(res, error instanceof GoogleOAuthError ? error.oauthCode : 'generic');
+  }
+
+  try {
+    const outcome = await resolveGoogleAccount(identity, stored, req);
+    if (outcome.error) return redirectOAuthError(res, outcome.error);
+
+    const ticket = oauthState.createExchangeTicket({
+      userId: outcome.user.id,
+      sessionVersion: outcome.user.sessionVersion ?? 0,
+      isNewUser: outcome.isNewUser
+    });
+    oauthState.setExchangeCookie(res, ticket);
+    return res.redirect(302, frontendUrl('/pages/auth/oauth-callback.html'));
+  } catch (error) {
+    console.error('Google OAuth account resolution failed', error && error.code ? error.code : '');
+    return redirectOAuthError(res, 'generic');
+  }
+});
+
+router.post('/google/exchange', requireGoogleOAuth, authStrictLimiter, async (req, res) => {
+  try {
+    setNoStore(res);
+    const ticket = oauthState.consumeExchangeTicket(oauthState.readExchangeCookie(req));
+    oauthState.clearExchangeCookie(res);
+    if (!ticket) return res.status(401).json({ error: OAUTH_EXCHANGE_FAILED });
+
+    const user = await prisma.user.findUnique({ where: { id: ticket.userId } });
+    if (
+      googleLoginBlockReason(user) ||
+      Number(user.sessionVersion || 0) !== Number(ticket.sessionVersion || 0)
+    ) {
+      return res.status(401).json({ error: OAUTH_EXCHANGE_FAILED });
+    }
+
+    const token = generateAccessToken(user.id, user.sessionVersion);
+    const refreshToken = await issueRefreshToken(user.id, req);
+    const userData = await userPayload(user.id);
+
+    res.json({
+      message: 'Login successful',
+      user: userData,
+      token,
+      refreshToken,
+      isNewUser: ticket.isNewUser
+    });
+  } catch (error) {
+    console.error('Google OAuth exchange failed', error && error.code ? error.code : '');
+    res.status(500).json({ error: 'Google sign-in failed' });
+  }
+});
 
 module.exports = router;
